@@ -1,9 +1,9 @@
 #include "Status.hh"
 #include "eudaq/RunControl.hh"
 
-class HidraRunControl: public eudaq::RunControl{
+class HidraRunControl : public eudaq::RunControl {
 public:
-  HidraRunControl(const std::string & listenaddress);
+  HidraRunControl(const std::string &listenaddress);
   void Configure() override;
   void StartRun() override;
   void StopRun() override;
@@ -18,38 +18,36 @@ private:
   std::chrono::steady_clock::time_point m_tp_start_run;
   std::chrono::steady_clock::time_point m_tp_stop_run;
   std::map<std::string, std::string> module_state;
-  std::map<std::string, std::string> last_printed_state; 
+  std::map<std::string, std::string> last_printed_state;
   std::mutex mtx;
 };
 
-namespace{
-  auto dummy0 = eudaq::Factory<eudaq::RunControl>::
-    Register<HidraRunControl, const std::string&>(HidraRunControl::m_id_factory);
+namespace {
+  auto dummy0 = eudaq::Factory<eudaq::RunControl>::Register<
+      HidraRunControl, const std::string &>(HidraRunControl::m_id_factory);
 }
 
-HidraRunControl::HidraRunControl(const std::string & listenaddress)
-  :RunControl(listenaddress){
+HidraRunControl::HidraRunControl(const std::string &listenaddress)
+    : RunControl(listenaddress) {
   m_flag_running = false;
 }
 
-void HidraRunControl::StartRun(){
+void HidraRunControl::StartRun() {
   RunControl::StartRun();
   m_tp_start_run = std::chrono::steady_clock::now();
   m_flag_running = true;
 }
 
-void HidraRunControl::StopRun(){
+void HidraRunControl::StopRun() {
   RunControl::StopRun();
   m_tp_stop_run = std::chrono::steady_clock::now();
   m_flag_running = false;
 }
 
-void HidraRunControl::Configure(){
-  RunControl::Configure();
-}
+void HidraRunControl::Configure() { RunControl::Configure(); }
 
 void HidraRunControl::Exec() {
-    StartRunControl();
+  StartRunControl();
 
     static bool stop_sent = false;
 
@@ -96,10 +94,11 @@ void HidraRunControl::Exec() {
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
 }
 
-void HidraRunControl::DoStatus(eudaq::ConnectionSPC con, eudaq::StatusSPC st){ 
-	std::lock_guard<std::mutex> lock(mtx);
-	module_state[con->GetName()] = st->GetMessage();
+void HidraRunControl::DoStatus(eudaq::ConnectionSPC con, eudaq::StatusSPC st) {
+  std::lock_guard<std::mutex> lock(mtx);
+  module_state[con->GetName()] = st->GetMessage();
 }
-
