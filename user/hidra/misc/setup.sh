@@ -4,17 +4,77 @@
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
 
+HIDRA_REQUIRED_CMAKE_VERSION="3.25.1"
+
+# Confronta due versioni semantiche: ritorna 0 se $1 >= $2, altrimenti 1.
+version_ge() {
+    local current="$1"
+    local required="$2"
+    local i
+    local current_parts required_parts
+
+    IFS='.' read -r -a current_parts <<< "$current"
+    IFS='.' read -r -a required_parts <<< "$required"
+
+    for ((i=0; i<3; i++)); do
+        local c="${current_parts[i]:-0}"
+        local r="${required_parts[i]:-0}"
+
+        if ((10#$c > 10#$r)); then
+            return 0
+        fi
+        if ((10#$c < 10#$r)); then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+get_cmake_version() {
+    if ! command -v cmake >/dev/null 2>&1; then
+        echo ""
+        return 1
+    fi
+
+    cmake --version 2>/dev/null | head -n1 | awk '{print $3}'
+}
+
+supports_hidra_presets() {
+    local cmake_version
+    cmake_version=$(get_cmake_version)
+
+    if [ -z "$cmake_version" ]; then
+        return 1
+    fi
+
+    version_ge "$cmake_version" "$HIDRA_REQUIRED_CMAKE_VERSION"
+}
+
 # Helper per creare la cartella build in automatico se non presente,
 # eseguire cmake con le opzioni desiderate, e tornare alla cartella in cui si era quando viene chiamato
 cmake_config() {
     local original_dir=$(pwd)
     cd "$REPO_ROOT"
 
-    if [[ ! -f "$REPO_ROOT/CMakeUserPresets.json" ]]; then
-        setup_vscode_hidra
-    fi
+    if supports_hidra_presets; then
+        if [ ! -f "$REPO_ROOT/CMakeUserPresets.json" ]; then
+            setup_vscode_hidra
+        fi
 
-    cmake --preset hidra-configure --fresh
+        cmake --preset hidra-configure --fresh
+    else
+        local cmake_version
+        cmake_version=$(get_cmake_version)
+        echo "CMake $cmake_version non supporta i preset HiDRA (richiesto >= $HIDRA_REQUIRED_CMAKE_VERSION)."
+        echo "Uso fallback con configurazione CMake classica."
+
+        cmake -S "$REPO_ROOT" -B "$REPO_ROOT/build" -G "Unix Makefiles" \
+            -DEUDAQ_BUILD_ONLINE_ROOT_MONITOR=OFF \
+            -DEUDAQ_LIBRARY_BUILD_TTREE=OFF \
+            -DUSER_HIDRA_BUILD=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --fresh
+    fi
 
     cd "$original_dir"
 }
@@ -26,12 +86,22 @@ hidra_build() {
     local original_dir=$(pwd)
     cd "$REPO_ROOT"
 
-    if [[ ! -f "$REPO_ROOT/CMakeUserPresets.json" ]]; then
-        setup_vscode_hidra
-    fi
+    if supports_hidra_presets; then
+        if [ ! -f "$REPO_ROOT/CMakeUserPresets.json" ]; then
+            setup_vscode_hidra
+        fi
 
-    cmake --build --preset hidra-build
-    cmake --build --preset hidra-install
+        cmake --workflow --preset hidra-full
+    else
+        local cmake_version
+        cmake_version=$(get_cmake_version)
+        echo "CMake $cmake_version non supporta i preset/workflow HiDRA (richiesto >= $HIDRA_REQUIRED_CMAKE_VERSION)."
+        echo "Uso fallback con build/install classici."
+
+        cmake_config
+        cmake --build "$REPO_ROOT/build" -j 10
+        cmake --build "$REPO_ROOT/build" --target install -j 10
+    fi
 
     cd "$original_dir"
 }
@@ -49,14 +119,14 @@ setup_vscode_hidra() {
 
     cat > "$REPO_ROOT/CMakeUserPresets.json" << 'EOF'
 {
-    "version": 8,
+        "version": 6,
     "include": [
         "user/hidra/misc/CMakePresets.hidra.json"
     ]
 }
 EOF
 
-    if [[ -f "$settings_path" ]]; then
+    if [ -f "$settings_path" ]; then
         if command -v jq >/dev/null 2>&1; then
             local tmp_settings
             tmp_settings=$(mktemp)
@@ -99,7 +169,7 @@ clean_vscode_hidra() {
 
     rm -f "$REPO_ROOT/CMakeUserPresets.json"
 
-    if [[ -f "$settings_path" ]]; then
+    if [ -f "$settings_path" ]; then
         if command -v jq >/dev/null 2>&1; then
             local tmp_settings
             tmp_settings=$(mktemp)
@@ -135,10 +205,10 @@ check_vscode_hidra() {
         echo "- jq: OK"
     else
         echo "- jq: MISSING (merge/cleanup non-distruttivo disabilitato)"
-        status=1
+        status=2
     fi
 
-    if [[ -f "$user_presets_path" ]]; then
+    if [ -f "$user_presets_path" ]; then
         if grep -q '"user/hidra/misc/CMakePresets.hidra.json"' "$user_presets_path"; then
             echo "- CMakeUserPresets.json: OK"
         else
@@ -150,7 +220,7 @@ check_vscode_hidra() {
         status=1
     fi
 
-    if [[ -f "$settings_path" ]]; then
+    if [ -f "$settings_path" ]; then
         if command -v jq >/dev/null 2>&1; then
             local use_presets
             local configure_preset
@@ -177,10 +247,14 @@ check_vscode_hidra() {
         status=1
     fi
 
-    if [[ $status -eq 0 ]]; then
+    if [ $status -eq 0 ]; then
         echo "Result: OK"
-    else
-        echo "Result: NOT READY (run setup_vscode_hidra)"
+    else 
+        if [ $status -eq 1 ]; then
+            echo "Result: NOT READY (run setup_vscode_hidra)"
+        else
+            echo "Result: MISSING DEPENDENCIES (run sudo apt install jq)"
+        fi
     fi
 
     return $status
