@@ -1,6 +1,8 @@
 #include "../include/HidraDryXDCProducer.hh"
 #include <chrono>
 #include <cstring>
+#include <exception>
+#include <limits>
 
 namespace {
   constexpr uint32_t XDC_EVENT_MARKER = 0xccaaffeeu;
@@ -82,9 +84,31 @@ void HidraDryXDCProducer::ReadFileSize() {
 bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t> &event_words) {
   event_words.clear();
 
+  auto read_word_ascii = [this](uint32_t &word) -> bool {
+    std::string token;
+    if (!(m_ifile >> token)) {
+      return false;
+    }
+
+    try {
+      const unsigned long value = std::stoul(token, nullptr, 16);
+      if (value > std::numeric_limits<uint32_t>::max()) {
+        EUDAQ_WARN("XDC token out of uint32 range: " + token);
+        return false;
+      }
+      word = static_cast<uint32_t>(value);
+      return true;
+    } catch (const std::exception &) {
+      EUDAQ_WARN("Invalid XDC token in ASCII stream: " + token);
+      return false;
+    }
+  };
+
   std::vector<uint32_t> header(XDC_HEADER_WORDS, 0);
-  if (!m_ifile.read(reinterpret_cast<char *>(header.data()), static_cast<std::streamsize>(XDC_HEADER_WORDS * sizeof(uint32_t)))) {
-    return false;
+  for (uint32_t i = 0; i < XDC_HEADER_WORDS; ++i) {
+    if (!read_word_ascii(header[i])) {
+      return false;
+    }
   }
 
   const uint32_t marker = header[0];
@@ -95,7 +119,7 @@ bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t> &event_words) {
   const uint32_t header_end_marker = header[13];
 
   if (marker != XDC_EVENT_MARKER) {
-    EUDAQ_WARN("Invalid XDC marker, stopping read loop");
+    EUDAQ_WARN("Invalid XDC marker (" + std::to_string(marker) + "), stopping read loop");
     return false;
   }
 
@@ -118,17 +142,19 @@ bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t> &event_words) {
   event_words.insert(event_words.end(), header.begin(), header.end());
 
   if (data_size > 0) {
-    const std::size_t offset = event_words.size();
-    event_words.resize(offset + data_size);
-    if (!m_ifile.read(reinterpret_cast<char *>(&event_words[offset]), static_cast<std::streamsize>(data_size * sizeof(uint32_t)))) {
-      EUDAQ_WARN("Reached EOF while reading XDC data words");
-      return false;
+    for (uint32_t i = 0; i < data_size; ++i) {
+      uint32_t data_word = 0;
+      if (!read_word_ascii(data_word)) {
+        EUDAQ_WARN("Reached EOF or invalid token while reading XDC data words");
+        return false;
+      }
+      event_words.push_back(data_word);
     }
   }
 
   uint32_t trailer = 0;
-  if (!m_ifile.read(reinterpret_cast<char *>(&trailer), static_cast<std::streamsize>(sizeof(uint32_t)))) {
-    EUDAQ_WARN("Reached EOF while reading XDC trailer");
+  if (!read_word_ascii(trailer)) {
+    EUDAQ_WARN("Reached EOF or invalid token while reading XDC trailer");
     return false;
   }
   if (trailer != XDC_EVENT_TRAILER) {

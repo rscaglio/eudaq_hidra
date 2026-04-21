@@ -10,5 +10,5 @@ $BINPATH/euLog &
 sleep 1
 $BINPATH/euCliCollector -n HidraDataCollector -t my_dc &
 sleep 1
-$BINPATH/euCliProducer -n HidraDryFERSProducer -t my_pd0  
-
+#$BINPATH/euCliProducer -n HidraDryFERSProducer -t DryFERSProducer  
+$BINPATH/euCliProducer -n HidraDryXDCProducer -t DryXDCProducer

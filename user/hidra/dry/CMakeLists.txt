@@ -1,5 +1,4 @@
-include_directories(include /usr/include)
-link_directories(/usr/lib)
+include_directories(include)
 aux_source_directory(src DRY_SRC)
 
 set(CAEN_COMM_LIBRARY CAENComm)
@@ -12,7 +11,7 @@ set(CAEN_VME_LIBRARY CAENVME)
 # endif()
 
 add_library(${EUDAQ_MODULE}_dry SHARED ${DRY_SRC})
-target_link_libraries(${EUDAQ_MODULE}_dry ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} ${CAEN_COMM_LIBRARY} ${CAEN_VME_LIBRARY})
+target_link_libraries(${EUDAQ_MODULE}_dry ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY})
 
 install(TARGETS
   ${EUDAQ_MODULE}_dry

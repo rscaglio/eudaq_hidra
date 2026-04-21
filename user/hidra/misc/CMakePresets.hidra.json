@@ -11,6 +11,9 @@
                 "EUDAQ_BUILD_ONLINE_ROOT_MONITOR": "OFF",
                 "EUDAQ_LIBRARY_BUILD_TTREE": "OFF",
                 "USER_HIDRA_BUILD": "ON",
+                "USER_HIDRA_XDC_BUILD": "ON",
+                "USER_HIDRA_FERS_BUILD": "OFF",
+                "USER_HIDRA_DRY_BUILD": "ON",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
         }
@@ -32,6 +35,27 @@
                 "install"
             ],
             "jobs": 10
+        }
+    ],
+    "workflowPresets": [
+        {
+            "name": "hidra-full",
+            "displayName": "HiDRA Build + Install",
+            "description": "Configure + Build + Install (equivalente a build_hidra)",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "hidra-configure"
+                },
+                {
+                    "type": "build",
+                    "name": "hidra-build"
+                },
+                {
+                    "type": "build",
+                    "name": "hidra-install"
+                }
+            ]
         }
     ]
 }
