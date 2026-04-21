@@ -157,10 +157,10 @@ check_vscode_hidra() {
             local build_preset
             local configure_on_open
 
-            use_presets=$(jq -r '."cmake.useCMakePresets" // empty' "$settings_path" 2>/dev/null)
-            configure_preset=$(jq -r '."cmake.defaultConfigurePreset" // empty' "$settings_path" 2>/dev/null)
-            build_preset=$(jq -r '."cmake.defaultBuildPreset" // empty' "$settings_path" 2>/dev/null)
-            configure_on_open=$(jq -r '."cmake.configureOnOpen" // empty' "$settings_path" 2>/dev/null)
+            use_presets=$(jq -r 'if has("cmake.useCMakePresets") then ."cmake.useCMakePresets" else "__missing__" end' "$settings_path" 2>/dev/null)
+            configure_preset=$(jq -r 'if has("cmake.defaultConfigurePreset") then ."cmake.defaultConfigurePreset" else "__missing__" end' "$settings_path" 2>/dev/null)
+            build_preset=$(jq -r 'if has("cmake.defaultBuildPreset") then ."cmake.defaultBuildPreset" else "__missing__" end' "$settings_path" 2>/dev/null)
+            configure_on_open=$(jq -r 'if has("cmake.configureOnOpen") then (."cmake.configureOnOpen"|tostring) else "__missing__" end' "$settings_path" 2>/dev/null)
 
             if [[ "$use_presets" == "always" && "$configure_preset" == "hidra-configure" && "$build_preset" == "hidra-build" && "$configure_on_open" == "false" ]]; then
                 echo "- .vscode/settings.json CMake keys: OK"
