@@ -119,8 +119,19 @@ void HidraDryFERSProducer::Mainloop(){
     // Skip bytes (file header)
     // TODO: send a BORE with this
     uint8_t header_size = FILE_HEADER_SIZE; // 25 bytes	
-    std::vector<char> dummy_header(header_size);
-    m_ifile.read(dummy_header.data(), header_size);
+    std::vector<char> file_header(header_size);
+    m_ifile.read(file_header.data(), header_size);
+
+    uint8_t time_unit = (uint8_t) file_header[12]; // this steers the data size from each board
+    int event_board_size = -1;
+
+    // TODO: following is valid only for Spectroscopy + Timing
+    if (time_unit == 0) event_board_size = 12; // bytes
+    else if (time_unit == 1) event_board_size = 14; // bytes
+    else{
+      EUDAQ_ERROR("Incorrect information from file header. Time Unit is "+ std::to_string(time_unit) + ", expected 0 or 1");
+      // TODO: stop run
+    }
 
     int block_id = 0;
 
@@ -130,10 +141,13 @@ void HidraDryFERSProducer::Mainloop(){
     while (m_ifile.read(block.data(), block.size())){
       // if statement needed to stop reading instead of having to wait until end of file is reached
       if(m_exit_of_run==true) break;
+
+      
       auto ev = eudaq::Event::MakeUnique("FERSEvent");
       
       uint16_t event_size;
-      memcpy(&event_size, &block[0], sizeof(uint16_t));
+      memcpy(&event_size, &block[0], 2);
+
 
       if(loop_count==0){
 	EUDAQ_DEBUG("Mainloop():: Block[0] = " + std::to_string((uint8_t)block[0]));
@@ -143,33 +157,34 @@ void HidraDryFERSProducer::Mainloop(){
 
       loop_count++;
 
-      // never used
-      /*
-      if(event_size != block.size()){
-	int offset = event_size-block.size();
-	m_ifile.seekg(offset, std::ios_base::cur);
-      }
-      */
-
       std::vector<uint8_t> hits;
     
       uint8_t board_id;
-      memcpy(&board_id, &block[2], sizeof(uint8_t));
+      memcpy(&board_id, &block[2], 1);
       hits.push_back(board_id);
 			
       double trigger_time_stamp;
-      memcpy(&trigger_time_stamp, &block[3], sizeof(double));
+      memcpy(&trigger_time_stamp, &block[3], 8);
       ev->SetTimestamp(trigger_time_stamp, trigger_time_stamp+100, true);
       
       uint64_t trigger_id;
-      memcpy(&trigger_id, &block[11], sizeof(uint64_t));
+      memcpy(&trigger_id, &block[11], 8);
       ev->SetTriggerN(trigger_id);
 
  
       uint64_t channel_mask;
-      memcpy(&channel_mask, &block[19], sizeof(uint64_t));
+      memcpy(&channel_mask, &block[19], 8);
       
-      uint8_t num_channels = sizeof(channel_mask)*8;
+      //uint8_t num_channels = sizeof(channel_mask)*8;
+      int num_channels = 0;
+      if ((event_size - EVENT_HEADER_SIZE) % event_board_size == 0){
+	num_channels = (event_size - EVENT_HEADER_SIZE) / event_board_size;
+      }
+      else{
+	EUDAQ_ERROR("event size ("+std::to_string(event_size)+") - header size ("+std::to_string(EVENT_HEADER_SIZE)+") is not multiple of "+std::to_string(event_board_size)+": cannot compute number of baords");
+	// TODO: stop run
+      }
+
       
       uint8_t channel_mask_bits[num_channels];
       uint8_t num_active_channels = 0;
