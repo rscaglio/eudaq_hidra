@@ -51,34 +51,47 @@ void HidraRunControl::Configure(){
 void HidraRunControl::Exec() {
     StartRunControl();
 
+    static bool stop_sent = false;
+
     while (IsActiveRunControl()) {
 
-        {
+        bool producer_done = false;
+        bool collector_ready = false;
 
-            for (auto &p : module_state) {
- 
-                std::lock_guard<std::mutex> lock(mtx);
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+
+            // --- To check component states ---
+            for (const auto &p : module_state) {
                 const std::string &name = p.first;
                 const std::string &state = p.second;
 
-                // stampa SOLO se cambiato
                 if (last_printed_state[name] != state) {
-
-		    EUDAQ_INFO("[DEVICE]: " + name + " [STATUS]: " + state);	
-                    /*std::cout << "[DEVICE]: " << name
-                              << " [STATUS]: " << state
-                              << std::endl;*/
-
+                    EUDAQ_INFO("[DEVICE]: " + name + " [STATUS]: " + state);
                     last_printed_state[name] = state;
                 }
+            }
+            
+	    // --- Check conditions on the producer and collector ---
+            for (const auto &p : module_state) {
+                const std::string &name = p.first;
+                const std::string &state = p.second;
 
-		static bool stop_sent = false;
+                if (name == "my_pd0" && state == "END_OF_STREAM") {
+                    producer_done = true;
+                }
 
-                if (state == "STOP_REQUEST") {
-		    stop_sent = true;
-                    StopRun();
+                if (name == "my_dc" && state == "STOP_REQUEST") {
+                    collector_ready = true;
                 }
             }
+        }
+
+        // --- When producer has produced max events and collector has collected max events ---> STOP OF THE RUN ---
+        if (!stop_sent && producer_done && collector_ready) {
+            EUDAQ_INFO("All devices ready → stopping run");
+            stop_sent = true;
+            StopRun();
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
