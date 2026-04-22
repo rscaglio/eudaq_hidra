@@ -98,6 +98,8 @@ public:
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraQTPDProducer");
 
 private:
+  uint64_t m_max_events_p; 
+  bool m_eos_sent = false; 
   // --------------------------------------------------------------------------
   // EUDAQ FSM hooks
   // --------------------------------------------------------------------------
@@ -132,6 +134,7 @@ private:
     if (!conf) {
       EUDAQ_THROW("Run configuration is missing");
     }
+    m_max_events_p = conf->Get("EX0_MAX_EVENTS", 0); //NEW
 
     m_iped = static_cast<int>(parse_u16(conf->Get("Iped", std::string("100"))));
 
@@ -196,6 +199,7 @@ private:
     CloseController();
     m_evt = 0;
     m_adcval.fill(INVALID_ADC);
+    m_eos_sent = false; 
     EUDAQ_INFO("Producer reset");
   }
 
@@ -392,6 +396,16 @@ private:
 
     SendEvent(std::move(ev));
     ++m_evt;
+
+    // --- Producer sends a STOP REQUEST to the RC when has produced maximum setted events ---
+    if(!m_eos_sent && m_evt >= m_max_events_p) {
+	   
+	    EUDAQ_INFO("Event " + std::to_string(m_evt)); 
+	    m_eos_sent = true;
+	    SetStatus(eudaq::Status::STATE_RUNNING, "END_OF_STREAM");
+            SendStatus();
+	    EUDAQ_INFO("End of stream reached, waiting for StopRun()");
+    }	    
   }
 
   void SendBORE() {
