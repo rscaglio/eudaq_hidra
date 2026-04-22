@@ -23,6 +23,7 @@ private:
   uint64_t m_event_count;
   uint64_t m_max_events;
   bool m_stop_sent = false;
+  bool m_running = false;
 
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
@@ -47,10 +48,13 @@ private:
 
   void DoStartRun() override {
     m_event_count = 0;
+    m_running = true;
     EUDAQ_INFO("HidraDataCollector start run " + std::to_string(GetRunNumber()));
   }
 
   void DoStopRun() override {
+    m_stop_sent = true;
+    m_running = false;
     EUDAQ_INFO("HidraDataCollector stop run " + std::to_string(GetRunNumber()));
   }
 
@@ -63,8 +67,13 @@ private:
   }
 
   void DoStatus() override {
-    SetStatusTag("Status", "OK");
-    SetStatusMsg("HidraDataCollector running");
+    if (m_running) {
+        SetStatusTag("Status", "OK");
+        SetStatusMsg("HidraDataCollector running");
+    } else {
+        SetStatusMsg("STOPPED");
+        SetStatusMsg("HidraDataCollector stopped");
+    }
   }
 
   void DoConnect(eudaq::ConnectionSPC id) override {
