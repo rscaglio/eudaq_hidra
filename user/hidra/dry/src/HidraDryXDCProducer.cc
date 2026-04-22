@@ -1,8 +1,10 @@
 #include "../include/HidraDryXDCProducer.hh"
+#include "Logger.hh"
 #include <chrono>
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <string>
 
 namespace {
   constexpr uint32_t XDC_EVENT_MARKER = 0xccaaffeeu;
@@ -19,7 +21,7 @@ namespace{
 
 
 HidraDryXDCProducer::HidraDryXDCProducer(const std::string & name, const std::string & runcontrol)
-  :eudaq::Producer(name, runcontrol), m_event_delay_ms(0), m_exit_of_run(false){
+  :eudaq::Producer(name, runcontrol), m_exit_of_run(false){
 }
 
 void HidraDryXDCProducer::DoInitialise(){
@@ -30,18 +32,30 @@ void HidraDryXDCProducer::DoInitialise(){
 void HidraDryXDCProducer::DoConfigure(){
   auto conf = GetConfiguration();
   m_data_in_path = conf->Get("DATA_IN_PATH", "infile.txt");
-  m_event_delay_ms = conf->Get("EVENT_DELAY_MS", static_cast<uint32_t>(0));
   EUDAQ_INFO("Using XDC raw data file " + m_data_in_path);
   ReadFileSize();
 }
 
 void HidraDryXDCProducer::DoStartRun(){
-  m_exit_of_run = false;
+  m_runNumber = GetRunNumber();
+  auto bore = eudaq::Event::MakeUnique("DryXDC");
+  bore->SetBORE();
+  bore->SetRunN(static_cast<uint32_t>(m_runNumber));
+  bore->SetTag("Producer", "HidraDryXDCProducer");
+  EUDAQ_INFO("Starting HidraDryXDCProducer run");
+  SendEvent(std::move(bore));
 
+  m_exit_of_run = false;
+  m_start_of_run_ts = std::chrono::steady_clock::now();
   m_thd_run = std::thread(&HidraDryXDCProducer::Mainloop, this);
 }
 
 void HidraDryXDCProducer::DoStopRun(){
+  auto eore = eudaq::Event::MakeUnique("DryXDC");
+  eore->SetEORE();
+  eore->SetRunN(static_cast<uint32_t>(m_runNumber));
+  SendEvent(std::move(eore));
+
   m_exit_of_run = true;
   EUDAQ_INFO("Stopping HidraDryXDCProducer run");
   if(m_thd_run.joinable()){
@@ -172,6 +186,7 @@ void HidraDryXDCProducer::Mainloop(){
   uint64_t loop_count = 0;
   while(!m_exit_of_run){
     std::vector<uint32_t> event_words;
+    auto start_of_read_t = std::chrono::high_resolution_clock::now();
     if (!ReadXDCEvent(event_words)) {
       m_exit_of_run = true;
       break;
@@ -191,7 +206,7 @@ void HidraDryXDCProducer::Mainloop(){
     const uint32_t sanity_flag = event_words[12];
 
     const uint64_t ts_begin_ns = event_time_sec * 1000000000ULL + event_time_usec * 1000ULL;
-    ev->SetTimestamp(ts_begin_ns, ts_begin_ns + 1000ULL, true);
+    ev->SetTimestamp(ts_begin_ns, ts_begin_ns + 100ULL, true);
     ev->SetEventN(event_number);
     ev->SetTriggerN(event_number, true);
 
@@ -216,12 +231,23 @@ void HidraDryXDCProducer::Mainloop(){
         + ", dataWords=" + std::to_string(data_size));
     }
 
+    if (loop_count > 0) {
+      std::chrono::nanoseconds total_event_delay{ts_begin_ns - m_prev_event_timestamp_ns};
+      std::chrono::nanoseconds read_duration{std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start_of_read_t)};
+      std::chrono::nanoseconds event_delay_ns = total_event_delay - read_duration;
+      //EUDAQ_DEBUG("Event time stamps: " + std::to_string(double(ts_begin_ns-m_first_event_timestamp_ns)/1000000000));
+      if(event_delay_ns.count() > 0) {
+        std::this_thread::sleep_for(event_delay_ns);
+      }
+      
+    }
+    else {
+      m_first_event_timestamp_ns = ts_begin_ns;
+    }
+    m_prev_event_timestamp_ns = ts_begin_ns;
+
     SendEvent(std::move(ev));
     ++loop_count;
-
-    if (m_event_delay_ms > 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(m_event_delay_ms));
-    }
   }
 
   EUDAQ_INFO("Exiting XDC dry readout loop after " + std::to_string(loop_count) + " events");

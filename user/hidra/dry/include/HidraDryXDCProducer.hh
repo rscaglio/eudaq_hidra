@@ -3,6 +3,7 @@
 
 #include "eudaq/Producer.hh"
 
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -29,9 +30,13 @@ private:
   std::ifstream m_ifile;
   uint64_t m_ifile_size;
   std::string m_data_in_path;
-  uint32_t m_event_delay_ms;
+  uint64_t m_prev_event_timestamp_ns;
+  uint64_t m_first_event_timestamp_ns;
   std::thread m_thd_run;
   mutable bool m_exit_of_run;
+  std::chrono::time_point<std::chrono::steady_clock> m_start_of_run_ts;
+
+  uint32_t m_runNumber;
 };
 
 #endif

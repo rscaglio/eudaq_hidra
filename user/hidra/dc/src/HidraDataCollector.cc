@@ -102,11 +102,11 @@ private:
 	    if(!m_stop_sent && m_event_count < m_max_events){
 
       
-		    EUDAQ_DEBUG("Received event " + std::to_string(ev->GetEventN()) +
-                  " from " + id->GetName() +
-                  " type=" + desc);
+		    //EUDAQ_DEBUG("Received event " + std::to_string(ev->GetEventN()) +
+        //          " from " + id->GetName() +
+        //         " type=" + desc);
 		    ++m_event_count;
-		    std::cout << "Event number: " << m_event_count << std::endl;
+		    //std::cout << "Event number: " << m_event_count << std::endl;
 		    WriteEvent(std::move(ev));
 	    }
 
