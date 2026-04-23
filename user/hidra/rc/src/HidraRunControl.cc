@@ -48,51 +48,59 @@ void HidraRunControl::Configure() { RunControl::Configure(); }
 
 void HidraRunControl::Exec() {
   StartRunControl();
+	while (IsActiveRunControl()) {
+		bool producer_done = false;
+		bool collector_ready = false;
+       
+		{
+	
 
-    static bool stop_sent = false;
 
-    while (IsActiveRunControl()) {
+		std::lock_guard<std::mutex> lock(mtx);
+	 
+	// --- To check component states ---
+	        for (const auto &p : module_state) {
+		        const std::string &name = p.first;
+        		const std::string &state = p.second;
 
-        bool producer_done = false;
-        bool collector_ready = false;
+        		if (last_printed_state[name] != state) {
+				EUDAQ_INFO("[DEVICE]: " + name + " [STATUS]: " + state);
+		        	last_printed_state[name] = state;
+        		}
 
-        {
-            std::lock_guard<std::mutex> lock(mtx);
+			// --- Check conditions on the producer and collector ---
+			if(m_flag_running) {
+				if (name == "my_pd0" && state == "END_OF_STREAM") {
+					producer_done = true;
+				}
 
-            // --- To check component states ---
-            for (const auto &p : module_state) {
-                const std::string &name = p.first;
-                const std::string &state = p.second;
+				if (name == "my_dc" && state == "STOP_REQUEST") {
+					collector_ready = true;
+				}
+			}
+		}
+	
+		
+		}// Mutex goes out of scope and releases
 
-                if (last_printed_state[name] != state) {
-                    EUDAQ_INFO("[DEVICE]: " + name + " [STATUS]: " + state);
-                    last_printed_state[name] = state;
-                }
-            }
-            
-	    // --- Check conditions on the producer and collector ---
-            for (const auto &p : module_state) {
-                const std::string &name = p.first;
-                const std::string &state = p.second;
+		// --- When producer has produced max events and collector has collected max events ---> STOP OF THE RUN ---
+		if (producer_done && collector_ready) {
+			EUDAQ_INFO("All devices ready → stopping run");
+			StopRun();
+	}
 
-                if (name == "my_pd0" && state == "END_OF_STREAM") {
-                    producer_done = true;
-                }
+        
 
-                if (name == "my_dc" && state == "STOP_REQUEST") {
-                    collector_ready = true;
-                }
-            }
-        }
+//	bool reset_done = false;
 
-        // --- When producer has produced max events and collector has collected max events ---> STOP OF THE RUN ---
-        if (!stop_sent && producer_done && collector_ready) {
-            EUDAQ_INFO("All devices ready → stopping run");
-            stop_sent = true;
-            StopRun();
-        }
+/*	if (!reset_done && stop_sent) {
+	    EUDAQ_INFO("All devices stopped → resetting");
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	    Reset();
+	    reset_done = true;
+	}*/
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
   std::this_thread::sleep_for(std::chrono::milliseconds(500));

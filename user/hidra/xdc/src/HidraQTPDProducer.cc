@@ -73,7 +73,7 @@ public:
         m_vmeError(false),
         m_running(false),
         m_terminate(false),
-        m_runNumber(0),
+	m_runNumber(0),
         m_evt(0),
         m_iped(100),
         m_controllerType(cvV2718),
@@ -131,11 +131,15 @@ private:
 
   void DoConfigure() override {
     auto conf = GetConfiguration();
+    m_evt = 0;
+    m_eos_sent = false;
     if (!conf) {
       EUDAQ_THROW("Run configuration is missing");
     }
-    m_max_events_p = conf->Get("EX0_MAX_EVENTS", 0); //NEW
-
+    m_max_events_p = conf->Get("EX0_MAX_EVENTS", 0);
+    if(m_max_events_p == 0) {
+            EUDAQ_WARN("In hidra.config file: missing max event number initializzation");
+    } 
     m_iped = static_cast<int>(parse_u16(conf->Get("Iped", std::string("100"))));
 
     m_boards.clear();
@@ -169,43 +173,42 @@ private:
     if (m_boards.size() > 2) WriteReg(0x101A, 0x03, m_boards[2].baseAddr);
     if (m_boards.size() > 3) WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
 
-    m_evt = 0;
     m_adcval.fill(INVALID_ADC);
 
     EUDAQ_INFO("Producer configured");
   }
 
   void DoStartRun() override {
+    StopAcquisitionThread();
     m_runNumber = GetRunNumber();
     m_evt = 0;
     m_adcval.fill(INVALID_ADC);
     m_running = true;
-
     // Optional begin-of-run event. This is useful for converters.
     SendBORE();
     m_thd_run = std::thread(&HidraQTPDProducer::MainLoop, this);
+    m_eos_sent = false; 
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
   }
 
   void DoStopRun() override {
     m_running = false;
+    m_eos_sent = true;
+    StopAcquisitionThread();
     SendEORE();
     EUDAQ_INFO("Stopping run " + std::to_string(m_runNumber));
   }
 
   void DoReset() override {
-    m_running = false;
     StopAcquisitionThread();
-    CloseController();
+    //CloseController();
+    m_running = false;
     m_evt = 0;
     m_adcval.fill(INVALID_ADC);
-    m_eos_sent = false; 
     EUDAQ_INFO("Producer reset");
   }
 
   void DoTerminate() override {
-    m_running = false;
-    m_terminate = true;
     StopAcquisitionThread();
     CloseController();
     EUDAQ_INFO("Producer terminated");
@@ -243,8 +246,6 @@ private:
       ReadOneBlockAndSendEvent();
     }
   }
-
-
 
   // --------------------------------------------------------------------------
   // CAEN helpers
@@ -398,14 +399,16 @@ private:
     ++m_evt;
 
     // --- Producer sends a STOP REQUEST to the RC when has produced maximum setted events ---
-    if(!m_eos_sent && m_evt >= m_max_events_p) {
+    if(!m_eos_sent && m_evt >= m_max_events_p && m_max_events_p > 0) {
 	   
 	    EUDAQ_INFO("Event " + std::to_string(m_evt)); 
 	    m_eos_sent = true;
 	    SetStatus(eudaq::Status::STATE_RUNNING, "END_OF_STREAM");
             SendStatus();
 	    EUDAQ_INFO("End of stream reached, waiting for StopRun()");
-    }	    
+   
+    }
+
   }
 
   void SendBORE() {
@@ -435,6 +438,11 @@ private:
 
   void StopAcquisitionThread() {
     // kept for symmetry in case you later move acquisition to a dedicated thread
+      m_running = false;
+
+      if (m_thd_run.joinable()) {
+          m_thd_run.join();  
+      }
   }
 
   void AddBoardFromConf(const eudaq::Configuration &conf,

@@ -36,6 +36,8 @@ private:
 
   void DoConfigure() override {
     auto conf = GetConfiguration();
+    m_event_count = 0;
+    m_stop_sent = false;
     if (!conf) {
       EUDAQ_WARN("HidraDataCollector: missing run configuration");
     }
@@ -43,11 +45,12 @@ private:
     m_max_events = conf->Get("EX0_MAX_EVENTS", 0);
     if(m_max_events == 0) {
 	    EUDAQ_WARN("In hidra.config file: missing max event number initializzation");
-    }	    
+    }	   
   }
 
   void DoStartRun() override {
     m_event_count = 0;
+    m_stop_sent = false;
     m_running = true;
     EUDAQ_INFO("HidraDataCollector start run " + std::to_string(GetRunNumber()));
   }
@@ -59,6 +62,10 @@ private:
   }
 
   void DoReset() override {
+    m_event_count = 0;
+    m_stop_sent = false;
+    m_running = false;
+    m_max_events = 0;
     EUDAQ_INFO("HidraDataCollector reset");
   }
 
@@ -66,15 +73,15 @@ private:
     EUDAQ_INFO("HidraDataCollector terminate");
   }
 
-  void DoStatus() override {
+  /*void DoStatus() override {
     if (m_running) {
         SetStatusTag("Status", "OK");
         SetStatusMsg("HidraDataCollector running");
     } else {
-        SetStatusMsg("STOPPED");
-        SetStatusMsg("HidraDataCollector stopped");
+        SetStatusTag("Status", "STOPPED");
+	SetStatusMsg("HidraDataCollector not running");
     }
-  }
+  }*/
 
   void DoConnect(eudaq::ConnectionSPC id) override {
     EUDAQ_INFO("Connected: " + id->GetType() + " / " + id->GetName());
@@ -87,40 +94,34 @@ private:
   }
 
   void DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) override {
-    if (!ev) {
-      EUDAQ_WARN("HidraDataCollector received null event");
-      return;
-    }
+
+	if(!m_running) return;	  
+	if (!ev) {
+		EUDAQ_WARN("HidraDataCollector received null event");
+		return;
+	}
 
     const auto desc = ev->GetDescription();
 
     if (ev->IsBORE()) {
-      EUDAQ_INFO("Received BORE from " + id->GetName() + " type=" + desc);
+	    EUDAQ_INFO("Received BORE from " + id->GetName() + " type=" + desc);
     } else if (ev->IsEORE()) {
-      EUDAQ_INFO("Received EORE from " + id->GetName() + " type=" + desc);
+	    EUDAQ_INFO("Received EORE from " + id->GetName() + " type=" + desc);
     } else {
-	    if(!m_stop_sent && m_event_count < m_max_events){
-
-      
-		    //EUDAQ_DEBUG("Received event " + std::to_string(ev->GetEventN()) +
-        //          " from " + id->GetName() +
-        //         " type=" + desc);
-		    ++m_event_count;
-		    //std::cout << "Event number: " << m_event_count << std::endl;
-		    WriteEvent(std::move(ev));
-	    }
-
-	    else if (!m_stop_sent && m_event_count >= m_max_events) {
-	  
-		    m_stop_sent = true;
-
-		    EUDAQ_INFO("Max events reached. Sending STOP request");
-		    SetStatus(eudaq::Status::STATE_RUNNING, "STOP_REQUEST");
-		    SendStatus();
-
-	    }
+	if (!m_stop_sent && m_event_count >= m_max_events && m_max_events != 0) {	  
+		m_stop_sent = true;
+		EUDAQ_INFO("Max events reached. Sending STOP request");
+		SetStatus(eudaq::Status::STATE_RUNNING, "STOP_REQUEST");
+		SendStatus();
+	} else {
+		EUDAQ_DEBUG("Received event " + std::to_string(ev->GetEventN()) +
+			" from " + id->GetName() +
+			" type=" + desc);
+		++m_event_count;
+		std::cout << "Event number: " << m_event_count << std::endl;
+		WriteEvent(std::move(ev));
+	}
     }
-
   } 
 };
 
