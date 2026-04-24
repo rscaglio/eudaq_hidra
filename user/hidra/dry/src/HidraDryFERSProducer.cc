@@ -1,11 +1,10 @@
-#include "eudaq/Producer.hh"
+#include "../include/HidraDryFERSProducer.hh"
 #include <iostream>
 #include <fstream>
 #include <ratio>
 #include <chrono>
 #include <thread>
 #include <limits>
-#include <bit>
 #include <cstdint>
 #include <iterator>     // std::ostream_iterator
 #include <algorithm>    // std::copy, std::min, std::max
@@ -14,34 +13,7 @@
 #define EVENT_HEADER_SIZE	27
 #define MAX_EVENT_SIZE		795	// for Ack Mode 03: EVENT_HEADER_SIZE+12*64
 
-class HidraDryFERSProducer : public eudaq::Producer {
-public:
-  HidraDryFERSProducer(const std::string & name, const std::string & runcontrol);
 
-  void DoInitialise() override;
-  void DoConfigure() override;
-  void DoStartRun() override;
-  void DoStopRun() override;
-  void DoTerminate() override;
-  void DoReset() override;
-  void ReadRawData(std::vector<char>& block, uint16_t data_size);
-  std::string GetEventInfo(eudaq::Event* ev);
-  uint64_t getTimeus();
-  void sleepUntilNext(uint64_t b_last_evt, uint64_t b_current_evt, uint64_t last_real); // all in usec
-  void ReadFileSize();
-  void Mainloop();
-  
-  static const uint32_t m_id_factory = eudaq::cstr2hash("HidraDryFERSProducer");
-private:
-  std::ifstream m_ifile;
-  uint64_t m_ifile_size;
-  std::string m_data_in_path;
-  int m_event_spacing; // microsec
-  std::thread m_thd_run;
-  mutable bool m_exit_of_run;
-
-
-};
 
 
 namespace{
@@ -65,16 +37,31 @@ void HidraDryFERSProducer::DoConfigure(){
   m_event_spacing = 1000* (int) conf->Get("REPLAY_EVENT_SPACING_MS", -1);
   std::string inforeplay = m_event_spacing < 0 ? "automatic" : std::to_string(m_event_spacing) + " us";
   EUDAQ_INFO("Replay rate set to "+inforeplay);
-  ReadFileSize();
+  ReadFileInfo();
 }
 
 void HidraDryFERSProducer::DoStartRun(){
-  m_exit_of_run = false;
 
+  m_eudaq_run_number = GetRunNumber();
+  auto bore = eudaq::Event::MakeUnique("DryFERS");
+  bore->SetBORE();
+  bore->SetRunN(m_eudaq_run_number);
+  bore->SetTag("FileRunNumber", std::to_string(m_file_run_number));
+  bore->SetTag("Producer","HidraDryFERSProducer");
+  EUDAQ_INFO("Starting HidraDryFERSProducer run");
+  EUDAQ_INFO("Sending Dry FERS BORE "+GetEventInfo(bore.get()));
+  SendEvent(std::move(bore));
+  
+  m_exit_of_run = false;
   m_thd_run = std::thread(&HidraDryFERSProducer::Mainloop, this);
 }
 
 void HidraDryFERSProducer::DoStopRun(){
+  auto eore = eudaq::Event::MakeUnique("DruFERS");
+  eore->SetEORE();
+  eore->SetRunN(m_eudaq_run_number);
+  eore->SetTag("FileRunNumber", std::to_string(m_file_run_number));
+  EUDAQ_INFO("Sending Dry FERS EORE "+GetEventInfo(eore.get()));
   m_exit_of_run = true;
   EUDAQ_INFO("Exiting HidraDryFERSProducer Run");
   if(m_thd_run.joinable()){
@@ -99,28 +86,43 @@ void HidraDryFERSProducer::DoTerminate(){
     m_thd_run.join();
 }
 
-void HidraDryFERSProducer::ReadFileSize() {
+void HidraDryFERSProducer::ReadFileInfo() {
+  if (m_ifile.is_open()){
+    m_ifile.close();
+  }
+  
   m_ifile.open(m_data_in_path, std::ios::binary | std::ios::ate);
   if(!m_ifile.is_open()){
     EUDAQ_THROW("input data file (" + m_data_in_path +") can not open for reading");
   }
 
   m_ifile_size = (uint64_t)m_ifile.tellg();
+  EUDAQ_INFO("File size: "+std::to_string(m_ifile_size));
   m_ifile.seekg(0, std::ios::beg);
 
+  // file header
+  uint8_t header_size = FILE_HEADER_SIZE; // 25 bytes	
+  std::vector<uint8_t> file_header(header_size);
+  m_ifile.read(reinterpret_cast<char*>(file_header.data()), header_size);
+  memcpy(&m_file_run_number, &file_header[7], 2);
+  EUDAQ_WARN("Run number from file is "+std::to_string(m_file_run_number));
+  eudaq::mSleep(2000);
+
 }
 
-void HidraDryFERSProducer::ReadRawData(std::vector<char>& block, uint16_t data_size) {
-  m_ifile.read(block.data(), data_size);
-}
 
 
 std::string HidraDryFERSProducer::GetEventInfo(eudaq::Event* ev){
   std::string info = "Event Info:";
-  info += " evtN "+std::to_string(ev->GetEventN());
-  info += " trgN "+std::to_string(ev->GetTriggerN());
-  info += " start/stop "+std::to_string(ev->GetTimestampBegin())+"/"+std::to_string(ev->GetTimestampEnd());
-  info += " nblk "+std::to_string(ev->GetNumBlock());
+  if (ev->IsBORE() || ev->IsEORE()){
+    info += " runN "+std::to_string(ev->GetRunN());
+  }
+  else{
+    info += " evtN "+std::to_string(ev->GetEventN());
+    info += " trgN "+std::to_string(ev->GetTriggerN());
+    info += " start/stop "+std::to_string(ev->GetTimestampBegin())+"/"+std::to_string(ev->GetTimestampEnd());
+    info += " nblk "+std::to_string(ev->GetNumBlock());
+  }
   return info;
 }
 
@@ -131,6 +133,7 @@ uint64_t HidraDryFERSProducer::getTimeus(){
 }
 
 void HidraDryFERSProducer::sleepUntilNext(uint64_t last_evt, uint64_t current_evt, uint64_t last_real){
+  if (last_evt == 0) return; // it means this is the first event
   if (last_real < 999) {
     EUDAQ_ERROR("Meaningless timestamp of the last event sent ("+std::to_string(last_real)+")");
     return;
@@ -176,14 +179,15 @@ void HidraDryFERSProducer::Mainloop(){
     uint16_t data_size = MAX_EVENT_SIZE;
     
     // file header
-    // TODO: send a BORE with this
+    // moved to DoConfig, run number used as tag in BORE
+    /*
     uint8_t header_size = FILE_HEADER_SIZE; // 25 bytes	
     std::vector<uint8_t> file_header(header_size);
     m_ifile.read(reinterpret_cast<char*>(file_header.data()), header_size);
-    int file_run_number;
-    memcpy(&file_run_number, &file_header[7], 2);
-    EUDAQ_WARN("Run number from file is "+std::to_string(file_run_number));
+    memcpy(&m_file_run_number, &file_header[7], 2);
+    EUDAQ_WARN("Run number from file is "+std::to_string(m_file_run_number));
     eudaq::mSleep(2000);
+    */
 
    
 
@@ -214,7 +218,7 @@ void HidraDryFERSProducer::Mainloop(){
 
       if (  !  m_ifile.read(reinterpret_cast<char*>(eventsize_b.data()), eventsize_b.size()) ){
 	m_exit_of_run = true;
-	EUDAQ_INFO("File finished. Event counter: "+std::to_string(iblock));
+	EUDAQ_INFO("File finished. Block counter: "+std::to_string(iblock));
 	continue; // should be equivalent to break here
       }
 
@@ -258,7 +262,7 @@ void HidraDryFERSProducer::Mainloop(){
 	current_trigger_id = trigger_id;
 	current_evt->SetTriggerN(current_trigger_id);
 	current_evt->SetEventN(current_trigger_id);
-	current_evt->SetRunN(file_run_number);
+	current_evt->SetRunN(m_file_run_number);
 	
 	have_open_evt = true;
       }
@@ -269,7 +273,7 @@ void HidraDryFERSProducer::Mainloop(){
 
 	sleepUntilNext(evt_time_last_sent/1000, current_evt->GetTimestampBegin()/1000, real_time_last_sent);
 	
-	EUDAQ_INFO("Sending Dry FERS event "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
+	EUDAQ_INFO("Sending DryFERS evt "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
 	evt_time_last_sent = current_evt->GetTimestampBegin();
 	real_time_last_sent = getTimeus();
 	SendEvent(std::move(current_evt));
@@ -282,7 +286,7 @@ void HidraDryFERSProducer::Mainloop(){
 	max_timestamp = 0;
 	current_evt->SetTriggerN(current_trigger_id);
 	current_evt->SetEventN(current_trigger_id);
-	current_evt->SetRunN(file_run_number);
+	current_evt->SetRunN(m_file_run_number);
       }
 
       
@@ -302,14 +306,14 @@ void HidraDryFERSProducer::Mainloop(){
     if (have_open_evt && current_evt){
       current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
       sleepUntilNext(evt_time_last_sent/1000, current_evt->GetTimestampBegin()/1000, real_time_last_sent);
-      EUDAQ_INFO("SSending Dry FERS event "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
+      EUDAQ_INFO("Sending DryFFRS evt "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
       SendEvent(std::move(current_evt));
       ievt++;
     }
 
     m_exit_of_run = true;
   }
-  EUDAQ_INFO("EXITING MAINLOOP THREAD");
+  EUDAQ_INFO("EXITING DRYFESR MAINLOOP THREAD");
 }
       
       
