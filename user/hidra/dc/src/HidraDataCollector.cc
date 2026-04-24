@@ -27,7 +27,7 @@ private:
 
   // --- Per-source event container ---
   struct SourceEvent {
-    eudaq::ConnectionSPC connection;
+    std::string ConnectionName;
     eudaq::EventSP event;
     uint64_t timestamp;
   };
@@ -39,6 +39,8 @@ private:
     uint64_t first_seen_ns;
   };
 
+  bool m_is_replay_mode;
+  // when in replay mode, it uses timestamp of greatest trigger instead of runtime timestamp to evaluate whether incomplete events shall be built
   uint64_t m_event_count;
   uint64_t m_max_events;
   bool m_stop_sent = false;
@@ -106,7 +108,15 @@ private:
 
     for (auto it = m_pending_events.begin(); it != m_pending_events.end(); ) {
 
-      uint64_t age_ns = getTimens() - it->second.first_seen_ns;
+      uint64_t age_ns;
+
+      if (!m_is_replay_mode){
+	age_ns = getTimens() - it->second.first_seen_ns;
+      }
+      else{
+	auto lastit = m_pending_events.rbegin();
+	age_ns = lastit->second.first_seen_ns - it->second.first_seen_ns;
+      }
            
 
       if (age_ns <= m_sync_timeout_us*1000) {
@@ -116,10 +126,9 @@ private:
 
       uint64_t trigger = it->first;
 
-      EUDAQ_WARN("Timeout waiting for complete event for trigger "+ std::to_string(trigger));
+      EUDAQ_WARN("Timeout waiting for complete event for trigger "+ std::to_string(trigger)+": "+std::to_string(age_ns)+" > "+std::to_string(m_sync_timeout_us*1000)+" ns");
 
-      
-
+     
       // if one wants to discard:
       // it = m_pending_events.erase(it);
 
@@ -156,6 +165,12 @@ private:
     auto ini = GetInitConfiguration();
     if (!ini) {
       EUDAQ_WARN("HidraDataCollector: missing init configuration");
+    }
+
+    m_is_replay_mode = (bool) ini->Get("REPLAY_MODE", 0);
+
+    if (m_is_replay_mode){
+      EUDAQ_WARN("DataCollector is in REPLAY MODE");
     }
     
     m_event_count = 0;
@@ -215,8 +230,7 @@ private:
     m_stop_sent = true;
     m_running = false;
 
-    // TODO: flush incomplete event
-
+    FlushOldIncompleteEvents();
     m_pending_events.clear();
     
     EUDAQ_INFO("HidraDataCollector stop run " + std::to_string(GetRunNumber()));
@@ -249,6 +263,8 @@ private:
 
   void DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) override {
 
+    auto t_start = std::chrono::high_resolution_clock::now();
+
     if(!m_running) return;
     
     if (!ev) {
@@ -280,7 +296,7 @@ private:
     CheckMaxEvents();
     if (m_stop_sent) return;
 
-    // FLUSH INCOMPLETE EVENTS
+    FlushOldIncompleteEvents();
 
     uint64_t trigger_number = ev->GetTriggerN();
     uint64_t timestamp = ev->GetTimestampBegin(); // TODO: implement better logic for jitter of boards
@@ -302,13 +318,16 @@ private:
     }
 
     // .. of not, assign also the SourceEvent
-    pending.events_by_source[source] = SourceEvent{id, std::move(ev), timestamp};
+    pending.events_by_source[source] = SourceEvent{id->GetName(), std::move(ev), timestamp};
     
     EUDAQ_DEBUG("Buffered: source "+source+" trig "+std::to_string(trigger_number)+" n_source "+std::to_string(pending.events_by_source.size()));
 
     //////////////////////////////////////////////
 
     if (!IsComplete(pending)){  // wait for next received, if this is not complete yet
+      auto t_end = std::chrono::high_resolution_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+      EUDAQ_DEBUG("DoReceive (w/o complete building) took " + std::to_string(duration) + " us");
       return;
     }
 
@@ -336,6 +355,10 @@ private:
     m_pending_events.erase(trigger_number);
 
     CheckMaxEvents();
+
+    auto t_end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+    EUDAQ_DEBUG("DoReceive (w/ complete building) took " + std::to_string(duration) + " us"); 
   }
 };
     
