@@ -32,6 +32,14 @@ constexpr uint16_t INVALID_ADC = 4444;
 
 constexpr uint32_t DATATYPE_FILLER = 0x06000000;
 
+//V977 registers
+constexpr uint16_t V977_INPUT_SET_REG     = 0x0000;
+constexpr uint16_t V977_INPUT_MASK_REG    = 0x0002;
+constexpr uint16_t V977_OUTPUT_MASK_REG   = 0x000C;
+constexpr uint16_t V977_OUTPUT_SET_REG    = 0x000A;
+constexpr uint16_t V977_OUTPUT_CLEAR_REG  = 0x0010;
+constexpr uint16_t V977_INPUT_READ_REG    = 0x0004;
+
 struct BoardConfig {
   uint32_t baseAddr;
   uint16_t geoAddr;
@@ -175,6 +183,19 @@ private:
 
     m_adcval.fill(INVALID_ADC);
 
+    // --- Configure I/O register ---
+    m_v977_base = parse_u32(conf->Get("V977_BASE", "0x01000000"));  //INSERT BASE ADDRESS	
+    
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base);  //Reset OUTPUT registers
+    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977_base); //All inputs set to 0 
+    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base); //All outputs set to 0 
+    WriteReg(V977_INPUT_MASK_REG, 0xFFFE, m_v977_base); //Deactivate all input channels except channel 0 
+    WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977_base); //Deactivate all output channels except channel 0 
+
+    EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977_base));
+
+    uint16_t v977_pattern_b = ReadReg(V977_INPUT_READ_REG, m_v977_base);
+    std::cout << "Before:  " << v977_pattern_b << std::endl; 
     EUDAQ_INFO("Producer configured");
   }
 
@@ -243,6 +264,7 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         continue;
       }
+
       ReadOneBlockAndSendEvent();
     }
   }
@@ -338,8 +360,36 @@ private:
   }
 
   void ReadOneBlockAndSendEvent() {
+  
+    uint16_t v977_pattern = ReadReg(V977_INPUT_READ_REG, m_v977_base); 
+    bool trigger = v977_pattern & 0x0001;
+    
+    static int cnt = 0;
+    if(!trigger) {
+	    if (++cnt % 100000==0) {
+
+		    EUDAQ_INFO("Still waiting for the trigger...");
+	    }
+	    
+	    return;
+    }
+
+    if(v977_pattern== 0xFFFF) {
+       return;
+    }    
+
+    WriteReg(V977_INPUT_SET_REG, 0xFFFF, m_v977_base);
+    EUDAQ_INFO("Event Triggered");
+    EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
+
+    WriteReg(V977_OUTPUT_SET_REG, 0x0001, m_v977_base);
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base);
+    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);
+    
+
     constexpr uint32_t readAddress = 0xAA000000;
     int bcnt = 0;
+
 
     CVErrorCodes ret = CAENVME_FIFOMBLTReadCycle(
         m_handle,
@@ -390,13 +440,18 @@ private:
     ev->SetTag("ADC2", std::to_string(m_adcval[2]));
     ev->SetTag("ADC3", std::to_string(m_adcval[3]));
 
+    ev->SetTag("V977", std::to_string(v977_pattern));
+
     std::vector<uint8_t> raw(
         reinterpret_cast<uint8_t *>(m_buffer.data()),
         reinterpret_cast<uint8_t *>(m_buffer.data()) + bcnt);
     ev->AddBlock(0, raw);
-
+    
+    //WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base);
+    //WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);
     SendEvent(std::move(ev));
     ++m_evt;
+
 
     // --- Producer sends a STOP REQUEST to the RC when has produced maximum setted events ---
     if(!m_eos_sent && m_evt >= m_max_events_p && m_max_events_p > 0) {
@@ -474,6 +529,8 @@ private:
   int32_t m_handle;
   bool m_vmeError;
   std::string m_errorString;
+
+  uint32_t m_v977_base = 0; //NEW
 
   std::atomic<bool> m_running;
   std::atomic<bool> m_terminate;
