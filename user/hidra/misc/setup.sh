@@ -3,6 +3,7 @@
 # Determina la directory dello script e la root della repo dinamicamente
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
+REPO_RUN=$(realpath "$SCRIPT_DIR/../run/")
 
 HIDRA_REQUIRED_CMAKE_VERSION="3.25.1"
 
@@ -69,11 +70,11 @@ cmake_config() {
         echo "CMake $cmake_version non supporta i preset HiDRA (richiesto >= $HIDRA_REQUIRED_CMAKE_VERSION)."
         echo "Uso fallback con configurazione CMake classica."
 
-        cmake -S "$REPO_ROOT" -B "$REPO_ROOT/build" -G "Unix Makefiles" \
+        cmake --fresh -S "$REPO_ROOT" -B "$REPO_ROOT/build" -G "Unix Makefiles" \
             -DEUDAQ_BUILD_ONLINE_ROOT_MONITOR=OFF \
             -DEUDAQ_LIBRARY_BUILD_TTREE=OFF \
             -DUSER_HIDRA_BUILD=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --fresh
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 
     fi
 
     cd "$original_dir"
@@ -109,6 +110,12 @@ hidra_build() {
 build_hidra() {
     hidra_build
 }
+
+runhidra(){
+    cd "$REPO_RUN"
+    ./hidra_startrun_dry.sh
+}
+   
 
 # Crea un file locale CMakeUserPresets.json in root repo per usare i preset HiDRA in VSCode/CMake Tools.
 # Il file e' pensato per uso locale e non deve essere committato.

@@ -27,6 +27,7 @@ private:
   int m_eudaq_run_number;
   std::ifstream m_ifile;
   uint64_t m_ifile_size;
+  std::size_t m_bytes_read;
   std::string m_data_in_path;
   int m_event_spacing_us; // microsec
   std::thread m_thd_run;

@@ -13,7 +13,8 @@ def dump_file(fname):
         printed = 0
 
         # print index at beginning of first line
-        print(f"{idx:05d}: ", end="")
+        LineHeader = 'FH' if count == 25 else 'EH' if count == 27 else 'BP'
+        print(f"{LineHeader}_{idx:09d}: ", end="")
 
         for j in range(count):
             if idx >= size:
@@ -26,7 +27,7 @@ def dump_file(fname):
             if newline_every and printed % newline_every == 0:
                 print()
                 if idx < size:
-                    print(f"{idx:05d}: ", end="")
+                    print(f"{LineHeader}_{idx:09d}: ", end="")
 
         return idx
 
@@ -60,15 +61,15 @@ if __name__ == "__main__":
 
     Format="""
 #################################
-##   File header (25B)
+##   FH_File header (25B)
 ##
-##   Event header (27B)
+##   EH_Event header (27B)
 ##
-##   Board-data(x1or2) (12B)
-##   Board-data(x1or2)
+##   BD_Board-data(x1or2) (12B)
+##   BD_Board-data(x1or2)
 ##   ...
 ##
-##   Event header (27B)
+##   EH_Event header (27B)
 ##   ....
 #################################
 
