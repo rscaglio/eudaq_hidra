@@ -31,6 +31,9 @@ void HidraDryXDCProducer::DoInitialise(){
 
 void HidraDryXDCProducer::DoConfigure(){
   auto conf = GetConfiguration();
+  m_event_spacing_ns = 1000000* (long long) conf->Get("REPLAY_EVENT_SPACING_MS", -1);
+  std::string inforeplay = m_event_spacing_ns < 0 ? "automatic" : std::to_string(m_event_spacing_ns) + " ns";
+  EUDAQ_INFO("Replay rate set to "+inforeplay);
   m_data_in_path = conf->Get("DATA_IN_PATH", "infile.txt");
   EUDAQ_INFO("Using XDC raw data file " + m_data_in_path);
   ReadFileSize();
@@ -232,10 +235,10 @@ void HidraDryXDCProducer::Mainloop(){
     }
 
     if (loop_count > 0) {
-      std::chrono::nanoseconds total_event_delay{ts_begin_ns - m_prev_event_timestamp_ns};
+      std::chrono::nanoseconds event_replay_delay{m_event_spacing_ns >= 0 ? m_event_spacing_ns : ts_begin_ns - m_prev_event_timestamp_ns};
       std::chrono::nanoseconds read_duration{std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start_of_read_t)};
-      std::chrono::nanoseconds event_delay_ns = total_event_delay - read_duration;
-      //EUDAQ_DEBUG("Event time stamps: " + std::to_string(double(ts_begin_ns-m_first_event_timestamp_ns)/1000000000));
+      std::chrono::nanoseconds event_delay_ns = event_replay_delay - read_duration;
+	//EUDAQ_DEBUG("Event time stamps: " + std::to_string(double(ts_begin_ns-m_first_event_timestamp_ns)/1000000000));
       if(event_delay_ns.count() > 0) {
         std::this_thread::sleep_for(event_delay_ns);
       }

@@ -34,8 +34,8 @@ void HidraDryFERSProducer::DoConfigure(){
   auto conf = GetConfiguration();
   m_data_in_path = conf->Get("DATA_IN_PATH", "infile.dat");
   EUDAQ_INFO("Using FERS raw data file " + m_data_in_path);
-  m_event_spacing = 1000* (int) conf->Get("REPLAY_EVENT_SPACING_MS", -1);
-  std::string inforeplay = m_event_spacing < 0 ? "automatic" : std::to_string(m_event_spacing) + " us";
+  m_event_spacing_us = 1000* (int) conf->Get("REPLAY_EVENT_SPACING_MS", -1);
+  std::string inforeplay = m_event_spacing_us < 0 ? "automatic" : std::to_string(m_event_spacing_us) + " us";
   EUDAQ_INFO("Replay rate set to "+inforeplay);
   ReadFileInfo();
 }
@@ -138,15 +138,15 @@ void HidraDryFERSProducer::sleepUntilNext(uint64_t last_evt, uint64_t current_ev
     EUDAQ_ERROR("Meaningless timestamp of the last event sent ("+std::to_string(last_real)+")");
     return;
   }
-  if (m_event_spacing == 0) return;
-  if (m_event_spacing > 0){
+  if (m_event_spacing_us == 0) return;
+  if (m_event_spacing_us > 0){
     uint64_t n = getTimeus();
-    if ((n > last_real) && (n-last_real) < m_event_spacing){
-      std::this_thread::sleep_for(std::chrono::microseconds(m_event_spacing - (n-last_real)));
+    if ((n > last_real) && (n-last_real) < m_event_spacing_us){
+      std::this_thread::sleep_for(std::chrono::microseconds(m_event_spacing_us - (n-last_real)));
       return;
     }
   }
-  else{ // m_event_spacing < 0
+  else{ // m_event_spacing_us < 0
     
     if (current_evt < last_evt){
       EUDAQ_ERROR("Current event timestamp "+std::to_string(current_evt)+" < last "+std::to_string(last_evt));

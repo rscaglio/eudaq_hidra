@@ -28,7 +28,7 @@ private:
   std::ifstream m_ifile;
   uint64_t m_ifile_size;
   std::string m_data_in_path;
-  int m_event_spacing; // microsec
+  int m_event_spacing_us; // microsec
   std::thread m_thd_run;
   mutable bool m_exit_of_run;
 
