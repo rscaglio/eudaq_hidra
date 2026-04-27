@@ -33,12 +33,13 @@ constexpr uint16_t INVALID_ADC = 4444;
 constexpr uint32_t DATATYPE_FILLER = 0x06000000;
 
 //V977 registers
-constexpr uint16_t V977_INPUT_SET_REG     = 0x0000;
-constexpr uint16_t V977_INPUT_MASK_REG    = 0x0002;
-constexpr uint16_t V977_OUTPUT_MASK_REG   = 0x000C;
-constexpr uint16_t V977_OUTPUT_SET_REG    = 0x000A;
-constexpr uint16_t V977_OUTPUT_CLEAR_REG  = 0x0010;
-constexpr uint16_t V977_INPUT_READ_REG    = 0x0004;
+constexpr uint16_t V977_INPUT_SET_REG      = 0x0000;
+constexpr uint16_t V977_INPUT_MASK_REG     = 0x0002;
+constexpr uint16_t V977_OUTPUT_MASK_REG    = 0x000C;
+constexpr uint16_t V977_OUTPUT_SET_REG     = 0x000A;
+constexpr uint16_t V977_OUTPUT_CLEAR_REG   = 0x0010;
+constexpr uint16_t V977_INPUT_READ_REG     = 0x0004;
+constexpr uint16_t V977_SINGLE_READ_REG    = 0x0006;
 
 struct BoardConfig {
   uint32_t baseAddr;
@@ -192,10 +193,10 @@ private:
     WriteReg(V977_INPUT_MASK_REG, 0xFFFE, m_v977_base); //Deactivate all input channels except channel 0 
     WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977_base); //Deactivate all output channels except channel 0 
 
-    EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977_base));
+    EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977_base)); //Config message
 
-    uint16_t v977_pattern_b = ReadReg(V977_INPUT_READ_REG, m_v977_base);
-    std::cout << "Before:  " << v977_pattern_b << std::endl; 
+    //uint16_t v977_pattern_b = ReadReg(V977_INPUT_READ_REG, m_v977_base);
+    //std::cout << "Before:  " << v977_pattern_b << std::endl;  
     EUDAQ_INFO("Producer configured");
   }
 
@@ -207,6 +208,7 @@ private:
     m_running = true;
     // Optional begin-of-run event. This is useful for converters.
     SendBORE();
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); //Clear output register
     m_thd_run = std::thread(&HidraQTPDProducer::MainLoop, this);
     m_eos_sent = false; 
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
@@ -361,10 +363,11 @@ private:
 
   void ReadOneBlockAndSendEvent() {
   
-    uint16_t v977_pattern = ReadReg(V977_INPUT_READ_REG, m_v977_base); 
-    bool trigger = v977_pattern & 0x0001;
+    //uint16_t v977_pattern = ReadReg(V977_INPUT_READ_REG, m_v977_base); //Read input channles of I/O register 
+    uint16_t v977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base);
+    bool trigger = v977_pattern & 0x0001; //Trigger is when channel 1 is active
     
-    static int cnt = 0;
+    static int cnt = 0; //No trigger check
     if(!trigger) {
 	    if (++cnt % 100000==0) {
 
@@ -374,17 +377,13 @@ private:
 	    return;
     }
 
-    if(v977_pattern== 0xFFFF) {
-       return;
-    }    
-
-    WriteReg(V977_INPUT_SET_REG, 0xFFFF, m_v977_base);
+    //WriteReg(V977_INPUT_SET_REG, 0xFFFF, m_v977_base); //Event is triggered
     EUDAQ_INFO("Event Triggered");
     EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
 
-    WriteReg(V977_OUTPUT_SET_REG, 0x0001, m_v977_base);
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base);
-    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);
+    //WriteReg(V977_OUTPUT_SET_REG, 0x0001, m_v977_base); //When event triggered output channel 1 set equal to 1
+    //WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); //Clear output register
+    //WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base); //Set output register to 0 
     
 
     constexpr uint32_t readAddress = 0xAA000000;
@@ -452,6 +451,7 @@ private:
     SendEvent(std::move(ev));
     ++m_evt;
 
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); //Clear output register
 
     // --- Producer sends a STOP REQUEST to the RC when has produced maximum setted events ---
     if(!m_eos_sent && m_evt >= m_max_events_p && m_max_events_p > 0) {
@@ -480,6 +480,7 @@ private:
       bore->SetTag("Board" + std::to_string(i) + "_Crate", std::to_string(m_boards[i].crateNr));
     }
 
+    start = std::chrono::steady_clock::now();
     SendEvent(std::move(bore));
   }
 
@@ -488,6 +489,10 @@ private:
     eore->SetEORE();
     eore->SetRunN(static_cast<uint32_t>(m_runNumber));
     eore->SetTag("EventsSent", std::to_string(m_evt));
+    stop = std::chrono::steady_clock::now();
+    elapsed_t = stop - start;
+    auto seconds_int = std::chrono::duration_cast<std::chrono::seconds>(elapsed_t).count();
+    EUDAQ_INFO("The run has lasted: " + std::to_string(seconds_int) + " seconds.");
     SendEvent(std::move(eore));
   }
 
@@ -530,7 +535,7 @@ private:
   bool m_vmeError;
   std::string m_errorString;
 
-  uint32_t m_v977_base = 0; //NEW
+  uint32_t m_v977_base = 0;
 
   std::atomic<bool> m_running;
   std::atomic<bool> m_terminate;
@@ -539,6 +544,10 @@ private:
   uint64_t m_evt;
   int m_iped;
 
+  std::chrono::duration<double> elapsed_t; //NEW
+  std::chrono::steady_clock::time_point start; //NEW
+  std::chrono::steady_clock::time_point stop; //NEW
+  
   CVBoardTypes m_controllerType;
   uint32_t m_pid;
 
