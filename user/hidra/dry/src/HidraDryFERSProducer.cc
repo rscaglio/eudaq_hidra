@@ -42,6 +42,7 @@ void HidraDryFERSProducer::DoConfigure(){
 
 void HidraDryFERSProducer::DoStartRun(){
 
+  
   m_eudaq_run_number = GetRunNumber();
   auto bore = eudaq::Event::MakeUnique("DryFERS");
   bore->SetBORE();
@@ -51,6 +52,12 @@ void HidraDryFERSProducer::DoStartRun(){
   EUDAQ_INFO("Starting HidraDryFERSProducer run");
   EUDAQ_INFO("Sending Dry FERS BORE "+GetEventInfo(bore.get()));
   SendEvent(std::move(bore));
+
+  if (m_bytes_read > FILE_HEADER_SIZE){
+    EUDAQ_INFO("Restar reading from first event block at byte "+std::to_string(FILE_HEADER_SIZE+1));
+    m_ifile.seekg(FILE_HEADER_SIZE+1, std::ios::beg);
+    m_bytes_read = FILE_HEADER_SIZE;
+  }
   
   m_exit_of_run = false;
   m_thd_run = std::thread(&HidraDryFERSProducer::Mainloop, this);
@@ -99,11 +106,13 @@ void HidraDryFERSProducer::ReadFileInfo() {
   m_ifile_size = (uint64_t)m_ifile.tellg();
   EUDAQ_INFO("File size: "+std::to_string(m_ifile_size));
   m_ifile.seekg(0, std::ios::beg);
+  m_bytes_read = 0;
 
   // file header
   uint8_t header_size = FILE_HEADER_SIZE; // 25 bytes	
   std::vector<uint8_t> file_header(header_size);
   m_ifile.read(reinterpret_cast<char*>(file_header.data()), header_size);
+  m_bytes_read += m_ifile.gcount();
   memcpy(&m_file_run_number, &file_header[7], 2);
   EUDAQ_WARN("Run number from file is "+std::to_string(m_file_run_number));
   eudaq::mSleep(2000);
@@ -122,6 +131,7 @@ std::string HidraDryFERSProducer::GetEventInfo(eudaq::Event* ev){
     info += " trgN "+std::to_string(ev->GetTriggerN());
     info += " start/stop "+std::to_string(ev->GetTimestampBegin())+"/"+std::to_string(ev->GetTimestampEnd());
     info += " nblk "+std::to_string(ev->GetNumBlock());
+    info += " totB "+ev->GetTag("eventWords");
   }
   return info;
 }
@@ -176,25 +186,7 @@ void HidraDryFERSProducer::Mainloop(){
 
   while(!m_exit_of_run){
     
-    uint16_t data_size = MAX_EVENT_SIZE;
-    
-    // file header
-    // moved to DoConfig, run number used as tag in BORE
-    /*
-    uint8_t header_size = FILE_HEADER_SIZE; // 25 bytes	
-    std::vector<uint8_t> file_header(header_size);
-    m_ifile.read(reinterpret_cast<char*>(file_header.data()), header_size);
-    memcpy(&m_file_run_number, &file_header[7], 2);
-    EUDAQ_WARN("Run number from file is "+std::to_string(m_file_run_number));
-    eudaq::mSleep(2000);
-    */
-
-   
-
-    int block_id = 0;
-    std::vector<char> block(data_size);
-    std::vector<char> zeros(6,0);
-   
+        
     uint64_t current_trigger_id = std::numeric_limits<uint64_t>::max();
 
     //std::unique_ptr<eudaq::Event> current_evt;
@@ -208,41 +200,43 @@ void HidraDryFERSProducer::Mainloop(){
 
     uint64_t iblock = 0;
     uint64_t ievt = 0;
+
+    uint64_t event_size = 0;
+    
     for (;; iblock++){
 
       if(m_exit_of_run==true) break;
 
       auto ev = eudaq::Event::MakeUnique("FERSEvent");
       
-      std::vector<uint8_t> eventsize_b(2); // 
+      std::vector<uint8_t> eventsize_b(2); 
 
       if (  !  m_ifile.read(reinterpret_cast<char*>(eventsize_b.data()), eventsize_b.size()) ){
 	m_exit_of_run = true;
 	EUDAQ_INFO("File finished. Block counter: "+std::to_string(iblock));
 	continue; // should be equivalent to break here
       }
+      m_bytes_read += m_ifile.gcount();
 
 
-      uint16_t event_size;
-      memcpy(&event_size, &eventsize_b[0], 2);
+      uint16_t block_event_size;
+      memcpy(&block_event_size, &eventsize_b[0], 2);
 
-      if (event_size < 2 || event_size > MAX_EVENT_SIZE){
-	EUDAQ_ERROR("Block "+std::to_string(iblock)+", inconsistent event size "+std::to_string(event_size));
+      if (block_event_size < 27 || block_event_size > MAX_EVENT_SIZE){
+	EUDAQ_ERROR("Block "+std::to_string(iblock)+", inconsistent event size "+std::to_string(block_event_size));
 	m_exit_of_run = true; // cannot decode anymore if the event size is not correct
 	continue; 
       }
       else{
-	//EUDAQ_DEBUG("Block "+std::to_string(iblock)+" size: "+std::to_string(event_size)); 
+	//EUDAQ_DEBUG("Block "+std::to_string(iblock)+" size: "+std::to_string(block_event_size)); 
       }
 
-      
-      
-      std::vector<uint8_t> eventblock(event_size - 2);
+      std::vector<uint8_t> eventblock(block_event_size - 2);
 
       m_ifile.read(reinterpret_cast<char*>(eventblock.data()), eventblock.size());
+      m_bytes_read += m_ifile.gcount();
       
       
-
       uint64_t trigger_id = 0;
       memcpy(&trigger_id, &eventblock[9], 8);
 
@@ -269,14 +263,16 @@ void HidraDryFERSProducer::Mainloop(){
 
       if (have_open_evt && trigger_id > current_trigger_id){
 
+	// prepare sending
+	current_evt->SetTag("eventWords", std::to_string(event_size));
 	current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
-
 	sleepUntilNext(evt_time_last_sent/1000, current_evt->GetTimestampBegin()/1000, real_time_last_sent);
-	
+	// send
 	EUDAQ_INFO("Sending DryFERS evt "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
 	evt_time_last_sent = current_evt->GetTimestampBegin();
 	real_time_last_sent = getTimeus();
 	SendEvent(std::move(current_evt));
+	event_size = 0;
 	ievt++;
 	
 
@@ -291,23 +287,27 @@ void HidraDryFERSProducer::Mainloop(){
 
       
       if (have_open_evt && trigger_id < current_trigger_id){
-	EUDAQ_ERROR("Old trigger id detected: "+std::to_string(trigger_id)+", most recent is "+std::to_string(current_trigger_id)+". Skipping block "+std::to_string(iblock)+" in evt "+std::to_string(ievt));
+	EUDAQ_ERROR("Old trigger id detected: "+std::to_string(trigger_id)+", most recent is "+std::to_string(current_trigger_id)+". Skipping block "+std::to_string(iblock)+" in evt "+std::to_string(ievt)+" byte "+std::to_string(m_bytes_read));
 	continue; // skip this block
       }
 
       
       min_timestamp = std::min(min_timestamp, trigger_timestamp);
       max_timestamp = std::max(max_timestamp, trigger_timestamp);
-      current_evt->AddBlock(board_id, eventblock); // TODO better to use progressive index ?
-
+      current_evt->AddBlock(current_evt->GetNumBlock(), eventblock);
+      event_size += eventblock.size();
      
     } // end of iblock loop
 
     if (have_open_evt && current_evt){
+      // prepare sending
+      current_evt->SetTag("eventWords", std::to_string(event_size));
       current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
       sleepUntilNext(evt_time_last_sent/1000, current_evt->GetTimestampBegin()/1000, real_time_last_sent);
+      // send
       EUDAQ_INFO("Sending DryFFRS evt "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
       SendEvent(std::move(current_evt));
+      event_size = 0;
       ievt++;
     }
 

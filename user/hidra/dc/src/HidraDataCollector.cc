@@ -97,9 +97,23 @@ private:
       return nullptr;
     }
 
-    auto fullEvt = std::move(it->second.event);
+    // event with no blocks. Header (tag) + subevents
+    auto fullEvt = eudaq::Event::MakeUnique("MergedEvent");
+    fullEvt->SetRunN(GetRunNumber());
     fullEvt->SetTriggerN(pending.trigger_number);
+    fullEvt->SetTimestamp(pending.first_seen_ns, pending.first_seen_ns + 100UL);
     fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
+
+    for (const auto &is : m_expected_sources){
+      // will be overwritten if source is in the event
+      fullEvt->SetTag(is+"Size",0);
+    }
+
+    for (; it != pending.events_by_source.end(); ++it) {
+      fullEvt->AddSubEvent(std::move(it->second.event));
+      fullEvt->SetTag(it->first+"Size",it->second.event->GetTag("eventWords"));
+    }
+
 
     return fullEvt;
   }
