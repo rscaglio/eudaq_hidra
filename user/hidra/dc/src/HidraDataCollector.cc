@@ -87,6 +87,22 @@ private:
     return (t_max - t_min);
   }
 
+  std::string GetEventInfo(eudaq::Event* ev){
+    std::string info = "Event Info:";
+    info += " n_source "+ev->GetTag("N_SOURCES");
+    info += " trig "+std::to_string(ev->GetTriggerN());
+    info += " ts "+std::to_string(ev->GetTimestampBegin());
+    info += " -- (s/tg/ev/ts) ";
+    for (int isub = 0; isub < ev->GetNumSubEvent(); isub++){
+      info += "("+ev->GetSubEvent(isub)->GetTag("Producer")+"/"
+	+ std::to_string(ev->GetSubEvent(isub)->GetTriggerN())+"/"
+	+ std::to_string(ev->GetSubEvent(isub)->GetEventN())+"/"
+	+ std::to_string(ev->GetSubEvent(isub)->GetTimestampBegin())+")";
+    }
+    return info;
+  }
+    
+
   eudaq::EventSP BuildFullEvent(PendingTrigger &pending){
 
     // just a skeleton. Full event must be built here
@@ -110,9 +126,12 @@ private:
     }
 
     for (; it != pending.events_by_source.end(); ++it) {
-      fullEvt->AddSubEvent(std::move(it->second.event));
       fullEvt->SetTag(it->first+"Size",it->second.event->GetTag("eventWords"));
+      it->second.event->SetTag("Producer",it->second.ConnectionName);
+      fullEvt->AddSubEvent(std::move(it->second.event));
     }
+
+    EUDAQ_DEBUG("FULL EVENT BUILT: "+GetEventInfo(fullEvt.get()));
 
 
     return fullEvt;
