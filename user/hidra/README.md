@@ -1,61 +1,63 @@
 # HiDRA2
 
-Prerequisiti e build
+Prerequisites and build
 
-- Requisiti esterni principali:
+- Main external requirements:
   - **CAENVMELib** >= 4.1.3
   - **CAENComm** >= 1.8.0
-  Queste librerie sono fornite da CAEN: installarle seguendo le istruzioni del fornitore
-  (mettere le librerie e gli header in percorsi visibili dal linker e dal compilatore).
+  These libraries are provided by CAEN: install them following the vendor's
+  instructions and place headers and libraries in locations visible to the
+  compiler and linker.
 
-- Installazione rapida (consigliata — utilizza gli helper locali):
+- Quick install (recommended — uses local helpers):
 
 ```sh
-# dalla root del repository (es: eudaq_hidra)
+# from the repository root (e.g. eudaq_hidra)
 source user/hidra/misc/setup.sh
-# configura cmake (usa i preset HiDRA se disponibili)
+# configure cmake (uses HiDRA presets if available)
 cmake_config
-# build e install (funzione che chiama la build completa)
+# build and install (calls the full build)
 build_hidra
 ```
 
-Se il sistema non supporta i CMake Presets richiesti, lo script fornisce un fallback
-esegue internamente i comandi `cmake -S <root> -B build` e `cmake --build build -j 10`.
+If the system does not support the required CMake Presets, the script provides
+a fallback that runs `cmake -S <root> -B build` and `cmake --build build -j 10`.
 
-- VSCode: per creare i preset locali (non committati) usare:
+- VSCode: to create local (non-committed) presets use:
 
 ```sh
 source user/hidra/misc/setup.sh
 setup_vscode_hidra
 ```
 
-Nota: la comunicazione con strumenti Scope può richiedere VISA:
+Note: communication with scopes/instruments may require VISA:
+
 ```sh
 sudo apt install ni-visa ni-visa-devel
 ```
 
-Breve descrizione della struttura `user/hidra` (cartelle principali)
+Brief description of the `user/hidra` structure (main folders)
 
-- `dc/`        : codice per `HidraDataCollector` (collector)
-- `dry/`       : producer "dry" per test/simulazione (HidraDryFERSProducer, HidraDryXDCProducer)
-- `fers/`      : driver e librerie per FERS (hardware specifico)
-- `misc/`      : script e preset utili (es. `setup.sh`, `CMakePresets.hidra.json`)
+- `dc/`        : code for `HidraDataCollector` (collector)
+- `dry/`       : "dry" producers for testing/simulation (HidraDryFERSProducer, HidraDryXDCProducer)
+- `fers/`      : drivers and libraries for FERS (hardware specific)
+- `misc/`      : helper scripts and presets (e.g. `setup.sh`, `CMakePresets.hidra.json`)
 - `rc/`        : RunControl (HidraRunControl)
-- `run/`       : script per avviare il sistema (es. `hidra_startrun.sh`, `hidra_startrun_dry.sh`)
-- `xdc/`       : produttori/decoder XDC
+- `run/`       : scripts to start the system (e.g. `hidra_startrun.sh`, `hidra_startrun_dry.sh`)
+- `xdc/`       : XDC producers/decoders
 
-La parte principale per far funzionare il software dopo la compilazione è la cartella `user/hidra/run`.
-Gli script contenuti lanciano i binari appena installati (in `bin/`) e sono il modo più semplice
-per avviare una run di prova, per esempio:
+The main part for running the software after compilation is the `user/hidra/run`
+folder. The scripts in that folder launch the binaries installed into `bin/` and
+are the easiest way to start a test run, for example:
 
 ```sh
-# avvio "dry" (no hardware)
+# start a "dry" run (no hardware)
 user/hidra/run/hidra_startrun_dry.sh
-# o la run completa
+# or the full run
 user/hidra/run/hidra_startrun.sh
 ```
 
-Per maggiori dettagli sugli helper disponibili vedere `user/hidra/misc/setup.sh`.
+For more details about the available helpers see `user/hidra/misc/setup.sh`.
 
 ## Git workflow procedure
 
