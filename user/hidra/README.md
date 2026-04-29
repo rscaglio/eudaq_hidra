@@ -1,4 +1,64 @@
 # HiDRA2
+
+Prerequisites and build
+
+- Main external requirements:
+  - **CAENVMELib** >= 4.1.3
+  - **CAENComm** >= 1.8.0
+  These libraries are provided by CAEN: install them following the vendor's
+  instructions and place headers and libraries in locations visible to the
+  compiler and linker.
+
+- Quick install (recommended — uses local helpers):
+
+```sh
+# from the repository root (e.g. eudaq_hidra)
+source user/hidra/misc/setup.sh
+# configure cmake (uses HiDRA presets if available)
+cmake_config
+# build and install (calls the full build)
+build_hidra
+```
+
+If the system does not support the required CMake Presets, the script provides
+a fallback that runs `cmake -S <root> -B build` and `cmake --build build -j 10`.
+
+- VSCode: to create local (non-committed) presets use:
+
+```sh
+source user/hidra/misc/setup.sh
+setup_vscode_hidra
+```
+
+Note: communication with scopes/instruments may require VISA:
+
+```sh
+sudo apt install ni-visa ni-visa-devel
+```
+
+Brief description of the `user/hidra` structure (main folders)
+
+- `dc/`        : code for `HidraDataCollector` (collector)
+- `dry/`       : "dry" producers for testing/simulation (HidraDryFERSProducer, HidraDryXDCProducer)
+- `fers/`      : drivers and libraries for FERS (hardware specific)
+- `misc/`      : helper scripts and presets (e.g. `setup.sh`, `CMakePresets.hidra.json`)
+- `rc/`        : RunControl (HidraRunControl)
+- `run/`       : scripts to start the system (e.g. `hidra_startrun.sh`, `hidra_startrun_dry.sh`)
+- `xdc/`       : XDC producers/decoders
+
+The main part for running the software after compilation is the `user/hidra/run`
+folder. The scripts in that folder launch the binaries installed into `bin/` and
+are the easiest way to start a test run, for example:
+
+```sh
+# start a "dry" run (no hardware)
+user/hidra/run/hidra_startrun_dry.sh
+# or the full run
+user/hidra/run/hidra_startrun.sh
+```
+
+For more details about the available helpers see `user/hidra/misc/setup.sh`.
+
 ## Git workflow procedure
 
 - Everyone works on its own branch

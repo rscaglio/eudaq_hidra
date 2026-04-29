@@ -1,19 +1,3 @@
-```
-
-git clone -b v3.0.0 https://github.com/jdamgov/eudaq_tb2024.git
-mkdir eudaq_tb2024/build
-cd eudaq_tb2024/build
-cmake -D EUDAQ_BUILD_ONLINE_ROOT_MONITOR=ON -D EUDAQ_LIBRARY_BUILD_TTREE=ON ..
-make -j 10 install
-
-```
-
-Comunication to a Scope requires VISA
-```
-apt install ni-visa
-apt install ni-visa-devel
-```
-
 EUDAQ version 2
 =====
 
