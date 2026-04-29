@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Determina la directory dello script e la root della repo dinamicamente
+# Resolve the script directory and repository root dynamically.
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
 REPO_RUN=$(realpath "$SCRIPT_DIR/../run/")
 
 HIDRA_REQUIRED_CMAKE_VERSION="3.25.1"
 
-# Confronta due versioni semantiche: ritorna 0 se $1 >= $2, altrimenti 1.
+# Compare two semantic versions: return 0 if $1 >= $2, otherwise 1.
 version_ge() {
     local current="$1"
     local required="$2"
@@ -52,8 +52,8 @@ supports_hidra_presets() {
     version_ge "$cmake_version" "$HIDRA_REQUIRED_CMAKE_VERSION"
 }
 
-# Helper per creare la cartella build in automatico se non presente,
-# eseguire cmake con le opzioni desiderate, e tornare alla cartella in cui si era quando viene chiamato
+# Helper to create the build directory if needed, run CMake with the expected
+# options, and return to the caller's original directory.
 cmake_config() {
     local original_dir=$(pwd)
     cd "$REPO_ROOT"
@@ -67,8 +67,8 @@ cmake_config() {
     else
         local cmake_version
         cmake_version=$(get_cmake_version)
-        echo "CMake $cmake_version non supporta i preset HiDRA (richiesto >= $HIDRA_REQUIRED_CMAKE_VERSION)."
-        echo "Uso fallback con configurazione CMake classica."
+        echo "CMake $cmake_version does not support HiDRA presets (required >= $HIDRA_REQUIRED_CMAKE_VERSION)."
+        echo "Using the classic CMake configuration fallback."
 
         cmake --fresh -S "$REPO_ROOT" -B "$REPO_ROOT/build" -G "Unix Makefiles" \
             -DEUDAQ_BUILD_ONLINE_ROOT_MONITOR=OFF \
@@ -80,8 +80,9 @@ cmake_config() {
     cd "$original_dir"
 }
 
-# Helper per buildare il codice senza dover tornare a mano in build.
-# Si sposta nella cartella eudaq_hidra/build, esegue make -j 10, e ritorna nella cartella di esecuzione
+# Helper to build the code without manually jumping into the build directory.
+# It runs the HiDRA workflow when supported, otherwise it falls back to a
+# regular build and install sequence.
 
 hidra_build() {
     local original_dir=$(pwd)
@@ -96,8 +97,8 @@ hidra_build() {
     else
         local cmake_version
         cmake_version=$(get_cmake_version)
-        echo "CMake $cmake_version non supporta i preset/workflow HiDRA (richiesto >= $HIDRA_REQUIRED_CMAKE_VERSION)."
-        echo "Uso fallback con build/install classici."
+        echo "CMake $cmake_version does not support HiDRA presets/workflow (required >= $HIDRA_REQUIRED_CMAKE_VERSION)."
+        echo "Using the classic build/install fallback."
 
         cmake_config
         cmake --build "$REPO_ROOT/build" -j 10
@@ -117,8 +118,8 @@ runhidra(){
 }
    
 
-# Crea un file locale CMakeUserPresets.json in root repo per usare i preset HiDRA in VSCode/CMake Tools.
-# Il file e' pensato per uso locale e non deve essere committato.
+# Create a local CMakeUserPresets.json file in the repository root so VSCode/CMake Tools
+# can use the HiDRA presets. This file is meant for local use and should not be committed.
 setup_vscode_hidra() {
     local settings_path="$REPO_ROOT/.vscode/settings.json"
 
@@ -170,7 +171,7 @@ EOF
     echo "Inside VSCode you can now select the presets: hidra-configure / hidra-build / hidra-install / hidra-full"
 }
 
-# Rimuove il file locale dei preset utente per tornare allo stato iniziale.
+# Remove the local user presets file and restore the initial state.
 clean_vscode_hidra() {
     local settings_path="$REPO_ROOT/.vscode/settings.json"
 
@@ -200,7 +201,7 @@ clean_vscode_hidra() {
     echo "Removed $REPO_ROOT/CMakeUserPresets.json"
 }
 
-# Verifica lo stato della configurazione locale VSCode/CMake per HiDRA.
+# Check the state of the local VSCode/CMake configuration for HiDRA.
 check_vscode_hidra() {
     local user_presets_path="$REPO_ROOT/CMakeUserPresets.json"
     local settings_path="$REPO_ROOT/.vscode/settings.json"
@@ -211,7 +212,7 @@ check_vscode_hidra() {
     if command -v jq >/dev/null 2>&1; then
         echo "- jq: OK"
     else
-        echo "- jq: MISSING (merge/cleanup non-distruttivo disabilitato)"
+        echo "- jq: MISSING (non-destructive merge/cleanup disabled)"
         status=2
     fi
 
@@ -267,8 +268,8 @@ check_vscode_hidra() {
     return $status
 }
 
-# Helper per pulire la cartella di build e relative altre cartelle (lib, etc.).
-# Si sposta nella cartella eudaq_hidra, esegue make_clean, e ritorna nella cartella di esecuzione
+# Helper to clean the build directory and related output folders (lib, etc.).
+# It runs make_clean.sh from the repository root and returns to the caller's directory.
 cmake_clean() {
     local original_dir=$(pwd)
     cd "$REPO_ROOT"
@@ -276,7 +277,7 @@ cmake_clean() {
     cd "$original_dir"
 }
 
-# Crea alias per tornare velocemente alle cartelle
+# Convenience aliases for quickly jumping to common directories.
 alias build_dir="cd $REPO_ROOT/build"
 alias hidra_run="cd $REPO_ROOT/user/hidra/run"
 alias hidra_dir="cd $REPO_ROOT/user/hidra"
