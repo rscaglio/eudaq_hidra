@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HidraUtils.hh"
 #include <eudaq/DataCollector.hh>
 #include <eudaq/Factory.hh>
 #include <eudaq/Logger.hh>
@@ -12,6 +13,15 @@
 #include <map>
 #include <set>
 #include <chrono>
+
+#define HIDRA_WARN(fmt, ...) \
+  EUDAQ_WARN(hidra::utils::format(fmt, ##__VA_ARGS__))
+
+#define HIDRA_INFO(fmt, ...)				\
+  EUDAQ_INFO(hidra::utils::format(fmt, ##__VA_ARGS__))
+
+#define HIDRA_ERROR(fmt, ...) \
+  EUDAQ_ERROR(hidra::utils::format(fmt, ##__VA_ARGS__))
 
 class HidraDataCollector : public eudaq::DataCollector {
 public:
@@ -53,11 +63,6 @@ private:
 
 
   // user custom
-
-  uint64_t getTimens(){
-    auto now = std::chrono::system_clock::now();
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
-  }
 
   bool IsExpectedSource(std::string &source){
     if (m_expected_sources.empty()) return true;
@@ -144,7 +149,7 @@ private:
       uint64_t age_ns;
 
       if (!m_is_replay_mode){
-	age_ns = getTimens() - it->second.first_seen_ns;
+	age_ns = hidra::utils::getTimens() - it->second.first_seen_ns;
       }
       else{
 	auto lastit = m_pending_events.rbegin();
@@ -159,7 +164,8 @@ private:
 
       uint64_t trigger = it->first;
 
-      EUDAQ_WARN("Timeout waiting for complete event for trigger "+ std::to_string(trigger)+": "+std::to_string(age_ns)+" > "+std::to_string(m_sync_timeout_us*1000)+" ns");
+      HIDRA_WARN("Timeout waiting for complete event for trigger {}: {} > {} ns", trigger, age_ns, m_sync_timeout_us*1000);
+      //EUDAQ_WARN("Timeout waiting for complete event for trigger "+ std::to_string(trigger)+": "+std::to_string(age_ns)+" > "+std::to_string(m_sync_timeout_us*1000)+" ns");
 
      
       // if one wants to discard:
@@ -168,7 +174,7 @@ private:
       auto mergedEvt = BuildFullEvent(it->second);
 
       if (!mergedEvt){
-	EUDAQ_WARN("Failed to build incomplete event for trigger "+std::to_string(trigger));
+	HIDRA_WARN("Failed to build incomplete event for trigger {}", trigger);
 	it = m_pending_events.erase(it);
 	return;
       }
@@ -185,7 +191,7 @@ private:
     
     if (!m_stop_sent && m_max_events != 0 && m_event_count >= m_max_events) {
       m_stop_sent = true;
-      EUDAQ_INFO("Max events reached. Sending STOP request");
+      HIDRA_INFO("Max events reached. Sending STOP request");
       SetStatus(eudaq::Status::STATE_RUNNING, "STOP_REQUEST");
       SendStatus();
     }
@@ -197,19 +203,19 @@ private:
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
     if (!ini) {
-      EUDAQ_WARN("HidraDataCollector: missing init configuration");
+      HIDRA_WARN("HidraDataCollector: missing init configuration");
     }
 
     m_is_replay_mode = (bool) ini->Get("REPLAY_MODE", 0);
 
     if (m_is_replay_mode){
-      EUDAQ_WARN("DataCollector is in REPLAY MODE");
+      HIDRA_WARN("DataCollector is in REPLAY MODE");
     }
     
     m_event_count = 0;
     m_pending_events.clear();
 
-    EUDAQ_INFO("HidraDataCollector initialized");
+    HIDRA_INFO("HidraDataCollector initialized");
   }
 
   void DoConfigure() override {
@@ -221,7 +227,7 @@ private:
     m_expected_sources.clear();
     
     if (!conf) {
-      EUDAQ_WARN("HidraDataCollector: missing run configuration");
+      HIDRA_WARN("HidraDataCollector: missing run configuration");
     }
 
     m_max_events = conf->Get("MAX_EVENTS", 0);
@@ -244,10 +250,10 @@ private:
     ////////
 
     if (m_expected_sources.empty()){
-      EUDAQ_WARN("No EXPECTED_SOURCES configured. Collector will accept everything but cannot require completeness.");
+      HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept everything but cannot require completeness.");
     }
 
-    EUDAQ_INFO("HidraDataCollector configured");
+    HIDRA_INFO("HidraDataCollector configured");
     
   }
 
@@ -256,7 +262,7 @@ private:
     m_stop_sent = false;
     m_running = true;
     m_pending_events.clear();
-    EUDAQ_INFO("HidraDataCollector start run " + std::to_string(GetRunNumber()));
+    HIDRA_INFO("HidraDataCollector start run {}", GetRunNumber());
   }
 
   void DoStopRun() override {
@@ -266,7 +272,7 @@ private:
     FlushOldIncompleteEvents();
     m_pending_events.clear();
     
-    EUDAQ_INFO("HidraDataCollector stop run " + std::to_string(GetRunNumber()));
+    HIDRA_INFO("HidraDataCollector stop run {}", GetRunNumber());
   }
 
   void DoReset() override {
@@ -276,21 +282,21 @@ private:
     m_max_events = 0;
     m_pending_events.clear();
     m_expected_sources.clear();
-    EUDAQ_INFO("HidraDataCollector reset");
+    HIDRA_INFO("HidraDataCollector reset");
   }
 
   void DoTerminate() override {
-    EUDAQ_INFO("HidraDataCollector terminate");
+    HIDRA_INFO("HidraDataCollector terminate");
   }
 
 
   void DoConnect(eudaq::ConnectionSPC id) override {
-    EUDAQ_INFO("Connected: " + id->GetType() + " / " + id->GetName());
+    HIDRA_INFO("Connected: {} / {} ", id->GetType(), id->GetName());
     eudaq::DataCollector::DoConnect(id);
   }
 
   void DoDisconnect(eudaq::ConnectionSPC id) override {
-    EUDAQ_INFO("Disconnected: " + id->GetType() + " / " + id->GetName());
+    HIDRA_INFO("Disconnected: {} / {} ", id->GetType(), id->GetName());
     eudaq::DataCollector::DoDisconnect(id);
   }
 
@@ -301,7 +307,7 @@ private:
     if(!m_running) return;
     
     if (!ev) {
-      EUDAQ_WARN("HidraDataCollector received null event");
+      HIDRA_WARN("HidraDataCollector received null event");
       return;
     }
 
@@ -309,18 +315,18 @@ private:
     auto desc = ev->GetDescription();
 
     if (!IsExpectedSource(source)){
-      EUDAQ_WARN("Event received from unexpected source "+source);
+      HIDRA_WARN("Event received from unexpected source {}",source);
       return;
     }
 
     if (ev->IsBORE()) {
-      EUDAQ_INFO("Received BORE from " + id->GetName() + " type=" + desc);
+      HIDRA_INFO("Received BORE from {} type= {}", id->GetName(), desc);
       // TODO let's collect info to write a file header
       return;
     }
     
     if (ev->IsEORE()) {
-      EUDAQ_INFO("Received EORE from " + id->GetName() + " type=" + desc);
+      HIDRA_INFO("Received EORE from {} type= {}", id->GetName(), desc);
       // TODO let's collect info to write a file header
       return;
     }
@@ -341,7 +347,7 @@ private:
     // assign triggerN and time ....
     if (pending.events_by_source.empty()){
       pending.trigger_number = trigger_number;
-      pending.first_seen_ns = getTimens();
+      pending.first_seen_ns = hidra::utils::getTimens();
     }
 
     // ... check if source duplicates ...
@@ -373,7 +379,7 @@ private:
     auto mergedEvt = BuildFullEvent(pending);
 
     if (!mergedEvt){
-      EUDAQ_WARN("Failed to build full event for trigger "+std::to_string(trigger_number));
+      HIDRA_WARN("Failed to build full event for trigger {}",trigger_number);
       m_pending_events.erase(trigger_number);
       return;
     }

@@ -1,4 +1,6 @@
 #include "../include/HidraDryFERSProducer.hh"
+#include "EventSerializer.hh"
+#include "HidraUtils.hh"
 #include <iostream>
 #include <fstream>
 #include <ratio>
@@ -136,11 +138,7 @@ std::string HidraDryFERSProducer::GetEventInfo(eudaq::Event* ev){
   return info;
 }
 
-uint64_t HidraDryFERSProducer::getTimeus(){
-  auto now = std::chrono::system_clock::now();
-  auto us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
-  return (uint64_t)us;
-}
+
 
 void HidraDryFERSProducer::sleepUntilNext(uint64_t last_evt, uint64_t current_evt, uint64_t last_real){
   if (last_evt == 0) return; // it means this is the first event
@@ -150,7 +148,7 @@ void HidraDryFERSProducer::sleepUntilNext(uint64_t last_evt, uint64_t current_ev
   }
   if (m_event_spacing_us == 0) return;
   if (m_event_spacing_us > 0){
-    uint64_t n = getTimeus();
+    uint64_t n = hidra::utils::getTimeus();
     if ((n > last_real) && (n-last_real) < m_event_spacing_us){
       std::this_thread::sleep_for(std::chrono::microseconds(m_event_spacing_us - (n-last_real)));
       return;
@@ -163,7 +161,7 @@ void HidraDryFERSProducer::sleepUntilNext(uint64_t last_evt, uint64_t current_ev
       return;
     }
     
-    uint64_t n = getTimeus();
+    uint64_t n = hidra::utils::getTimeus();
     
     //EUDAQ_DEBUG("sleepUtils "+std::to_string(last_evt)+" "+std::to_string(current_evt)+" "+std::to_string(last_real)+" "+std::to_string(n));
    
@@ -270,7 +268,7 @@ void HidraDryFERSProducer::Mainloop(){
 	// send
 	EUDAQ_INFO("Sending DryFERS evt "+std::to_string(ievt)+" (at block "+std::to_string(iblock)+")-- "+GetEventInfo(current_evt.get()));
 	evt_time_last_sent = current_evt->GetTimestampBegin();
-	real_time_last_sent = getTimeus();
+	real_time_last_sent = hidra::utils::getTimeus();
 	SendEvent(std::move(current_evt));
 	event_size = 0;
 	ievt++;

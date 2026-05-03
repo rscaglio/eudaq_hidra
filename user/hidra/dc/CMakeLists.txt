@@ -9,7 +9,7 @@ aux_source_directory(src DC_SRC)
 # endif()
 
 add_library(${EUDAQ_MODULE}_dc SHARED ${DC_SRC})
-target_link_libraries(${EUDAQ_MODULE}_dc ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} )
+target_link_libraries(${EUDAQ_MODULE}_dc ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} ${EUDAQ_MODULE}_common)
 
 install(TARGETS
   ${EUDAQ_MODULE}_dc

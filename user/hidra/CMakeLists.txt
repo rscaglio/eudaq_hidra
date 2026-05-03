@@ -20,9 +20,12 @@ get_filename_component(EUDAQ_USERNAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 set(EUDAQ_MODULE eudaq_module_${EUDAQ_USERNAME})
 
 include_directories(${EUDAQ_INCLUDE_DIRS})
+
+add_subdirectory(common)
+
 aux_source_directory(rc/src MODULE_SRC)
 add_library(${EUDAQ_MODULE} SHARED ${MODULE_SRC})
-target_link_libraries(${EUDAQ_MODULE} PUBLIC ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY})
+target_link_libraries(${EUDAQ_MODULE} PUBLIC ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} ${EUDAQ_MODULE}_common)
 
 ##-- DAQ Components
 #-- Add component folder

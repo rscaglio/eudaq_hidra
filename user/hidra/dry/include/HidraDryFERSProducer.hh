@@ -15,7 +15,6 @@ public:
   void DoTerminate() override;
   void DoReset() override;
   std::string GetEventInfo(eudaq::Event* ev);
-  uint64_t getTimeus();
   void sleepUntilNext(uint64_t b_last_evt, uint64_t b_current_evt, uint64_t last_real); // all in usec
   void ReadFileInfo();
   void Mainloop();
