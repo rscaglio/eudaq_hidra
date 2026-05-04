@@ -14,14 +14,7 @@
 #include <set>
 #include <chrono>
 
-#define HIDRA_WARN(fmt, ...) \
-  EUDAQ_WARN(hidra::utils::format(fmt, ##__VA_ARGS__))
 
-#define HIDRA_INFO(fmt, ...)				\
-  EUDAQ_INFO(hidra::utils::format(fmt, ##__VA_ARGS__))
-
-#define HIDRA_ERROR(fmt, ...) \
-  EUDAQ_ERROR(hidra::utils::format(fmt, ##__VA_ARGS__))
 
 class HidraDataCollector : public eudaq::DataCollector {
 public:
