@@ -154,10 +154,10 @@ private:
     m_boards.clear();
 
     // up to 4 boards, following your standalone example
-    AddBoardFromConf(*conf, 0, "0x06000000", "1", "6");
-    AddBoardFromConf(*conf, 1, "0x05000000", "2", "5");
-    AddBoardFromConf(*conf, 2, "0x09000000", "8", "9");
-    AddBoardFromConf(*conf, 3, "0x88880000", "9", "8");
+    AddBoardFromConf(*conf, 0, "0x06000000", "2", "2"); 
+    AddBoardFromConf(*conf, 1, "0x05000000", "4", "4");
+    AddBoardFromConf(*conf, 2, "0x09000000", "8", "8");
+    AddBoardFromConf(*conf, 3, "0x88880000", "16", "16");
 
     if (m_boards.empty()) {
       EUDAQ_THROW("No boards configured");
@@ -179,8 +179,9 @@ private:
     // same board-specific crate order mapping you had before
     if (m_boards.size() > 0) WriteReg(0x101A, 0x02, m_boards[0].baseAddr);
     if (m_boards.size() > 1) WriteReg(0x101A, 0x00, m_boards[1].baseAddr);
-    if (m_boards.size() > 2) WriteReg(0x101A, 0x03, m_boards[2].baseAddr);
     if (m_boards.size() > 3) WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
+    if (m_boards.size() > 2) WriteReg(0x101A, 0x03, m_boards[2].baseAddr);
+    //if (m_boards.size() > 3) WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
 
     m_adcval.fill(INVALID_ADC);
 
@@ -378,8 +379,8 @@ private:
     }
 
     //WriteReg(V977_INPUT_SET_REG, 0xFFFF, m_v977_base); //Event is triggered
-    EUDAQ_INFO("Event Triggered");
-    EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
+    //EUDAQ_INFO("Event Triggered");
+    //EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
 
     //WriteReg(V977_OUTPUT_SET_REG, 0x0001, m_v977_base); //When event triggered output channel 1 set equal to 1
     //WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); //Clear output register
@@ -400,11 +401,13 @@ private:
 
     if (ret != cvSuccess && ret != cvBusError) {
       // bus error at end of block can be normal with BERR-enabled block read
+      EUDAQ_DEBUG("BLT Error: " + std::to_string(ret));
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     if (bcnt <= 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      EUDAQ_DEBUG("BCNT 0");
       return;
     }
 
@@ -422,6 +425,8 @@ private:
         m_adcval[adc_chan] = adc_val;
       }
     }
+    EUDAQ_INFO("Event Triggered");
+    EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
 
     // Build EUDAQ event
     // If your installed tag prefers RawEvent::MakeUnique("CAENQTPRaw"),
