@@ -237,6 +237,9 @@ private:
       std::stringstream ss(configsources);
       std::string token;
       while (std::getline(ss, token, ',')){
+	if (hidra::utils::Producers.find(token) == hidra::utils::Producers.end()){
+	  HIDRA_ERROR("Producer {} is not in the predefined list. Proceeding anyway, but this will not be tolerated in production", token);
+	}
 	m_expected_sources.insert(token);
       }
     }
