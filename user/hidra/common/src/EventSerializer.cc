@@ -4,6 +4,8 @@
 #include <fstream>
 #include <stdexcept>
 
+using hidra::utils::getTagOr;
+
 
 namespace hidra {
 
@@ -56,43 +58,44 @@ namespace hidra {
 
 	std::vector<std::uint8_t> buffer;
 
-	// EVENT HEADER:
-	// makrer (16 bit) [0, 1]
-	// header size (32 bit) [2,3,4,5]
-	// trailer size (32 bit) [6,7,8,9] 
-	// event size (including header and trailer) (32 bit) [10,11,12,13]
-	// event number (32 bit) [14,15,16,17]
-	// spill number (32 bit) [18,19,20,21]
-	// eventTime (64 bit) [22,23,24,25,26,27,28,29]
-	// triggerMask (8 bit) [30]
-	// reserved (64 bit) [31,32,..38]
-	// reserved (32 bit) [39,40,41,42]
-	// DetectorMask (16 bit) [43,44]
-	// ------------> dynamic
-	// sizeXDC (32 bit) [45..48]
-	// sizeFERS (32 bit) [49..52]
-	// sizeCrystal (32 bit) [53..56]
-	// sizeTracker (32 bit) [57..60]
-	// <------------
-	// end marker (16 bit) [61,62]
+	/*
+EVENT HEADER:
+makrer (16 bit) [0, 1]
+header size (32 bit) [2,3,4,5]
+trailer size (32 bit) [6,7,8,9] 
+event size (including header and trailer) (32 bit) [10,11,12,13]
+event number (32 bit) [14,15,16,17]
+spill number (32 bit) [18,19,20,21]
+eventTime (64 bit) [22,23,24,25,26,27,28,29]
+triggerMask (8 bit) [30]
+reserved (64 bit) [31,32,..38]
+reserved (32 bit) [39,40,41,42]
+DetectorMask (16 bit) [43,44]
+sizeDet0 (16 bit) [45, 46]
+sizeDet1 (16 bit) [47, 48]
+...
+sizeDet15 (16 bit) [75, 76]
+end marker (16 bit) [77, 78]
 
-	// FOR EACH SUBDETECTOR (IF PRESENT):
-	// detEvent marker (16 bit) [0,1]
-	// DetID (8 bit) [2]
-	// event number (32 bit) [3,4,5,6]
-	// spill number (0x0 if not applicable) (32 bit) [7,8,9,10]
-	// eventTime1 (64 bit) [11..18]
-	// eventTime2 (64 bit) [19..16]
-	// reserved (32 bit) [17..20]
-	// Blocks (payload)
-	// detEventEndMarker (16 bit)
+FOR EACH SUBDETECTOR (IF PRESENT):
+detEvent marker (16 bit) [0,1]
+DetID (8 bit) [2]
+event number (32 bit) [3,4,5,6]
+spill number (0xFFFF if not applicable) (32 bit) [7,8,9,10]
+eventTime1 (64 bit) [11..18]
+eventTime2 (64 bit) [19..16]
+reserved (32 bit) [17..20]
+Blocks (payload)
+detEventEndMarker (16 bit)
 
-	// EVENT TRAILER
-	// marker (16 bit)
-	// sanity (8 bit) 
+EVENT TRAILER
+marker (16 bit)
+	*/
 	
 	
 
+	const int MAX_N_DETECTORS = 16;
+	
 	const std::uint16_t EVENT_MARKER = 0xB0B0;
 	const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
 	const std::uint16_t EVENT_TRAILER = 0xD04E;
@@ -105,25 +108,24 @@ namespace hidra {
 	const uint32_t TrailerSize = 2;
 
 
-	// TO BE IMPLEMENTED IN HIDRA EUDAQ EVENTS
-	uint32_t SpillNumber = 0;
-	
+       	// TODO: implement missing tags
 	appendLE(buffer, EVENT_MARKER);
 	appendLE(buffer, placeholder32); // header size
 	appendLE(buffer, TrailerSize);
 	appendLE(buffer, placeholder32); // event size
 	appendLE(buffer, static_cast<std::uint32_t>(event.GetTriggerN())); 
-	appendLE(buffer, SpillNumber);
+	appendLE(buffer, getTagOr<std::uint32_t>(event,"spillNumber",0xFFFF));
 	appendLE(buffer, static_cast<std::uint64_t>(event.GetTimestampBegin()));
-	appendLE(buffer, static_cast<std::uint8_t>(std::stoul(event.GetTag("triggerMask"))));
+	appendLE(buffer, getTagOr<std::uint8_t>(event,"triggerMask",0xFF));
 	appendLE(buffer, placeholder64); // reserved
 	appendLE(buffer, placeholder32); // reserved
 	appendLE(buffer, placeholder16); // detector mask
 
 	int NSources = std::stoi(event.GetTag("N_SOURCES"));
 
-	for (int is = 0; is < NSources; is++){
-	  appendLE(buffer, placeholder32); // data size for the subdetector
+	uint32_t anchorpoint1 = buffer.size();
+	for (int is = 0; is < MAX_N_DETECTORS; is++){
+	  appendLE(buffer, placeholder16); // data size for the subdetector
 	}
 
 	appendLE(buffer, EVENT_HEADER_ENDMARKER);
@@ -133,48 +135,36 @@ namespace hidra {
 
 	uint16_t detMask = 0x0000;
 
-	std::vector<std::string> seen_producers{};
-
+	
 	// SERIALIZING SUB-EVENTS
-	// first loop to order them and make the mask
 	for (int is=0; is < NSources; is++){
-	  std::string producerName = event.GetSubEvent(is)->GetTag("Producer");
-	  seen_producers.push_back(producerName);
-	  int detID = 0;
-	  auto itProd = hidra::utils::Producers.find(producerName);
-	  if (itProd != hidra::utils::Producers.end()){
-	    detID = itProd->second;
-	  }
-	  else {
-	    HIDRA_ERROR("Detector {} is not in the predefined list. This will not be tolerated in production", producerName);
+	  
+	  auto sub_ev = event.GetSubEvent(is);
+	  if (!sub_ev){
+	    HIDRA_ERROR("Sub event index {} does not exist for trigger {}. N_SOURCES is supposed to be {}", is, event.GetTriggerN(), NSources);
+	    continue;
 	  }
 	  
+	  std::string producerName = sub_ev->GetTag("Producer");
+	  std::string detIDs = sub_ev->GetTag("detID");
+	  int detID = std::stoi(detIDs);
+				
 	  detMask |= (1 << detID);
-	}
 
-	writeLE(buffer, 43, detMask);
-
-	// reordering sub-events according to hidra::utils::Producers map
-	std::vector<int> idx(seen_producers.size());
-	for (size_t i = 0; i < idx.size(); ++i) idx[i] = i;
-	std::sort(idx.begin(), idx.end(),
-		  [&](int a, int b) {
-		    return hidra::utils::Producers.at(seen_producers[a]) < hidra::utils::Producers.at(seen_producers[b]); 
-		  }
-		  );
-
-	// now idx is ordered
-	for (int is: idx){
-	  auto sub_ev = event.GetSubEvent(is);
-	  writeLE(buffer, 45+4*is, static_cast<std::uint32_t>(std::stoul(sub_ev->GetTag(seen_producers[is]+"eventWords"))));
+	  uint16_t ev_size_1 = getTagOr<std::uint16_t>(*sub_ev,"eventWords",0xFEFE);
+	  uint16_t ev_size_2 = getTagOr<std::uint16_t>(event,detIDs+"_size",0xFDFD);
+	  if (ev_size_1 != ev_size_2){
+	    HIDRA_ERROR("Data format check failed at trigger {}: inconsistent datasize tags {} vs {}", event.GetTriggerN(), ev_size_1, ev_size_2);
+	  }
+	  writeLE(buffer, anchorpoint1 + 2*detID, ev_size_1);
+	  
 	  appendLE(buffer, DETECTOR_EVENT_MARKER);
-	  appendLE(buffer, static_cast<std::uint8_t>(hidra::utils::Producers[seen_producers[is]]));
+	  appendLE(buffer, static_cast<std::uint8_t>(detID));
 	  appendLE(buffer, static_cast<std::uint32_t>(sub_ev->GetTriggerN()));
-	  appendLE(buffer, SpillNumber); // spill number
+	  appendLE(buffer, getTagOr<std::uint32_t>(*sub_ev,"spillNumber",0xFFFF));
 	  appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampBegin()));
 	  appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampEnd()));
 	  appendLE(buffer, placeholder32);
-
 	  std::vector<uint32_t> block_ids = sub_ev->GetBlockNumList();
 	  for (uint32_t ib : block_ids){
 	    auto block = sub_ev->GetBlock(ib);
@@ -182,19 +172,36 @@ namespace hidra {
 	  }
 
 	  appendLE(buffer, DETECTOR_EVENT_ENDMARKER);
+						      
 	}
 
-
+	// updating detector mask
+	writeLE(buffer, 43, detMask);
 
 	// Event trailer
 
 	appendLE(buffer, EVENT_TRAILER);
-	appendLE(buffer, placeholder8);
+       
 
 	uint32_t EventSize = buffer.size();
 	writeLE(buffer, 10, EventSize);
 
 	return buffer;
+  }
+
+
+  void EventSerializer::WriteToStream( const eudaq::Event &event, std::ostream &out)
+  {
+    const auto buffer = Serialize(event);
+    
+    out.write(
+	      reinterpret_cast<const char *>(buffer.data()),
+	      static_cast<std::streamsize>(buffer.size())
+	      );
+
+    if (!out) {
+      throw std::runtime_error("Failed to write event to stream");
+    }
   }
 
   void EventSerializer::WriteToFile(const eudaq::Event &event, const std::string &filename){
