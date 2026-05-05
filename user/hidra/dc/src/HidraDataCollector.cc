@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HidraUtils.hh"
+#include "EventSerializer.hh"
 #include <eudaq/DataCollector.hh>
 #include <eudaq/Factory.hh>
 #include <eudaq/Logger.hh>
@@ -13,6 +14,7 @@
 #include <map>
 #include <set>
 #include <chrono>
+#include <fstream>
 
 
 
@@ -27,6 +29,7 @@ public:
 
 private:
 
+  const int MAX_SOURCES = 16;
 
   // --- Per-source event container ---
   struct SourceEvent {
@@ -38,7 +41,7 @@ private:
   // --- Buffer for a given trigger ---
   struct PendingTrigger {
     uint64_t trigger_number;
-    std::map<std::string, SourceEvent> events_by_source;
+    std::map<int, SourceEvent> events_by_source;  // access through detID: events_by_source[x]
     uint64_t first_seen_ns;
   };
 
@@ -49,22 +52,29 @@ private:
   bool m_stop_sent = false;
   bool m_running = false;
 
-  std::set<std::string> m_expected_sources;
+  std::vector<bool> m_is_source_enabled = std::vector<bool>(MAX_SOURCES, false);
+  std::map<std::string, int> m_expected_sources_map;
   std::map<uint64_t, PendingTrigger> m_pending_events;
   uint64_t m_sync_timeout_us = 1000000;
   uint64_t m_tstamp_window_ns = 50000;
+
+  bool m_single_producer_mode = false;
+
+  std::ofstream m_hidraOutput;
 
 
   // user custom
 
   bool IsExpectedSource(std::string &source){
-    if (m_expected_sources.empty()) return true;
-    return m_expected_sources.count(source) != 0;
+    return m_is_source_enabled[m_expected_sources_map.at(source)];
   }
-
+  bool IsExpectedSource(int &detID){
+    return m_is_source_enabled[detID];
+  }
+    
   bool IsComplete(PendingTrigger &pending){
-    for (const auto &s : m_expected_sources) {
-      if (pending.events_by_source.count(s) == 0) return false;
+    for (const auto &s : m_expected_sources_map) {
+      if (pending.events_by_source.count(s.second) == 0) return false;
     }
     return true;
   }
@@ -118,14 +128,16 @@ private:
     fullEvt->SetTimestamp(pending.first_seen_ns, pending.first_seen_ns + 100UL);
     fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
 
-    for (const auto &is : m_expected_sources){
+    for (const auto &is : m_expected_sources_map){
       // will be overwritten if source is in the event
-      fullEvt->SetTag(is+"Size",0);
+      fullEvt->SetTag(is.first+"_id",is.second);  // "XDCProducer_id = <detID>"
+      fullEvt->SetTag(is.second+"_size",0); // "<detID>_size = 0"
     }
 
     for (; it != pending.events_by_source.end(); ++it) {
-      fullEvt->SetTag(it->first+"Size",it->second.event->GetTag("eventWords"));
+      fullEvt->SetTag(std::to_string(it->first)+"_size",it->second.event->GetTag("eventWords")); // "<detID>_size = size"
       it->second.event->SetTag("Producer",it->second.ConnectionName);
+      it->second.event->SetTag("detID",it->first);
       fullEvt->AddSubEvent(std::move(it->second.event));
     }
 
@@ -158,8 +170,7 @@ private:
       uint64_t trigger = it->first;
 
       HIDRA_WARN("Timeout waiting for complete event for trigger {}: {} > {} ns", trigger, age_ns, m_sync_timeout_us*1000);
-      //EUDAQ_WARN("Timeout waiting for complete event for trigger "+ std::to_string(trigger)+": "+std::to_string(age_ns)+" > "+std::to_string(m_sync_timeout_us*1000)+" ns");
-
+      
      
       // if one wants to discard:
       // it = m_pending_events.erase(it);
@@ -173,7 +184,8 @@ private:
       }
 
       mergedEvt->SetTag("SYNC_STATUS", "INCOMPLETE");
-      WriteEvent(std::move(mergedEvt));
+      //WriteEvent(std::move(mergedEvt));
+      hidra::EventSerializer::WriteToStream(*mergedEvt, m_hidraOutput);
       ++m_event_count;
       it = m_pending_events.erase(it);
     }
@@ -217,10 +229,13 @@ private:
     m_event_count = 0;
     m_stop_sent = false;
     m_pending_events.clear();
-    m_expected_sources.clear();
+    
+    m_expected_sources_map.clear();
+    std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
+    m_single_producer_mode = false;
     
     if (!conf) {
-      HIDRA_WARN("HidraDataCollector: missing run configuration");
+      HIDRA_ERROR("HidraDataCollector: missing run configuration");
     }
 
     m_max_events = conf->Get("MAX_EVENTS", 0);
@@ -231,22 +246,34 @@ private:
     
     /////// splitting the string
     if (configsources == ""){
-      m_expected_sources = std::set<std::string>{};
+      m_expected_sources_map = std::map<std::string, int>{};
+      std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), true);
+      m_single_producer_mode = true;
     }
     else {
       std::stringstream ss(configsources);
       std::string token;
       while (std::getline(ss, token, ',')){
-	if (hidra::utils::Producers.find(token) == hidra::utils::Producers.end()){
-	  HIDRA_ERROR("Producer {} is not in the predefined list. Proceeding anyway, but this will not be tolerated in production", token);
-	}
-	m_expected_sources.insert(token);
-      }
+	std::stringstream pairStream(token);
+	std::string detIDs, sourcename;
+
+	if (std::getline(pairStream, detIDs, ':') && std::getline(pairStream, sourcename)){
+	  int detID = std::stoi(detIDs);
+	  if (detID >= 0 && detID < MAX_SOURCES){
+	    HIDRA_INFO("Detector ID {} assigned to producer {}",detID,sourcename); 
+	    m_expected_sources_map[sourcename] = detID;
+	    m_is_source_enabled[detID] = true;
+	  }
+	  else{
+	    HIDRA_ERROR("Detector ID {} cannot be assigned. ID must be between 0 and {}",detID,MAX_SOURCES);
+	  } 
+	} // end of split :
+      } // end of split ,
     }
     ////////
 
-    if (m_expected_sources.empty()){
-      HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept everything but cannot require completeness.");
+    if (m_expected_sources_map.empty()){
+      HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept everything but cannot build full events with more than 1 producer.");
     }
 
     HIDRA_INFO("HidraDataCollector configured");
@@ -258,7 +285,12 @@ private:
     m_stop_sent = false;
     m_running = true;
     m_pending_events.clear();
+    
+    if (m_hidraOutput.is_open()) m_hidraOutput.close();
+    m_hidraOutput.open("temp_data.dat", std::ios::binary);
+   
     HIDRA_INFO("HidraDataCollector start run {}", GetRunNumber());
+    
   }
 
   void DoStopRun() override {
@@ -267,7 +299,6 @@ private:
 
     FlushOldIncompleteEvents();
     m_pending_events.clear();
-    
     HIDRA_INFO("HidraDataCollector stop run {}", GetRunNumber());
   }
 
@@ -277,11 +308,15 @@ private:
     m_running = false;
     m_max_events = 0;
     m_pending_events.clear();
-    m_expected_sources.clear();
+    m_expected_sources_map.clear();
+    std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
+
+    if (m_hidraOutput.is_open()) m_hidraOutput.close();
     HIDRA_INFO("HidraDataCollector reset");
   }
 
   void DoTerminate() override {
+    if (m_hidraOutput.is_open()) m_hidraOutput.close();
     HIDRA_INFO("HidraDataCollector terminate");
   }
 
@@ -309,10 +344,15 @@ private:
 
     auto source = id->GetName();
     auto desc = ev->GetDescription();
-
+    int detectorID = 0;
+  
     if (!IsExpectedSource(source)){
-      HIDRA_WARN("Event received from unexpected source {}",source);
+      HIDRA_ERROR("Event received from unexpected source {}",source);
       return;
+    }
+
+    if (!m_single_producer_mode){
+      detectorID = m_expected_sources_map.at(source);
     }
 
     if (ev->IsBORE()) {
@@ -323,7 +363,7 @@ private:
     
     if (ev->IsEORE()) {
       HIDRA_INFO("Received EORE from {} type= {}", id->GetName(), desc);
-      // TODO let's collect info to write a file header
+      // TODO let's collect info to write a file trailer
       return;
     }
 
@@ -347,28 +387,28 @@ private:
     }
 
     // ... check if source duplicates ...
-    if (pending.events_by_source.count(source) != 0){
-      EUDAQ_ERROR("Duplicate event from source "+source+" for trigger "+std::to_string(trigger_number)+". REPLACING PREVIOUS ONE");
+    if (pending.events_by_source.count(detectorID) != 0){
+      HIDRA_ERROR("Duplicate event from source/detID {}/{} for trigger {}. REPLACING PREVIOUS ONE", source, detectorID, trigger_number);
       // TODO : this is severe.. handle it!
     }
 
-    // .. of not, assign also the SourceEvent
-    pending.events_by_source[source] = SourceEvent{id->GetName(), std::move(ev), timestamp};
+    // .. if not, assign also the SourceEvent
+    pending.events_by_source[detectorID] = SourceEvent{id->GetName(), std::move(ev), timestamp};
     
-    EUDAQ_DEBUG("Buffered: source "+source+" trig "+std::to_string(trigger_number)+" n_source "+std::to_string(pending.events_by_source.size()));
+    HIDRA_DEBUG("Buffered: source/detID {}/{} trig {}  n_source {}", source, detectorID, trigger_number, pending.events_by_source.size());
 
     //////////////////////////////////////////////
 
     if (!IsComplete(pending)){  // wait for next received, if this is not complete yet
       auto t_end = std::chrono::high_resolution_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
-      EUDAQ_DEBUG("DoReceive (w/o complete building) took " + std::to_string(duration) + " us");
+      HIDRA_DEBUG("DoReceive (w/o complete building) took {} us", duration);
       return;
     }
 
     uint64_t tstampSpread = TimestampSpread(pending);
     if (tstampSpread > m_tstamp_window_ns) {
-      EUDAQ_ERROR("Timestamp mismatch for trigger "+std::to_string(trigger_number)+", max-min is "+std::to_string(tstampSpread));
+      HIDRA_ERROR("Timestamp mismatch for trigger {}, max-min is {}", trigger_number, tstampSpread);
       // TODO: handle this
     }
 
@@ -383,7 +423,8 @@ private:
     // if arriving here, the event is complete
     mergedEvt->SetTag("SYNC_STATUS", "COMPLETE");
 
-    WriteEvent(std::move(mergedEvt));
+    //WriteEvent(std::move(mergedEvt));
+    hidra::EventSerializer::WriteToStream(*mergedEvt, m_hidraOutput);
 
     ++m_event_count;
 
@@ -393,7 +434,7 @@ private:
 
     auto t_end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
-    EUDAQ_DEBUG("DoReceive (w/ complete building) took " + std::to_string(duration) + " us"); 
+    HIDRA_DEBUG("DoReceive (w/ complete building) took {} us", duration); 
   }
 };
     
