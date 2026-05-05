@@ -8,6 +8,7 @@
 
 #include <CAENVMElib.h>
 #include <CAENVMEtypes.h>
+#include "HidraUtils.hh"
 
 #include <array>
 #include <atomic>
@@ -178,10 +179,9 @@ private:
 
     // same board-specific crate order mapping you had before
     if (m_boards.size() > 0) WriteReg(0x101A, 0x02, m_boards[0].baseAddr);
-    if (m_boards.size() > 1) WriteReg(0x101A, 0x00, m_boards[1].baseAddr);
-    if (m_boards.size() > 3) WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
+    if (m_boards.size() > 1) WriteReg(0x101A, 0x03, m_boards[1].baseAddr);
     if (m_boards.size() > 2) WriteReg(0x101A, 0x03, m_boards[2].baseAddr);
-    //if (m_boards.size() > 3) WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
+    if (m_boards.size() > 3) WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
 
     m_adcval.fill(INVALID_ADC);
 
@@ -220,7 +220,8 @@ private:
     m_eos_sent = true;
     StopAcquisitionThread();
     SendEORE();
-    EUDAQ_INFO("Stopping run " + std::to_string(m_runNumber));
+    HIDRA_INFO("Stopping run {}", m_runNumber);
+    //EUDAQ_INFO("Stopping run " + std::to_string(m_runNumber));
   }
 
   void DoReset() override {
@@ -319,6 +320,9 @@ private:
       m_errorString = "Cannot write at address " + hex32(baseAddr + reg_addr);
       m_vmeError = true;
     }
+    /*else {
+	 HIDRA_INFO("Written {} to reg {} of base address {} ", data, reg_addr, baseAddr);
+    }*/ 
   }
 
   int InfoWord792(uint32_t w, uint8_t &chan, uint16_t &val) {
@@ -378,13 +382,6 @@ private:
 	    return;
     }
 
-    //WriteReg(V977_INPUT_SET_REG, 0xFFFF, m_v977_base); //Event is triggered
-    //EUDAQ_INFO("Event Triggered");
-    //EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
-
-    //WriteReg(V977_OUTPUT_SET_REG, 0x0001, m_v977_base); //When event triggered output channel 1 set equal to 1
-    //WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); //Clear output register
-    //WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base); //Set output register to 0 
     
 
     constexpr uint32_t readAddress = 0xAA000000;
@@ -451,8 +448,6 @@ private:
         reinterpret_cast<uint8_t *>(m_buffer.data()) + bcnt);
     ev->AddBlock(0, raw);
     
-    //WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base);
-    //WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);
     SendEvent(std::move(ev));
     ++m_evt;
 
