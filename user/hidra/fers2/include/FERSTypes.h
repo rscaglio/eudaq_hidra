@@ -1,3 +1,4 @@
+// SPDX-FileCopyrightText: (c) HiDRa developers
 #ifndef HIDRA_FERS2_TYPES_H
 #define HIDRA_FERS2_TYPES_H
 
@@ -8,8 +9,24 @@
 namespace hidra {
 namespace fers2 {
 
+/**
+ * @file FERSTypes.h
+ * @brief Lightweight type definitions used across the `fers2` module.
+ *
+ * This header centralizes small POD types used by the board wrapper and the
+ * producer. Types are intentionally minimal to keep dependencies low and to
+ * make serialization/inspection straightforward.
+ */
+
+/// Simple state machine for a single FERS board.
 enum class BoardState { kDisconnected, kConnected, kConfigured, kRunning };
 
+/// Runtime status information for a single board instance.
+///
+/// - `handle` is the integer handle returned by the underlying FERS API
+///   (or -1 if not opened).
+/// - `last_return_code` stores the most recent integer return code from
+///   a FERS library call for diagnostic purposes.
 struct BoardStatus {
   BoardState state = BoardState::kDisconnected;
   int handle = -1;
@@ -18,6 +35,21 @@ struct BoardStatus {
   int allocated_readout_bytes = 0;
 };
 
+/**
+ * @brief In-memory representation of a single event read from a FERS board.
+ *
+ * The structure is deliberately generic: the `payload` contains the raw
+ * bytes of the event as emitted by the FERS library. Higher layers may
+ * interpret or deserialize these bytes as needed for EuDAQ event creation.
+ *
+ * Fields:
+ *  - `board_id`: logical identifier assigned by the manager (Open[n] index)
+ *  - `board_index`: optional index within a physical crate (if applicable)
+ *  - `data_qualifier`: the FERS data qualifier value (event format/type)
+ *  - `timestamp_us`: best-effort event timestamp in microseconds
+ *  - `trigger_id`: numeric trigger counter used for multi-board alignment
+ *  - `payload`: raw event bytes produced by the FERS runtime
+ */
 struct FERSEvent {
   int board_id = -1;
   int board_index = -1;
