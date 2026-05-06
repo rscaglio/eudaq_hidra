@@ -8,6 +8,10 @@ Prerequisites and build
   These libraries are provided by CAEN: install them following the vendor's
   instructions and place headers and libraries in locations visible to the
   compiler and linker.
+  - **CAENFERSlib** >= 1.3.0 (see also [fers2 section](fers2/README.md))
+
+- Other prerequisites:
+  - `fmt` formatting library (`sudo apt install libfmt-dev`, or `sudo dnf install fmt fmt-devel`, or...)
 
 - Quick install (recommended — uses local helpers):
 
@@ -40,11 +44,13 @@ Brief description of the `user/hidra` structure (main folders)
 
 - `dc/`        : code for `HidraDataCollector` (collector)
 - `dry/`       : "dry" producers for testing/simulation (HidraDryFERSProducer, HidraDryXDCProducer)
-- `fers/`      : drivers and libraries for FERS (hardware specific)
+- `fers/`      : drivers and libraries for FERS (hardware specific) (inherited by other EuDAQ users -- not for HiDRA TB)
+- `fers2/      : software for HiDRA 2026 TB
 - `misc/`      : helper scripts and presets (e.g. `setup.sh`, `CMakePresets.hidra.json`)
 - `rc/`        : RunControl (HidraRunControl)
 - `run/`       : scripts to start the system (e.g. `hidra_startrun.sh`, `hidra_startrun_dry.sh`)
 - `xdc/`       : XDC producers/decoders
+- `common/`    : utilities and shared declarations
 
 The main part for running the software after compilation is the `user/hidra/run`
 folder. The scripts in that folder launch the binaries installed into `bin/` and
@@ -62,6 +68,7 @@ For more details about the available helpers see `user/hidra/misc/setup.sh`.
 ## Git workflow procedure
 
 - Everyone works on its own branch
+- Files should be formatted according to specifications in `user/hidra/.clang-format`. From command line, close the file and run `clang-format -i <path-to-file>`. On VSCode, `Alt+Shift+F`
 - When a new feature is ready it needs to be merged to master with a Pull Request:
    - Commit any relevant changes
    - `git switch master` and `git pull` to update local master branch
