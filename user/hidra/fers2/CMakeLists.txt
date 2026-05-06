@@ -1,4 +1,8 @@
-include_directories(include /usr/local/include /usr/include)
+include_directories(
+  include
+  ../common/include
+  /usr/local/include
+  /usr/include)
 link_directories(/usr/local/lib)
 link_directories(/usr/lib)
 
@@ -11,7 +15,7 @@ if(NOT CAEN_FERS_LIBRARY)
 endif()
 
 add_library(${EUDAQ_MODULE}_fers2 SHARED ${FERS2_SRC})
-target_link_libraries(${EUDAQ_MODULE}_fers2 ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} ${CAEN_FERS_LIBRARY})
+target_link_libraries(${EUDAQ_MODULE}_fers2 ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} ${EUDAQ_MODULE}_common ${CAEN_FERS_LIBRARY})
 
 install(TARGETS
   ${EUDAQ_MODULE}_fers2
