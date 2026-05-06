@@ -4,7 +4,7 @@
 # ------------------------------------------------------------------------------------------
 # Connect
 # ------------------------------------------------------------------------------------------
-Open[0] eth:192.168.50.125:tdl:0:0
+Open[0] eth:192.168.50.7
 
 
 # ******************************************************************************************
@@ -108,12 +108,12 @@ ZS_Threshold_HG                    0                   # Threshold for Zero Supp
 HG_ShapingTime                     87.5 ns             # Shaping Time of the slow shaper (High Gain). Options: 87.5 ns, 75 ns, 62.5 ns, 50 ns, 37.5 ns, 25 ns, 12.5 ns
 LG_ShapingTime                     87.5 ns             # Shaping Time of the slow shaper (Low Gain). Options: 87.5 ns, 75 ns, 62.5 ns, 50 ns, 37.5 ns, 25 ns, 12.5 ns
 HoldDelay                          150 ns              # Delay between bunch trigger (start of peak detection) and hold (stop of peak detection)
-MuxClkPeriod                       300 ns              # Multiplexer readout speed. Best setting = 300 ns
-EHistoNbin                         8K                  # Number of channels (bins) in the PHA histogram. Options: DISABLED, 256, 512, 1K, 2K, 4K, 8K
-ToAHistoNbin                       4K                  # Number of channels (bins) in the ToA histogram. Options: DISABLED, 256, 512, 1K, 2K, 4K, 8K, 16K
-ToARebin                           1                   # Rebin factor for the ToA histogram
-ToAHistoMin                        0 ns                # Minimum value of ToA (in ns) in the ToA histogram
-MCSHistoNbin                       4K                  # Number of channels (bins) in the MCS histogram (active in counting mode). Options: DISABLED, 256, 512, 1K, 2K, 4K, 8K, 16K
+#MuxClkPeriod                       300 ns              # Multiplexer readout speed. Best setting = 300 ns
+#EHistoNbin                         8K                  # Number of channels (bins) in the PHA histogram. Options: DISABLED, 256, 512, 1K, 2K, 4K, 8K
+#ToAHistoNbin                       4K                  # Number of channels (bins) in the ToA histogram. Options: DISABLED, 256, 512, 1K, 2K, 4K, 8K, 16K
+#ToARebin                           1                   # Rebin factor for the ToA histogram
+#ToAHistoMin                        0 ns                # Minimum value of ToA (in ns) in the ToA histogram
+#MCSHistoNbin                       4K                  # Number of channels (bins) in the MCS histogram (active in counting mode). Options: DISABLED, 256, 512, 1K, 2K, 4K, 8K, 16K
 
 # ------------------------------------------------------------------------------------------
 # Test-Probe

@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "HidraUtils.hh"
 #include "FERSBoardManager.h"
 #include "FERSlib.h"
 #undef max
@@ -26,6 +27,85 @@ using hidra::fers2::FERSBoard;
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
 using hidra::fers2::FERSEvent;
+
+std::string FormatSummary(const FERSEvent& event) {
+  std::ostringstream oss;
+  oss << "board=" << event.board_id << " dq=" << event.data_qualifier << " trig=" << event.trigger_id;
+  if (!event.payload.empty()) {
+    oss << " bytes=" << event.payload.size();
+  }
+
+  const int base_dq = event.data_qualifier & 0x0F;
+  if (base_dq == DTQ_SPECT || event.data_qualifier == DTQ_TSPECT) {
+    if (event.payload.size() >= sizeof(SpectEvent_t)) {
+      const auto* spect = reinterpret_cast<const SpectEvent_t*>(event.payload.data());
+      oss << " chmask=0x" << std::hex << spect->chmask << std::dec;
+      oss << " nhits=";
+      int nhits = 0;
+      for (size_t channel = 0; channel < 64; ++channel) {
+        if (spect->energyHG[channel] != 0 || spect->energyLG[channel] != 0) {
+          ++nhits;
+        }
+      }
+      oss << nhits;
+      oss << " HG[0..3]=[" << spect->energyHG[0] << ',' << spect->energyHG[1] << ',' << spect->energyHG[2] << ','
+          << spect->energyHG[3] << "]";
+      oss << " LG[0..3]=[" << spect->energyLG[0] << ',' << spect->energyLG[1] << ',' << spect->energyLG[2] << ','
+          << spect->energyLG[3] << "]";
+      if (event.data_qualifier == DTQ_TSPECT) {
+        oss << " ToT[0..3]=[" << spect->ToT[0] << ',' << spect->ToT[1] << ',' << spect->ToT[2] << ','
+            << spect->ToT[3] << "]";
+      }
+    }
+  } else if (base_dq == DTQ_TIMING) {
+    if (event.payload.size() >= sizeof(ListEvent_t)) {
+      const auto* timing = reinterpret_cast<const ListEvent_t*>(event.payload.data());
+      oss << " nhits=" << timing->nhits;
+      const uint16_t preview = timing->nhits < 4 ? timing->nhits : 4;
+      oss << " ch=[";
+      for (uint16_t index = 0; index < preview; ++index) {
+        if (index != 0) {
+          oss << ',';
+        }
+        oss << static_cast<int>(timing->channel[index]);
+      }
+      oss << "]";
+      oss << " ToA=[";
+      for (uint16_t index = 0; index < preview; ++index) {
+        if (index != 0) {
+          oss << ',';
+        }
+        oss << timing->ToA[index];
+      }
+      oss << "]";
+      oss << " ToT=[";
+      for (uint16_t index = 0; index < preview; ++index) {
+        if (index != 0) {
+          oss << ',';
+        }
+        oss << timing->ToT[index];
+      }
+      oss << "]";
+    }
+  } else if (base_dq == DTQ_COUNT) {
+    if (event.payload.size() >= sizeof(CountingEvent_t)) {
+      const auto* counting = reinterpret_cast<const CountingEvent_t*>(event.payload.data());
+      oss << " chmask=0x" << std::hex << counting->chmask << std::dec;
+      oss << " counts[0..3]=[" << counting->counts[0] << ',' << counting->counts[1] << ',' << counting->counts[2]
+          << ',' << counting->counts[3] << "]";
+      oss << " T_OR=" << counting->t_or_counts << " Q_OR=" << counting->q_or_counts;
+    }
+  } else if (base_dq == DTQ_SERVICE) {
+    if (event.payload.size() >= sizeof(ServEvent_t)) {
+      const auto* service = reinterpret_cast<const ServEvent_t*>(event.payload.data());
+      oss << " service trig=" << service->TotTrg_cnt << " rej=" << service->RejTrg_cnt
+          << " suppr=" << service->SupprTrg_cnt << " hv=" << service->hv_Vmon << "V"
+          << " temp=" << service->tempBoard << "C";
+    }
+  }
+
+  return oss.str();
+}
 
 int ParseIntegerOrKeyword(const std::string& value, const std::map<std::string, int>& keywords, int fallback) {
   try {
@@ -199,6 +279,7 @@ private:
       }
 
       for (const auto& event : events) {
+        HIDRA_DEBUG("Read FERS event {}", FormatSummary(event));
         m_event_queues[event.board_id].push_back(event);
       }
 
@@ -272,6 +353,9 @@ private:
       if (m_send_trigger_number) {
         ev->SetTriggerN(trigger_n);
       }
+      ev->SetEventN(trigger_n);
+
+      std::size_t total_payload_bytes = 0;
 
       bool timestamp_set = false;
       for (int board_id : m_board_ids) {
@@ -288,8 +372,11 @@ private:
         }
 
         ev->AddBlock(static_cast<uint32_t>(board_id), event.payload);
+        total_payload_bytes += event.payload.size();
         queue.pop_front();
       }
+
+      ev->SetTag("eventWords", std::to_string(total_payload_bytes));
 
       SendEvent(std::move(ev));
     }
