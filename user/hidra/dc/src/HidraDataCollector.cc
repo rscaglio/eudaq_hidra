@@ -11,9 +11,9 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <set>
 #include <chrono>
 #include <fstream>
+#include <string>
 
 
 
@@ -132,7 +132,7 @@ private:
     for (const auto &is : m_expected_sources_map){
       // will be overwritten if source is in the event
       fullEvt->SetTag(is.first+"_id",is.second);  // "XDCProducer_id = <detID>"
-      fullEvt->SetTag(is.second+"_size",0); // "<detID>_size = 0"
+      fullEvt->SetTag(std::to_string(is.second) +"_size",0); // "<detID>_size = 0"
     }
 
     for (; it != pending.events_by_source.end(); ++it) {
