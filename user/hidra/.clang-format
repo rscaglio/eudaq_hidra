@@ -20,5 +20,4 @@ PackConstructorInitializers: Never
 PointerAlignment: Left
 
 # Include sorting
-SortIncludes:
-  Enabled: false
+SortIncludes: false
