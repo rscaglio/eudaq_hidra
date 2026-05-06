@@ -7,12 +7,11 @@
 namespace hidra {
 namespace fers2 {
 
-bool FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration &config,
-                                                    int first_board_id) {
+bool FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration& config, int first_board_id) {
   boards_.clear();
 
   int board_id = first_board_id;
-  for (const auto &path : config.open_paths()) {
+  for (const auto& path : config.open_paths()) {
     if (!AddBoard(board_id, path, nullptr)) {
       return false;
     }
@@ -21,9 +20,8 @@ bool FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration &con
   return true;
 }
 
-bool FERSBoardManager::AddBoard(int board_id, const std::string &connection_path,
-                                std::string *error) {
-  for (const auto &board : boards_) {
+bool FERSBoardManager::AddBoard(int board_id, const std::string& connection_path, std::string* error) {
+  for (const auto& board : boards_) {
     if (board.board_id() == board_id) {
       if (error != nullptr) {
         *error = "Board id already present: " + std::to_string(board_id);
@@ -36,12 +34,11 @@ bool FERSBoardManager::AddBoard(int board_id, const std::string &connection_path
   return true;
 }
 
-bool FERSBoardManager::ConnectAll(int readout_mode, std::string *error) {
-  for (auto &board : boards_) {
+bool FERSBoardManager::ConnectAll(int readout_mode, std::string* error) {
+  for (auto& board : boards_) {
     if (!board.Connect(readout_mode)) {
       if (error != nullptr) {
-        *error = "Connect failed for board id " + std::to_string(board.board_id()) +
-                 ": " + board.status().last_error;
+        *error = "Connect failed for board id " + std::to_string(board.board_id()) + ": " + board.status().last_error;
       }
       return false;
     }
@@ -49,18 +46,18 @@ bool FERSBoardManager::ConnectAll(int readout_mode, std::string *error) {
   return true;
 }
 
-bool FERSBoardManager::ConfigureAll(const FERSConfiguration &config, int configure_mode,
+bool FERSBoardManager::ConfigureAll(const FERSConfiguration& config,
+                                    int configure_mode,
                                     bool load_config_file_first,
-                                    std::string *error) {
+                                    std::string* error) {
   if (load_config_file_first && !config.LoadIntoLibrary(error)) {
     return false;
   }
 
-  for (auto &board : boards_) {
+  for (auto& board : boards_) {
     if (!board.Configure(config, configure_mode)) {
       if (error != nullptr) {
-        *error = "Configure failed for board id " + std::to_string(board.board_id()) +
-                 ": " + board.status().last_error;
+        *error = "Configure failed for board id " + std::to_string(board.board_id()) + ": " + board.status().last_error;
       }
       return false;
     }
@@ -69,7 +66,7 @@ bool FERSBoardManager::ConfigureAll(const FERSConfiguration &config, int configu
   return true;
 }
 
-bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string *error) {
+bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string* error) {
   if (boards_.empty()) {
     if (error != nullptr) {
       *error = "No FERS boards configured.";
@@ -79,7 +76,7 @@ bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string *err
 
   std::vector<int> handles;
   handles.reserve(boards_.size());
-  for (const auto &board : boards_) {
+  for (const auto& board : boards_) {
     handles.push_back(board.handle());
   }
 
@@ -93,14 +90,14 @@ bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string *err
   return true;
 }
 
-bool FERSBoardManager::StopAll(int start_mode, int run_number, std::string *error) {
+bool FERSBoardManager::StopAll(int start_mode, int run_number, std::string* error) {
   if (boards_.empty()) {
     return true;
   }
 
   std::vector<int> handles;
   handles.reserve(boards_.size());
-  for (const auto &board : boards_) {
+  for (const auto& board : boards_) {
     handles.push_back(board.handle());
   }
 
@@ -114,12 +111,12 @@ bool FERSBoardManager::StopAll(int start_mode, int run_number, std::string *erro
   return true;
 }
 
-bool FERSBoardManager::DisconnectAll(std::string *error) {
-  for (auto &board : boards_) {
+bool FERSBoardManager::DisconnectAll(std::string* error) {
+  for (auto& board : boards_) {
     if (!board.Disconnect()) {
       if (error != nullptr) {
-        *error = "Disconnect failed for board id " + std::to_string(board.board_id()) +
-                 ": " + board.status().last_error;
+        *error =
+            "Disconnect failed for board id " + std::to_string(board.board_id()) + ": " + board.status().last_error;
       }
       return false;
     }
@@ -127,16 +124,13 @@ bool FERSBoardManager::DisconnectAll(std::string *error) {
   return true;
 }
 
-std::vector<FERSEvent>
-FERSBoardManager::ReadAvailableEvents(size_t max_events_per_board,
-                                      std::string *error) {
+std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_per_board, std::string* error) {
   std::vector<FERSEvent> out;
-  for (auto &board : boards_) {
+  for (auto& board : boards_) {
     std::vector<FERSEvent> board_events;
     if (!board.ReadAvailableEvents(&board_events, max_events_per_board)) {
       if (error != nullptr) {
-        *error = "Read failed for board id " + std::to_string(board.board_id()) +
-                 ": " + board.status().last_error;
+        *error = "Read failed for board id " + std::to_string(board.board_id()) + ": " + board.status().last_error;
       }
       return {};
     }
@@ -147,8 +141,8 @@ FERSBoardManager::ReadAvailableEvents(size_t max_events_per_board,
   return out;
 }
 
-FERSBoard *FERSBoardManager::FindBoard(int board_id) {
-  for (auto &board : boards_) {
+FERSBoard* FERSBoardManager::FindBoard(int board_id) {
+  for (auto& board : boards_) {
     if (board.board_id() == board_id) {
       return &board;
     }

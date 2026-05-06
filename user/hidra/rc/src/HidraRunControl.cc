@@ -3,7 +3,7 @@
 
 class HidraRunControl : public eudaq::RunControl {
 public:
-  HidraRunControl(const std::string &listenaddress);
+  HidraRunControl(const std::string& listenaddress);
   void Configure() override;
   void StartRun() override;
   void StopRun() override;
@@ -23,11 +23,11 @@ private:
 };
 
 namespace {
-  auto dummy0 = eudaq::Factory<eudaq::RunControl>::Register<
-      HidraRunControl, const std::string &>(HidraRunControl::m_id_factory);
+auto dummy0 =
+    eudaq::Factory<eudaq::RunControl>::Register<HidraRunControl, const std::string&>(HidraRunControl::m_id_factory);
 }
 
-HidraRunControl::HidraRunControl(const std::string &listenaddress)
+HidraRunControl::HidraRunControl(const std::string& listenaddress)
     : RunControl(listenaddress) {
   m_flag_running = false;
 }
@@ -44,64 +44,61 @@ void HidraRunControl::StopRun() {
   m_flag_running = false;
 }
 
-void HidraRunControl::Configure() { RunControl::Configure(); }
+void HidraRunControl::Configure() {
+  RunControl::Configure();
+}
 
 void HidraRunControl::Exec() {
   StartRunControl();
-	while (IsActiveRunControl()) {
-		bool producer_done = false;
-		bool collector_ready = false;
-       
-		{
-	
+  while (IsActiveRunControl()) {
+    bool producer_done = false;
+    bool collector_ready = false;
 
+    {
 
-		std::lock_guard<std::mutex> lock(mtx);
-	 
-	// --- To check component states ---
-	        for (const auto &p : module_state) {
-		        const std::string &name = p.first;
-        		const std::string &state = p.second;
+      std::lock_guard<std::mutex> lock(mtx);
 
-        		if (last_printed_state[name] != state) {
-				EUDAQ_INFO("[DEVICE]: " + name + " [STATUS]: " + state);
-		        	last_printed_state[name] = state;
-        		}
+      // --- To check component states ---
+      for (const auto& p : module_state) {
+        const std::string& name = p.first;
+        const std::string& state = p.second;
 
-			// --- Check conditions on the producer and collector ---
-			if(m_flag_running) {
-				if (name == "my_pd0" && state == "END_OF_STREAM") {
-					producer_done = true;
-				}
+        if (last_printed_state[name] != state) {
+          EUDAQ_INFO("[DEVICE]: " + name + " [STATUS]: " + state);
+          last_printed_state[name] = state;
+        }
 
-				if (name == "my_dc" && state == "STOP_REQUEST") {
-					collector_ready = true;
-				}
-			}
-		}
-	
-		
-		}// Mutex goes out of scope and releases
+        // --- Check conditions on the producer and collector ---
+        if (m_flag_running) {
+          if (name == "my_pd0" && state == "END_OF_STREAM") {
+            producer_done = true;
+          }
 
-		// --- When producer has produced max events and collector has collected max events ---> STOP OF THE RUN ---
-		if (producer_done && collector_ready) {
-			EUDAQ_INFO("All devices ready → stopping run");
-			StopRun();
-	}
+          if (name == "my_dc" && state == "STOP_REQUEST") {
+            collector_ready = true;
+          }
+        }
+      }
 
-        
+    } // Mutex goes out of scope and releases
 
-//	bool reset_done = false;
-
-/*	if (!reset_done && stop_sent) {
-	    EUDAQ_INFO("All devices stopped → resetting");
-
-	    Reset();
-	    reset_done = true;
-	}*/
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // --- When producer has produced max events and collector has collected max events ---> STOP OF THE RUN ---
+    if (producer_done && collector_ready) {
+      EUDAQ_INFO("All devices ready → stopping run");
+      StopRun();
     }
+
+    //	bool reset_done = false;
+
+    /*	if (!reset_done && stop_sent) {
+                EUDAQ_INFO("All devices stopped → resetting");
+
+                Reset();
+                reset_done = true;
+            }*/
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
 
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 }

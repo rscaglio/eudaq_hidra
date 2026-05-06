@@ -10,19 +10,15 @@ namespace fers2 {
 
 class FERSConfiguration {
 public:
-  static bool FromFile(const std::string &path, FERSConfiguration *out,
-                       std::string *error = nullptr);
+  static bool FromFile(const std::string& path, FERSConfiguration* out, std::string* error = nullptr);
 
-  bool LoadIntoLibrary(std::string *error = nullptr) const;
+  bool LoadIntoLibrary(std::string* error = nullptr) const;
 
-  const std::string &source_file() const { return source_file_; }
-  const std::vector<std::string> &open_paths() const { return open_paths_; }
-  const std::map<std::string, std::string> &default_params() const {
-    return default_params_;
-  }
+  const std::string& source_file() const { return source_file_; }
+  const std::vector<std::string>& open_paths() const { return open_paths_; }
+  const std::map<std::string, std::string>& default_params() const { return default_params_; }
 
-  void SetBoardOverride(int board_id, const std::string &param_name,
-                        const std::string &value);
+  void SetBoardOverride(int board_id, const std::string& param_name, const std::string& value);
 
   std::map<std::string, std::string> EffectiveParamsForBoard(int board_id) const;
 

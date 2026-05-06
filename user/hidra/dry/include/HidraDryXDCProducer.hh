@@ -12,7 +12,7 @@
 
 class HidraDryXDCProducer : public eudaq::Producer {
 public:
-  HidraDryXDCProducer(const std::string & name, const std::string & runcontrol);
+  HidraDryXDCProducer(const std::string& name, const std::string& runcontrol);
 
   void DoInitialise() override;
   void DoConfigure() override;
@@ -21,7 +21,7 @@ public:
   void DoTerminate() override;
   void DoReset() override;
   void ReadFileSize();
-  bool ReadXDCEvent(std::vector<uint32_t> &event_words);
+  bool ReadXDCEvent(std::vector<uint32_t>& event_words);
   void Mainloop();
 
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraDryXDCProducer");
