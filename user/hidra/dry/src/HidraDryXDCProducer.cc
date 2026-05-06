@@ -7,39 +7,38 @@
 #include <string>
 
 namespace {
-  constexpr uint32_t XDC_EVENT_MARKER = 0xccaaffeeu;
-  constexpr uint32_t XDC_HEADER_END_MARKER = 0xaccadeadu;
-  constexpr uint32_t XDC_EVENT_TRAILER = 0xbbeeddaau;
-  constexpr uint32_t XDC_HEADER_WORDS = 14u;
-  constexpr uint32_t XDC_TRAILER_WORDS = 1u;
+constexpr uint32_t XDC_EVENT_MARKER = 0xccaaffeeu;
+constexpr uint32_t XDC_HEADER_END_MARKER = 0xaccadeadu;
+constexpr uint32_t XDC_EVENT_TRAILER = 0xbbeeddaau;
+constexpr uint32_t XDC_HEADER_WORDS = 14u;
+constexpr uint32_t XDC_TRAILER_WORDS = 1u;
+} // namespace
+
+namespace {
+auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<HidraDryXDCProducer, const std::string&, const std::string&>(
+    HidraDryXDCProducer::m_id_factory);
 }
 
-namespace{
-  auto dummy0 = eudaq::Factory<eudaq::Producer>::
-    Register<HidraDryXDCProducer, const std::string&, const std::string&>(HidraDryXDCProducer::m_id_factory);
-}
+HidraDryXDCProducer::HidraDryXDCProducer(const std::string& name, const std::string& runcontrol)
+    : eudaq::Producer(name, runcontrol),
+      m_exit_of_run(false) {}
 
-
-HidraDryXDCProducer::HidraDryXDCProducer(const std::string & name, const std::string & runcontrol)
-  :eudaq::Producer(name, runcontrol), m_exit_of_run(false){
-}
-
-void HidraDryXDCProducer::DoInitialise(){
+void HidraDryXDCProducer::DoInitialise() {
   auto ini = GetInitConfiguration();
-  (void) ini;
+  (void)ini;
 }
 
-void HidraDryXDCProducer::DoConfigure(){
+void HidraDryXDCProducer::DoConfigure() {
   auto conf = GetConfiguration();
-  m_event_spacing_ns = 1000000* (long long) conf->Get("REPLAY_EVENT_SPACING_MS", -1);
+  m_event_spacing_ns = 1000000 * (long long)conf->Get("REPLAY_EVENT_SPACING_MS", -1);
   std::string inforeplay = m_event_spacing_ns < 0 ? "automatic" : std::to_string(m_event_spacing_ns) + " ns";
-  EUDAQ_INFO("Replay rate set to "+inforeplay);
+  EUDAQ_INFO("Replay rate set to " + inforeplay);
   m_data_in_path = conf->Get("DATA_IN_PATH", "infile.txt");
   EUDAQ_INFO("Using XDC raw data file " + m_data_in_path);
   ReadFileSize();
 }
 
-void HidraDryXDCProducer::DoStartRun(){
+void HidraDryXDCProducer::DoStartRun() {
   m_runNumber = GetRunNumber();
   auto bore = eudaq::Event::MakeUnique("DryXDC");
   bore->SetBORE();
@@ -53,7 +52,7 @@ void HidraDryXDCProducer::DoStartRun(){
   m_thd_run = std::thread(&HidraDryXDCProducer::Mainloop, this);
 }
 
-void HidraDryXDCProducer::DoStopRun(){
+void HidraDryXDCProducer::DoStopRun() {
   auto eore = eudaq::Event::MakeUnique("DryXDC");
   eore->SetEORE();
   eore->SetRunN(static_cast<uint32_t>(m_runNumber));
@@ -61,26 +60,28 @@ void HidraDryXDCProducer::DoStopRun(){
 
   m_exit_of_run = true;
   EUDAQ_INFO("Stopping HidraDryXDCProducer run");
-  if(m_thd_run.joinable()){
+  if (m_thd_run.joinable()) {
     m_thd_run.join();
   }
   m_ifile.close();
 }
 
-void HidraDryXDCProducer::DoReset(){
+void HidraDryXDCProducer::DoReset() {
   m_exit_of_run = true;
-  if(m_thd_run.joinable())
+  if (m_thd_run.joinable()) {
     m_thd_run.join();
+  }
 
   m_ifile.close();
   m_thd_run = std::thread();
   m_exit_of_run = false;
 }
 
-void HidraDryXDCProducer::DoTerminate(){
+void HidraDryXDCProducer::DoTerminate() {
   m_exit_of_run = true;
-  if(m_thd_run.joinable())
+  if (m_thd_run.joinable()) {
     m_thd_run.join();
+  }
 }
 
 void HidraDryXDCProducer::ReadFileSize() {
@@ -89,19 +90,18 @@ void HidraDryXDCProducer::ReadFileSize() {
   }
 
   m_ifile.open(m_data_in_path, std::ios::binary | std::ios::ate);
-  if(!m_ifile.is_open()){
-    EUDAQ_THROW("input data file (" + m_data_in_path +") can not open for reading");
+  if (!m_ifile.is_open()) {
+    EUDAQ_THROW("input data file (" + m_data_in_path + ") can not open for reading");
   }
 
   m_ifile_size = (uint64_t)m_ifile.tellg();
   m_ifile.seekg(0, std::ios::beg);
-
 }
 
-bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t> &event_words) {
+bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t>& event_words) {
   event_words.clear();
 
-  auto read_word_ascii = [this](uint32_t &word) -> bool {
+  auto read_word_ascii = [this](uint32_t& word) -> bool {
     std::string token;
     if (!(m_ifile >> token)) {
       return false;
@@ -115,7 +115,7 @@ bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t> &event_words) {
       }
       word = static_cast<uint32_t>(value);
       return true;
-    } catch (const std::exception &) {
+    } catch (const std::exception&) {
       EUDAQ_WARN("Invalid XDC token in ASCII stream: " + token);
       return false;
     }
@@ -183,11 +183,11 @@ bool HidraDryXDCProducer::ReadXDCEvent(std::vector<uint32_t> &event_words) {
   return true;
 }
 
-void HidraDryXDCProducer::Mainloop(){
+void HidraDryXDCProducer::Mainloop() {
   EUDAQ_INFO("Starting XDC dry readout loop");
 
   uint64_t loop_count = 0;
-  while(!m_exit_of_run){
+  while (!m_exit_of_run) {
     std::vector<uint32_t> event_words;
     auto start_of_read_t = std::chrono::high_resolution_clock::now();
     if (!ReadXDCEvent(event_words)) {
@@ -223,28 +223,28 @@ void HidraDryXDCProducer::Mainloop(){
 
     std::vector<uint8_t> payload(data_size * sizeof(uint32_t));
     if (data_size > 0) {
-      const uint32_t *payload_words = event_words.data() + XDC_HEADER_WORDS;
+      const uint32_t* payload_words = event_words.data() + XDC_HEADER_WORDS;
       std::memcpy(payload.data(), payload_words, payload.size());
     }
     ev->AddBlock(0, payload);
 
     if (loop_count == 0) {
-      EUDAQ_INFO("First XDC event parsed: eventNumber=" + std::to_string(event_number)
-        + ", spillNumber=" + std::to_string(spill_number)
-        + ", dataWords=" + std::to_string(data_size));
+      EUDAQ_INFO("First XDC event parsed: eventNumber=" + std::to_string(event_number) +
+                 ", spillNumber=" + std::to_string(spill_number) + ", dataWords=" + std::to_string(data_size));
     }
 
     if (loop_count > 0) {
-      std::chrono::nanoseconds event_replay_delay{m_event_spacing_ns >= 0 ? m_event_spacing_ns : ts_begin_ns - m_prev_event_timestamp_ns};
-      std::chrono::nanoseconds read_duration{std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - start_of_read_t)};
+      std::chrono::nanoseconds event_replay_delay{m_event_spacing_ns >= 0 ? m_event_spacing_ns
+                                                                          : ts_begin_ns - m_prev_event_timestamp_ns};
+      std::chrono::nanoseconds read_duration{std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::high_resolution_clock::now() - start_of_read_t)};
       std::chrono::nanoseconds event_delay_ns = event_replay_delay - read_duration;
-	//EUDAQ_DEBUG("Event time stamps: " + std::to_string(double(ts_begin_ns-m_first_event_timestamp_ns)/1000000000));
-      if(event_delay_ns.count() > 0) {
+      // EUDAQ_DEBUG("Event time stamps: " + std::to_string(double(ts_begin_ns-m_first_event_timestamp_ns)/1000000000));
+      if (event_delay_ns.count() > 0) {
         std::this_thread::sleep_for(event_delay_ns);
       }
-      
-    }
-    else {
+
+    } else {
       m_first_event_timestamp_ns = ts_begin_ns;
     }
     m_prev_event_timestamp_ns = ts_begin_ns;

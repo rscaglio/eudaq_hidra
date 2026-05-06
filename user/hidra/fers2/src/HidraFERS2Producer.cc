@@ -22,14 +22,12 @@
 
 namespace {
 
-using hidra::fers2::FERSEvent;
 using hidra::fers2::FERSBoard;
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
+using hidra::fers2::FERSEvent;
 
-int ParseIntegerOrKeyword(const std::string &value,
-                          const std::map<std::string, int> &keywords,
-                          int fallback) {
+int ParseIntegerOrKeyword(const std::string& value, const std::map<std::string, int>& keywords, int fallback) {
   try {
     size_t consumed = 0;
     const int parsed = std::stoi(value, &consumed, 0);
@@ -47,7 +45,7 @@ int ParseIntegerOrKeyword(const std::string &value,
   return fallback;
 }
 
-std::string JoinBoardIds(const std::vector<int> &board_ids) {
+std::string JoinBoardIds(const std::vector<int>& board_ids) {
   std::ostringstream oss;
   for (size_t index = 0; index < board_ids.size(); ++index) {
     if (index != 0) {
@@ -62,7 +60,7 @@ std::string JoinBoardIds(const std::vector<int> &board_ids) {
 
 class HidraFERS2Producer : public eudaq::Producer {
 public:
-  HidraFERS2Producer(const std::string &name, const std::string &runcontrol)
+  HidraFERS2Producer(const std::string& name, const std::string& runcontrol)
       : eudaq::Producer(name, runcontrol) {}
 
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraFERS2Producer");
@@ -85,20 +83,19 @@ private:
     }
 
     m_readout_mode = conf->Get("FERS_READOUT_MODE", 0);
-    m_configure_mode = ParseIntegerOrKeyword(
-        conf->Get("FERS_CONFIGURE_MODE", std::string("CFG_HARD")),
-        {{"CFG_HARD", CFG_HARD}, {"CFG_SOFT", CFG_SOFT}}, CFG_HARD);
-    m_start_mode = ParseIntegerOrKeyword(
-        conf->Get("FERS_START_MODE", std::string("STARTRUN_ASYNC")),
-        {{"ASYNC", STARTRUN_ASYNC},
-         {"CHAIN_T0", STARTRUN_CHAIN_T0},
-         {"CHAIN_T1", STARTRUN_CHAIN_T1},
-         {"TDL", STARTRUN_TDL},
-         {"STARTRUN_ASYNC", STARTRUN_ASYNC},
-         {"STARTRUN_CHAIN_T0", STARTRUN_CHAIN_T0},
-         {"STARTRUN_CHAIN_T1", STARTRUN_CHAIN_T1},
-         {"STARTRUN_TDL", STARTRUN_TDL}},
-        STARTRUN_ASYNC);
+    m_configure_mode = ParseIntegerOrKeyword(conf->Get("FERS_CONFIGURE_MODE", std::string("CFG_HARD")),
+                                             {{"CFG_HARD", CFG_HARD}, {"CFG_SOFT", CFG_SOFT}},
+                                             CFG_HARD);
+    m_start_mode = ParseIntegerOrKeyword(conf->Get("FERS_START_MODE", std::string("STARTRUN_ASYNC")),
+                                         {{"ASYNC", STARTRUN_ASYNC},
+                                          {"CHAIN_T0", STARTRUN_CHAIN_T0},
+                                          {"CHAIN_T1", STARTRUN_CHAIN_T1},
+                                          {"TDL", STARTRUN_TDL},
+                                          {"STARTRUN_ASYNC", STARTRUN_ASYNC},
+                                          {"STARTRUN_CHAIN_T0", STARTRUN_CHAIN_T0},
+                                          {"STARTRUN_CHAIN_T1", STARTRUN_CHAIN_T1},
+                                          {"STARTRUN_TDL", STARTRUN_TDL}},
+                                         STARTRUN_ASYNC);
 
     m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
     m_max_events_per_board = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0);
@@ -127,7 +124,7 @@ private:
 
     m_board_ids.clear();
     m_board_ids.reserve(m_board_manager.boards().size());
-    for (const auto &board : m_board_manager.boards()) {
+    for (const auto& board : m_board_manager.boards()) {
       m_board_ids.push_back(board.board_id());
       m_event_queues[board.board_id()] = {};
     }
@@ -139,7 +136,7 @@ private:
     m_exit_of_run = false;
     m_run_number = GetRunNumber();
     m_event_queues.clear();
-    for (const auto &board : m_board_manager.boards()) {
+    for (const auto& board : m_board_manager.boards()) {
       m_event_queues[board.board_id()] = {};
     }
 
@@ -201,7 +198,7 @@ private:
         EUDAQ_THROW(error);
       }
 
-      for (const auto &event : events) {
+      for (const auto& event : events) {
         m_event_queues[event.board_id].push_back(event);
       }
 
@@ -241,7 +238,7 @@ private:
       std::vector<int> matched_boards;
       matched_boards.reserve(m_board_ids.size());
       for (int board_id : m_board_ids) {
-        auto &queue = m_event_queues[board_id];
+        auto& queue = m_event_queues[board_id];
         if (!queue.empty() && queue.front().trigger_id == trigger_n) {
           matched_boards.push_back(board_id);
         }
@@ -255,7 +252,8 @@ private:
         std::ostringstream missing;
         bool first = true;
         for (int board_id : m_board_ids) {
-          const bool matched = std::find(matched_boards.begin(), matched_boards.end(), board_id) != matched_boards.end();
+          const bool matched =
+              std::find(matched_boards.begin(), matched_boards.end(), board_id) != matched_boards.end();
           if (!matched) {
             if (!first) {
               missing << ", ";
@@ -277,16 +275,14 @@ private:
 
       bool timestamp_set = false;
       for (int board_id : m_board_ids) {
-        auto &queue = m_event_queues[board_id];
+        auto& queue = m_event_queues[board_id];
         if (queue.empty() || queue.front().trigger_id != trigger_n) {
           continue;
         }
 
-        const auto &event = queue.front();
+        const auto& event = queue.front();
         if (m_send_timestamp && !timestamp_set) {
-          const uint64_t start_ts = event.timestamp_us > 0.0
-                                        ? static_cast<uint64_t>(event.timestamp_us)
-                                        : 0u;
+          const uint64_t start_ts = event.timestamp_us > 0.0 ? static_cast<uint64_t>(event.timestamp_us) : 0u;
           ev->SetTimestamp(start_ts, start_ts + 1u);
           timestamp_set = true;
         }
@@ -316,7 +312,6 @@ private:
 };
 
 namespace {
-auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<
-    HidraFERS2Producer, const std::string &, const std::string &>(
+auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
     HidraFERS2Producer::m_id_factory);
 }

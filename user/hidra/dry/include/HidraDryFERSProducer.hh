@@ -6,7 +6,7 @@
 
 class HidraDryFERSProducer : public eudaq::Producer {
 public:
-  HidraDryFERSProducer(const std::string & name, const std::string & runcontrol);
+  HidraDryFERSProducer(const std::string& name, const std::string& runcontrol);
 
   void DoInitialise() override;
   void DoConfigure() override;
@@ -18,9 +18,9 @@ public:
   void sleepUntilNext(uint64_t b_last_evt, uint64_t b_current_evt, uint64_t last_real); // all in usec
   void ReadFileInfo();
   void Mainloop();
-  
+
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraDryFERSProducer");
-  
+
 private:
   int m_file_run_number;
   int m_eudaq_run_number;
@@ -31,8 +31,6 @@ private:
   int m_event_spacing_us; // microsec
   std::thread m_thd_run;
   mutable bool m_exit_of_run;
-
-
 };
 
 #endif

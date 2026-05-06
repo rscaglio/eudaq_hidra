@@ -9,17 +9,18 @@ namespace hidra {
 namespace fers2 {
 namespace {
 
-std::string BuildError(const std::string &prefix, int code) {
+std::string BuildError(const std::string& prefix, int code) {
   return prefix + " (ret=" + std::to_string(code) + ")";
 }
 
 } // namespace
 
-FERSBoard::FERSBoard(int board_id, const std::string &connection_path)
-    : board_id_(board_id), connection_path_(connection_path) {}
+FERSBoard::FERSBoard(int board_id, const std::string& connection_path)
+    : board_id_(board_id),
+      connection_path_(connection_path) {}
 
 bool FERSBoard::Connect(int readout_mode) {
-  int ret = FERS_OpenDevice(const_cast<char *>(connection_path_.c_str()), &handle_);
+  int ret = FERS_OpenDevice(const_cast<char*>(connection_path_.c_str()), &handle_);
   status_.last_return_code = ret;
   if (ret != 0) {
     status_.last_error = BuildError("FERS_OpenDevice failed", ret);
@@ -73,7 +74,7 @@ bool FERSBoard::Disconnect() {
   return true;
 }
 
-bool FERSBoard::Configure(const FERSConfiguration &config, int configure_mode) {
+bool FERSBoard::Configure(const FERSConfiguration& config, int configure_mode) {
   if (handle_ < 0) {
     status_.last_error = "Cannot configure: board is not connected.";
     status_.last_return_code = FERSLIB_ERR_INVALID_HANDLE;
@@ -81,7 +82,7 @@ bool FERSBoard::Configure(const FERSConfiguration &config, int configure_mode) {
   }
 
   const auto params = config.EffectiveParamsForBoard(board_id_);
-  for (const auto &entry : params) {
+  for (const auto& entry : params) {
     int ret = FERS_SetParam(handle_, entry.first.c_str(), entry.second.c_str());
     if (ret != 0) {
       status_.last_return_code = ret;
@@ -160,8 +161,7 @@ bool FERSBoard::SendCommand(uint32_t command) {
   return true;
 }
 
-bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent> *events,
-                                    size_t max_events) {
+bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_events) {
   if (events == nullptr) {
     status_.last_error = "Output event vector is null.";
     status_.last_return_code = FERSLIB_ERR_INVALID_PARAM;
@@ -178,11 +178,10 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent> *events,
   while (max_events == 0 || read_count < max_events) {
     int data_qualifier = 0;
     double tstamp_us = 0.0;
-    void *event_ptr = nullptr;
+    void* event_ptr = nullptr;
     int nb = 0;
 
-    int ret = FERS_GetEventFromBoard(handle_, &data_qualifier, &tstamp_us,
-                                     &event_ptr, &nb);
+    int ret = FERS_GetEventFromBoard(handle_, &data_qualifier, &tstamp_us, &event_ptr, &nb);
     status_.last_return_code = ret;
     if (ret != 0) {
       status_.last_error = BuildError("FERS_GetEventFromBoard failed", ret);
@@ -211,8 +210,7 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent> *events,
   return true;
 }
 
-bool FERSBoard::SerializeEvent(void *event_ptr, int data_qualifier,
-                               FERSEvent *out_event) {
+bool FERSBoard::SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event) {
   if (out_event == nullptr || event_ptr == nullptr) {
     status_.last_return_code = FERSLIB_ERR_INVALID_PARAM;
     status_.last_error = "SerializeEvent received null pointer.";
@@ -222,7 +220,7 @@ bool FERSBoard::SerializeEvent(void *event_ptr, int data_qualifier,
   const int base_dq = (data_qualifier & 0x0F);
 
   if (data_qualifier == DTQ_SERVICE) {
-    const auto *ev = reinterpret_cast<const ServEvent_t *>(event_ptr);
+    const auto* ev = reinterpret_cast<const ServEvent_t*>(event_ptr);
     out_event->trigger_id = ev->TotTrg_cnt;
     out_event->payload.resize(sizeof(ServEvent_t));
     std::memcpy(out_event->payload.data(), ev, sizeof(ServEvent_t));
@@ -230,7 +228,7 @@ bool FERSBoard::SerializeEvent(void *event_ptr, int data_qualifier,
   }
 
   if (base_dq == DTQ_SPECT || data_qualifier == DTQ_TSPECT) {
-    const auto *ev = reinterpret_cast<const SpectEvent_t *>(event_ptr);
+    const auto* ev = reinterpret_cast<const SpectEvent_t*>(event_ptr);
     out_event->trigger_id = ev->trigger_id;
     out_event->payload.resize(sizeof(SpectEvent_t));
     std::memcpy(out_event->payload.data(), ev, sizeof(SpectEvent_t));
@@ -238,7 +236,7 @@ bool FERSBoard::SerializeEvent(void *event_ptr, int data_qualifier,
   }
 
   if (base_dq == DTQ_TIMING) {
-    const auto *ev = reinterpret_cast<const ListEvent_t *>(event_ptr);
+    const auto* ev = reinterpret_cast<const ListEvent_t*>(event_ptr);
     out_event->trigger_id = ev->trigger_id;
     out_event->payload.resize(sizeof(ListEvent_t));
     std::memcpy(out_event->payload.data(), ev, sizeof(ListEvent_t));
@@ -246,7 +244,7 @@ bool FERSBoard::SerializeEvent(void *event_ptr, int data_qualifier,
   }
 
   if (base_dq == DTQ_COUNT) {
-    const auto *ev = reinterpret_cast<const CountingEvent_t *>(event_ptr);
+    const auto* ev = reinterpret_cast<const CountingEvent_t*>(event_ptr);
     out_event->trigger_id = ev->trigger_id;
     out_event->payload.resize(sizeof(CountingEvent_t));
     std::memcpy(out_event->payload.data(), ev, sizeof(CountingEvent_t));
@@ -254,7 +252,7 @@ bool FERSBoard::SerializeEvent(void *event_ptr, int data_qualifier,
   }
 
   if (base_dq == DTQ_TEST || data_qualifier == DTQ_TEST) {
-    const auto *ev = reinterpret_cast<const TestEvent_t *>(event_ptr);
+    const auto* ev = reinterpret_cast<const TestEvent_t*>(event_ptr);
     out_event->trigger_id = ev->trigger_id;
     out_event->payload.resize(sizeof(TestEvent_t));
     std::memcpy(out_event->payload.data(), ev, sizeof(TestEvent_t));

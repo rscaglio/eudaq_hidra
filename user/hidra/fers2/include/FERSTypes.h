@@ -8,12 +8,7 @@
 namespace hidra {
 namespace fers2 {
 
-enum class BoardState {
-  kDisconnected,
-  kConnected,
-  kConfigured,
-  kRunning
-};
+enum class BoardState { kDisconnected, kConnected, kConfigured, kRunning };
 
 struct BoardStatus {
   BoardState state = BoardState::kDisconnected;
