@@ -20,7 +20,7 @@ namespace hidra::utils {
 
   template <typename... Args>
   std::string format(const std::string &fmt_str, Args&&... args){
-    return fmt::format(fmt_str, std::forward<Args>(args)...);
+    return fmt::format(fmt::runtime(fmt_str), std::forward<Args>(args)...);
   }
 
   template <typename T>

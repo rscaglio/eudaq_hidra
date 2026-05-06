@@ -3,18 +3,17 @@
 #include "HidraUtils.hh"
 #include "EventSerializer.hh"
 #include <eudaq/DataCollector.hh>
+#include <eudaq/Event.hh>
 #include <eudaq/Factory.hh>
 #include <eudaq/Logger.hh>
-#include <eudaq/Event.hh>
-#include <eudaq/Configuration.hh>
 
+#include <chrono>
 #include <cstdint>
-#include <string>
-#include <memory>
 #include <map>
-#include <set>
+#include <memory>
 #include <chrono>
 #include <fstream>
+#include <string>
 
 
 
@@ -46,7 +45,8 @@ private:
   };
 
   bool m_is_replay_mode;
-  // when in replay mode, it uses timestamp of greatest trigger instead of runtime timestamp to evaluate whether incomplete events shall be built
+  // when in replay mode, it uses timestamp of greatest trigger instead of
+  // runtime timestamp to evaluate whether incomplete events shall be built
   uint64_t m_event_count;
   uint64_t m_max_events;
   bool m_stop_sent = false;
@@ -115,7 +115,7 @@ private:
 
     // just a skeleton. Full event must be built here
     auto it = pending.events_by_source.begin();
-    
+
     if (it == pending.events_by_source.end()) {
       EUDAQ_ERROR("Cannot build event out of NO PENDING triggers");
       return nullptr;
@@ -126,12 +126,13 @@ private:
     fullEvt->SetRunN(GetRunNumber());
     fullEvt->SetTriggerN(pending.trigger_number);
     fullEvt->SetTimestamp(pending.first_seen_ns, pending.first_seen_ns + 100UL);
-    fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
+    fullEvt->SetTag("N_SOURCES",
+                    std::to_string(pending.events_by_source.size()));
 
     for (const auto &is : m_expected_sources_map){
       // will be overwritten if source is in the event
       fullEvt->SetTag(is.first+"_id",is.second);  // "XDCProducer_id = <detID>"
-      fullEvt->SetTag(is.second+"_size",0); // "<detID>_size = 0"
+      fullEvt->SetTag(std::to_string(is.second) +"_size",0); // "<detID>_size = 0"
     }
 
     for (; it != pending.events_by_source.end(); ++it) {
@@ -149,7 +150,7 @@ private:
 
   void FlushOldIncompleteEvents() {
 
-    for (auto it = m_pending_events.begin(); it != m_pending_events.end(); ) {
+    for (auto it = m_pending_events.begin(); it != m_pending_events.end();) {
 
       uint64_t age_ns;
 
@@ -160,9 +161,8 @@ private:
 	auto lastit = m_pending_events.rbegin();
 	age_ns = lastit->second.first_seen_ns - it->second.first_seen_ns;
       }
-           
 
-      if (age_ns <= m_sync_timeout_us*1000) {
+      if (age_ns <= m_sync_timeout_us * 1000) {
         ++it;
         continue;
       }
@@ -190,33 +190,31 @@ private:
       it = m_pending_events.erase(it);
     }
   }
-  
 
   void CheckMaxEvents() {
-    
+
     if (!m_stop_sent && m_max_events != 0 && m_event_count >= m_max_events) {
       m_stop_sent = true;
       HIDRA_INFO("Max events reached. Sending STOP request");
       SetStatus(eudaq::Status::STATE_RUNNING, "STOP_REQUEST");
       SendStatus();
     }
-    
   }
 
   //////////////////////////////////////////////
-  
+
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
     if (!ini) {
       HIDRA_WARN("HidraDataCollector: missing init configuration");
     }
 
-    m_is_replay_mode = (bool) ini->Get("REPLAY_MODE", 0);
+    m_is_replay_mode = (bool)ini->Get("REPLAY_MODE", 0);
 
     if (m_is_replay_mode){
       HIDRA_WARN("DataCollector is in REPLAY MODE");
     }
-    
+
     m_event_count = 0;
     m_pending_events.clear();
 
@@ -225,7 +223,7 @@ private:
 
   void DoConfigure() override {
     auto conf = GetConfiguration();
-    
+
     m_event_count = 0;
     m_stop_sent = false;
     m_pending_events.clear();
@@ -243,7 +241,7 @@ private:
     m_tstamp_window_ns = conf->Get("TIMESTAMP_WINDOW_NS", 50000);
 
     std::string configsources = conf->Get("EXPECTED_SOURCES", "");
-    
+
     /////// splitting the string
     if (configsources == ""){
       m_expected_sources_map = std::map<std::string, int>{};
@@ -335,8 +333,9 @@ private:
 
     auto t_start = std::chrono::high_resolution_clock::now();
 
-    if(!m_running) return;
-    
+    if (!m_running)
+      return;
+
     if (!ev) {
       HIDRA_WARN("HidraDataCollector received null event");
       return;
@@ -360,7 +359,7 @@ private:
       // TODO let's collect info to write a file header
       return;
     }
-    
+
     if (ev->IsEORE()) {
       HIDRA_INFO("Received EORE from {} type= {}", id->GetName(), desc);
       // TODO let's collect info to write a file trailer
@@ -369,19 +368,23 @@ private:
 
     // stop when reaching max number of events
     CheckMaxEvents();
-    if (m_stop_sent) return;
+    if (m_stop_sent)
+      return;
 
     FlushOldIncompleteEvents();
 
     uint64_t trigger_number = ev->GetTriggerN();
-    uint64_t timestamp = ev->GetTimestampBegin(); // TODO: implement better logic for jitter of boards
+    uint64_t timestamp = ev->GetTimestampBegin(); // TODO: implement better
+                                                  // logic for jitter of boards
 
-    auto &pending = m_pending_events[trigger_number]; // creates a default if trigger_number does not exist
+    auto &pending =
+        m_pending_events[trigger_number]; // creates a default if trigger_number
+                                          // does not exist
 
     ////////////// BEFFERING PENDING //////////
-    
+
     // assign triggerN and time ....
-    if (pending.events_by_source.empty()){
+    if (pending.events_by_source.empty()) {
       pending.trigger_number = trigger_number;
       pending.first_seen_ns = hidra::utils::getTimens();
     }
@@ -399,7 +402,8 @@ private:
 
     //////////////////////////////////////////////
 
-    if (!IsComplete(pending)){  // wait for next received, if this is not complete yet
+    if (!IsComplete(
+            pending)) { // wait for next received, if this is not complete yet
       auto t_end = std::chrono::high_resolution_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
       HIDRA_DEBUG("DoReceive (w/o complete building) took {} us", duration);
@@ -437,12 +441,10 @@ private:
     HIDRA_DEBUG("DoReceive (w/ complete building) took {} us", duration); 
   }
 };
-    
- 
+
 namespace {
-  auto dummy0 =
-    eudaq::Factory<eudaq::DataCollector>::
-	Register<HidraDataCollector, const std::string&, const std::string&>
-	(HidraDataCollector::m_id_factory);
+  auto dummy0 = eudaq::Factory<eudaq::DataCollector>::Register<
+      HidraDataCollector, const std::string &, const std::string &>(
+      HidraDataCollector::m_id_factory);
 
 }
