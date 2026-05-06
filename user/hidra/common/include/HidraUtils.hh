@@ -13,7 +13,11 @@ std::uint64_t getTimeus();
 std::uint64_t getTimens();
 
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
+#if FMT_VERSION >= 80000
   return fmt::format(fmt::runtime(fmt_str), std::forward<Args>(args)...);
+#else
+  return fmt::format(fmt_str, std::forward<Args>(args)...);
+#endif
 }
 
 template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag, T default_value) {

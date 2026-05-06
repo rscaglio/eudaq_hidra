@@ -24,7 +24,7 @@ public:
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraDataCollector");
 
 private:
-  const int MAX_SOURCES = 16;
+  const int MAX_SOURCES = 8;
 
   // --- Per-source event container ---
   struct SourceEvent {

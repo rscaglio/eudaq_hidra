@@ -44,6 +44,15 @@ template <typename T> void appendBE(std::vector<std::uint8_t>& buffer, T value) 
   }
 }
 
+template <typename T> void writeBE(std::vector<std::uint8_t>& buffer, std::size_t offset, T value) {
+  using UnsignedT = typename std::make_unsigned<T>::type;
+  const UnsignedT v = static_cast<UnsignedT>(value);
+
+  for (std::size_t i = 0; i < sizeof(T); ++i) {
+    buffer[offset + i] = static_cast<std::uint8_t>((v >> (8 * (sizeof(T) - 1 - i))) & 0xFF);
+  }
+}
+
 } // end of anonymous namespace
 
 std::vector<std::uint8_t> EventSerializer::Serialize(const eudaq::Event& event) {
@@ -52,22 +61,24 @@ std::vector<std::uint8_t> EventSerializer::Serialize(const eudaq::Event& event) 
 
   /*
 EVENT HEADER:
-makrer (16 bit) [0, 1]
-header size (32 bit) [2,3,4,5]
-trailer size (32 bit) [6,7,8,9]
-event size (including header and trailer) (32 bit) [10,11,12,13]
-event number (32 bit) [14,15,16,17]
-spill number (32 bit) [18,19,20,21]
-eventTime (64 bit) [22,23,24,25,26,27,28,29]
-triggerMask (8 bit) [30]
-reserved (64 bit) [31,32,..38]
-reserved (32 bit) [39,40,41,42]
-DetectorMask (16 bit) [43,44]
-sizeDet0 (16 bit) [45, 46]
-sizeDet1 (16 bit) [47, 48]
+marker (16 bit) [0, 1]
+data version (8 bit) [2]
+header size (32 bit) [3..6]
+trailer size (32 bit) [7..10]
+event size (including header and trailer) (32 bit) [11..14]
+run number (16 bit) [15,16]
+event number (32 bit) [17..20]
+spill number (32 bit) [21..24]
+eventTime (64 bit) [25..32]
+triggerMask (8 bit) [33]
+reserved (64 bit) [34..41]
+reserved (32 bit) [42..45]
+DetectorMask (8 bit) [46]
+sizeDet0 (16 bit) [47,48]
+sizeDet1 (16 bit) [49,50]
 ...
-sizeDet15 (16 bit) [75, 76]
-end marker (16 bit) [77, 78]
+sizeDet7 (16 bit) [61,62]
+end marker (16 bit) [63,64]
 
 FOR EACH SUBDETECTOR (IF PRESENT):
 detEvent marker (16 bit) [0,1]
@@ -84,8 +95,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const int MAX_N_DETECTORS = 16;
-
+  const std::uint8_t DATA_VERSION = 0x1;
   const std::uint16_t EVENT_MARKER = 0xB0B0;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
   const std::uint16_t EVENT_TRAILER = 0xD04E;
@@ -95,24 +105,33 @@ marker (16 bit)
   uint16_t placeholder16 = 0xFFFF;
   uint32_t placeholder32 = 0xFFFFFFFF;
   uint64_t placeholder64 = (placeholder32 << 31) | placeholder32;
+
+  // specific for data format
+  const int MAX_N_DETECTORS = 8;
+  const uint8_t DataFormatVersion = 1;
   const uint32_t TrailerSize = 2;
 
   // TODO: implement missing tags
   appendLE(buffer, EVENT_MARKER);
+  appendLE(buffer, DataFormatVersion);
+  int anchorpoint_headersize = buffer.size();
   appendLE(buffer, placeholder32); // header size
   appendLE(buffer, TrailerSize);
+  int anchorpoint_eventsize = buffer.size();
   appendLE(buffer, placeholder32); // event size
+  appendLE(buffer, static_cast<std::uint16_t>(event.GetRunN()));
   appendLE(buffer, static_cast<std::uint32_t>(event.GetTriggerN()));
   appendLE(buffer, getTagOr<std::uint32_t>(event, "spillNumber", 0xFFFF));
   appendLE(buffer, static_cast<std::uint64_t>(event.GetTimestampBegin()));
   appendLE(buffer, getTagOr<std::uint8_t>(event, "triggerMask", 0xFF));
   appendLE(buffer, placeholder64); // reserved
   appendLE(buffer, placeholder32); // reserved
-  appendLE(buffer, placeholder16); // detector mask
+  int anchorpoint_detmask = buffer.size();
+  appendLE(buffer, placeholder8); // detector mask
 
   int NSources = std::stoi(event.GetTag("N_SOURCES"));
 
-  uint32_t anchorpoint1 = buffer.size();
+  int anchorpoint_detsize = buffer.size();
   for (int is = 0; is < MAX_N_DETECTORS; is++) {
     appendLE(buffer, placeholder16); // data size for the subdetector
   }
@@ -120,9 +139,9 @@ marker (16 bit)
   appendLE(buffer, EVENT_HEADER_ENDMARKER);
 
   uint32_t HeaderSize = buffer.size();
-  writeLE(buffer, 2, HeaderSize);
+  writeLE(buffer, anchorpoint_headersize, HeaderSize);
 
-  uint16_t detMask = 0x0000;
+  uint8_t detMask = 0x00;
 
   // SERIALIZING SUB-EVENTS
   for (int is = 0; is < NSources; is++) {
@@ -130,7 +149,7 @@ marker (16 bit)
     auto sub_ev = event.GetSubEvent(is);
     if (!sub_ev) {
       HIDRA_ERROR("Sub event index {} does not exist for trigger {}. "
-                  "N_SOURCES is supposed to be {}",
+                  "N_SOURCES is supposed to be {}. Skipping",
                   is,
                   event.GetTriggerN(),
                   NSources);
@@ -140,6 +159,15 @@ marker (16 bit)
     std::string producerName = sub_ev->GetTag("Producer");
     std::string detIDs = sub_ev->GetTag("detID");
     int detID = std::stoi(detIDs);
+
+    if (detID >= MAX_N_DETECTORS) {
+      HIDRA_ERROR("Detector ID {} exceeds the limit {} for this data format (v.{})."
+                  "Skipping",
+                  detID,
+                  MAX_N_DETECTORS,
+                  DataFormatVersion);
+      continue;
+    }
 
     detMask |= (1 << detID);
 
@@ -152,7 +180,7 @@ marker (16 bit)
                   ev_size_1,
                   ev_size_2);
     }
-    writeLE(buffer, anchorpoint1 + 2 * detID, ev_size_1);
+    writeLE(buffer, anchorpoint_detsize + 2 * detID, ev_size_1);
 
     appendLE(buffer, DETECTOR_EVENT_MARKER);
     appendLE(buffer, static_cast<std::uint8_t>(detID));
@@ -171,14 +199,14 @@ marker (16 bit)
   }
 
   // updating detector mask
-  writeLE(buffer, 43, detMask);
+  writeLE(buffer, anchorpoint_detmask, detMask);
 
   // Event trailer
 
   appendLE(buffer, EVENT_TRAILER);
 
   uint32_t EventSize = buffer.size();
-  writeLE(buffer, 10, EventSize);
+  writeLE(buffer, anchorpoint_eventsize, EventSize);
 
   return buffer;
 }
