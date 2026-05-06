@@ -3,7 +3,7 @@ option(USER_HIDRA_BUILD "Build HiDRa DAQ system" OFF)
 
 ##-- OPT: Compile each module?
 option(USER_HIDRA_FERS_BUILD "Build HiDRa FERS component" OFF)
-option(USER_HIDRA_FERS2_BUILD "Build HiDRa FERS2 component" OFF)
+option(USER_HIDRA_FERS2_BUILD "Build HiDRa FERS2 component" ON)
 option(USER_HIDRA_XDC_BUILD "Build HiDRa XDC component" ON)
 option(USER_HIDRA_DRY_BUILD "Build HiDRa Dry component" ON)
 option(USER_HIDRA_DAQ_BUILD "Build HiDRa DAQ component" ON)
