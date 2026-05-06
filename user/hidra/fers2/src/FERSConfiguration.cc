@@ -1,9 +1,10 @@
 #include "FERSConfiguration.h"
 
-#include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <set>
 #include <sstream>
+#include <vector>
 
 #include "FERSlib.h"
 
@@ -48,6 +49,86 @@ bool ParseLine(const std::string& line, std::string* key, std::string* value) {
   return !value->empty();
 }
 
+bool ParseIndexedKey(const std::string& key,
+                     std::string* base_name,
+                     int* board_index,
+                     std::string* channel_suffix) {
+  if (base_name == nullptr || board_index == nullptr || channel_suffix == nullptr) {
+    return false;
+  }
+
+  const size_t open = key.find('[');
+  if (open == std::string::npos) {
+    *base_name = key;
+    *board_index = -1;
+    channel_suffix->clear();
+    return true;
+  }
+
+  const size_t close = key.find(']', open);
+  if (close == std::string::npos) {
+    return false;
+  }
+
+  *base_name = key.substr(0, open);
+  try {
+    *board_index = std::stoi(key.substr(open + 1, close - open - 1));
+  } catch (...) {
+    return false;
+  }
+
+  if (close + 1 < key.size()) {
+    *channel_suffix = key.substr(close + 1);
+  } else {
+    channel_suffix->clear();
+  }
+
+  return true;
+}
+
+bool IsJanusOnlyParameter(const std::string& base_name) {
+  static const std::set<std::string> kJanusOnly = {
+      "EnableJobs",
+      "JobFirstRun",
+      "JobLastRun",
+      "RunSleep",
+      "RunNumber_AutoIncr",
+      "DataAnalysis",
+      "DataFilePath",
+      "OF_OutFileUnit",
+      "OF_EnMaxSize",
+      "OF_MaxSize",
+      "OF_RawData",
+      "OF_ListLL",
+      "OF_ListBin",
+      "OF_ListAscii",
+      "OF_ListCSV",
+      "OF_Sync",
+      "OF_ServiceInfo",
+      "OF_RunInfo",
+      "OF_SpectHisto",
+      "OF_ToAHisto",
+      "OF_ToTHisto",
+      "OF_MCS",
+      "OF_Staircase",
+      "Load",
+      "StartRunMode",
+      "StopRunMode",
+      "EventBuildingMode",
+      "TstampCoincWindow",
+      "PresetTime",
+      "PresetCounts",
+      "EnableRawDataRead",
+      "EnLiveParamChange",
+      "AskHVShutDownOnExit",
+      "OutFileEnableMask",
+      "OutFileUnit",
+      "MaxOutFileSize",
+  };
+
+  return kJanusOnly.find(base_name) != kJanusOnly.end();
+}
+
 } // namespace
 
 bool FERSConfiguration::FromFile(const std::string& path, FERSConfiguration* out, std::string* error) {
@@ -82,7 +163,26 @@ bool FERSConfiguration::FromFile(const std::string& path, FERSConfiguration* out
       continue;
     }
 
-    cfg.default_params_[key] = value;
+    std::string base_name;
+    int board_index = -1;
+    std::string channel_suffix;
+    if (!ParseIndexedKey(key, &base_name, &board_index, &channel_suffix)) {
+      if (error != nullptr) {
+        *error = "Malformed configuration key: " + key;
+      }
+      return false;
+    }
+
+    if (IsJanusOnlyParameter(base_name)) {
+      continue;
+    }
+
+    std::string normalized_key = base_name + channel_suffix;
+    if (board_index >= 0) {
+      cfg.SetBoardOverride(board_index, normalized_key, value);
+    } else {
+      cfg.default_params_[normalized_key] = value;
+    }
   }
 
   *out = cfg;

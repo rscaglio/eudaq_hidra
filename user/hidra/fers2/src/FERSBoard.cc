@@ -183,6 +183,13 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_e
 
     int ret = FERS_GetEventFromBoard(handle_, &data_qualifier, &tstamp_us, &event_ptr, &nb);
     status_.last_return_code = ret;
+    if (ret == 2) {
+      // Status code 2 means "no data available right now". Treat it as a
+      // normal polling result so the producer can sleep and poll again later.
+      status_.last_error.clear();
+      break;
+    }
+
     if (ret != 0) {
       status_.last_error = BuildError("FERS_GetEventFromBoard failed", ret);
       return false;
