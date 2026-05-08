@@ -45,7 +45,7 @@ The event may contain up to 8 detector subevents.
 | 47     | uint16[8] | `detectorSize[]` | Detector size metadata |
 | 63     | uint16    | `endMarker`      | `0xBBBB`               |
 
-
+The event header has a fixes size of `65 bytes (0x41)`
 
 ### Detector Mask
 
