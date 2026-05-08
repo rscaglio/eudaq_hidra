@@ -195,7 +195,25 @@ marker (16 bit)
     std::vector<uint32_t> block_ids = sub_ev->GetBlockNumList();
     for (uint32_t ib : block_ids) {
       auto block = sub_ev->GetBlock(ib);
-      buffer.insert(buffer.end(), block.begin(), block.end());
+
+      // handling endianness
+      if (sub_ev->HasTag("endianness") && sub_ev->GetTag("endianness") == "BE32"){
+	if (block.size() % 4 != 0){
+	  HIDRA_ERROR("Block from detID {} has size {} but should be interpreted as 4-bytes words",detID,block.size());
+	}
+	else{
+	  for (size_t i = 0; i < block.size(); i += 4) {
+	    // Reverse endian of each 32-bit word
+	    buffer.push_back(block[i + 3]);
+	    buffer.push_back(block[i + 2]);
+	    buffer.push_back(block[i + 1]);
+	    buffer.push_back(block[i + 0]);
+	  }
+	} 
+      } // if endianness == BE32
+      else{
+	buffer.insert(buffer.end(), block.begin(), block.end());
+      }
     }
 
     appendLE(buffer, DETECTOR_EVENT_ENDMARKER);
