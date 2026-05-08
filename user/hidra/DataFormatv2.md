@@ -73,11 +73,14 @@ The following detector ID convention is recommended:
 
 | detID (bit) | Producer |
 | ----------- | -------- |
-| 0           | FERS     |
-| 1           | XDC      |
-| 6           | Dry FERS |
-| 7           | Dry XDC  |
+| 0           | Don't use |
+| 1           | XDC       |
+| 2           | FERS      |
+| 6           | Dry XDC   |
+| 7           | Dry FERS  |
 
+
+Index 0 is assigned when the collector is run is `single producer` mode.
 
 Example: `detectorMask = 0b00000101` means that detectors with `detID = 0` and `detID = 2` are present in the event. The corresponding detector event data blocks follow after the Header endMarker, ordered by increasing `detID`.
 
