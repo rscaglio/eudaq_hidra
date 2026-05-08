@@ -153,6 +153,7 @@ private:
 
   void DoConfigure() override {
     auto conf = GetConfiguration();
+    m_evt_f = 0;
     if (!conf) {
       EUDAQ_THROW("Run configuration is missing");
     }
@@ -178,7 +179,7 @@ private:
                                          STARTRUN_ASYNC);
 
     m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
-    m_max_events_per_board = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0);
+    m_max_events_per_board = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
     m_send_trigger_number = conf->Get("FERS_SEND_TRIGGER_NUMBER", 1) != 0;
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
 
@@ -213,7 +214,9 @@ private:
   }
 
   void DoStartRun() override {
+    StopAcquisitionThread();
     m_exit_of_run = false;
+    m_evt_f = 0;
     m_run_number = GetRunNumber();
     m_event_queues.clear();
     for (const auto& board : m_board_manager.boards()) {
@@ -236,6 +239,7 @@ private:
   }
 
   void DoStopRun() override {
+    StopAcquisitionThread();
     m_exit_of_run = true;
     std::string error;
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
@@ -251,16 +255,23 @@ private:
   }
 
   void DoReset() override {
+    StopAcquisitionThread();
     m_exit_of_run = true;
-    m_event_queues.clear();
+    m_evt_f = 0;
     std::string error;
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
     }
+    if (!m_board_manager.DisconnectAll(&error)) {
+        EUDAQ_WARN(error);
+    }
+    m_board_ids.clear();
+    m_event_queues.clear();
   }
 
   void DoTerminate() override {
     m_exit_of_run = true;
+    StopAcquisitionThread();
     std::string error;
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
@@ -379,6 +390,16 @@ private:
       ev->SetTag("eventWords", std::to_string(total_payload_bytes));
 
       SendEvent(std::move(ev));
+      ++m_evt_f;
+     
+    }
+  }
+
+  void StopAcquisitionThread() {
+    m_exit_of_run = true;
+
+    if (m_thd_run.joinable()) {
+      m_thd_run.join();
     }
   }
 
@@ -391,11 +412,13 @@ private:
   int m_readout_mode = 0;
   int m_configure_mode = CFG_HARD;
   int m_start_mode = STARTRUN_ASYNC;
+  uint64_t m_evt_f;
+  uint64_t m_max_events_per_board;
   int m_poll_sleep_us = 1000;
-  int m_max_events_per_board = 0;
   bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
+  std::thread m_thd_run;
 };
 
 namespace {

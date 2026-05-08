@@ -13,7 +13,6 @@ public:
   void DoStatus(eudaq::ConnectionSPC con, eudaq::StatusSPC st) override;
 
 private:
-  uint32_t m_stop_second;
   bool m_flag_running;
   std::chrono::steady_clock::time_point m_tp_start_run;
   std::chrono::steady_clock::time_point m_tp_stop_run;
@@ -51,14 +50,13 @@ void HidraRunControl::Configure() {
 void HidraRunControl::Exec() {
   StartRunControl();
   while (IsActiveRunControl()) {
-    bool producer_done = false;
     bool collector_ready = false;
 
     {
 
       std::lock_guard<std::mutex> lock(mtx);
 
-      // --- To check component states ---
+      // --- To check when component state changes ---
       for (const auto& p : module_state) {
         const std::string& name = p.first;
         const std::string& state = p.second;
@@ -68,34 +66,22 @@ void HidraRunControl::Exec() {
           last_printed_state[name] = state;
         }
 
-        // --- Check conditions on the producer and collector ---
+        // --- Check Collector status ---
         if (m_flag_running) {
-          if (name == "my_pd0" && state == "END_OF_STREAM") {
-            producer_done = true;
-          }
 
-          if (name == "my_dc" && state == "STOP_REQUEST") {
+          if (name == "HidraDataCollector" && state == "STOP_REQUEST") {
             collector_ready = true;
           }
         }
       }
 
-    } // Mutex goes out of scope and releases
+    } // --- Mutex goes out of scope and is released ---
 
-    // --- When producer has produced max events and collector has collected max events ---> STOP OF THE RUN ---
-    if (producer_done && collector_ready) {
+    // --- When collector has collected N = max events ---> STOP OF THE RUN ---
+    if (collector_ready) {
       EUDAQ_INFO("All devices ready → stopping run");
       StopRun();
     }
-
-    //	bool reset_done = false;
-
-    /*	if (!reset_done && stop_sent) {
-                EUDAQ_INFO("All devices stopped → resetting");
-
-                Reset();
-                reset_done = true;
-            }*/
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
