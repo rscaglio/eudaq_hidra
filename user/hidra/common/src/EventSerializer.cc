@@ -95,7 +95,8 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const std::uint8_t DATA_VERSION = 0x2;
+  const uint8_t DataFormatVersion = 3;
+  
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
   const std::uint16_t EVENT_TRAILER = 0xD04E;
@@ -111,7 +112,7 @@ marker (16 bit)
 
   // specific for data format
   const int MAX_N_DETECTORS = 8;
-  const uint8_t DataFormatVersion = 1;
+  
   const uint32_t TrailerSize = 2;
 
   // TODO: implement missing tags
