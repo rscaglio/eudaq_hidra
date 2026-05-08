@@ -1,14 +1,15 @@
-#pragma once
-
 #include "EventSerializer.hh"
 #include "HidraUtils.hh"
 #include <eudaq/DataCollector.hh>
 #include <eudaq/Event.hh>
+#include <eudaq/Exception.hh>
 #include <eudaq/Factory.hh>
+#include <eudaq/FileNamer.hh>
 #include <eudaq/Logger.hh>
 
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -43,8 +44,10 @@ private:
   bool m_is_replay_mode;
   // when in replay mode, it uses timestamp of greatest trigger instead of
   // runtime timestamp to evaluate whether incomplete events shall be built
-  uint64_t m_event_count;
+  uint64_t m_event_count = 0;
   uint64_t m_max_events;
+  int m_n_complete_events = 0;
+  int m_n_incomplete_events = 0;
   bool m_stop_sent = false;
   bool m_running = false;
 
@@ -54,8 +57,10 @@ private:
   uint64_t m_sync_timeout_us = 1000000;
   uint64_t m_tstamp_window_ns = 50000;
 
-  bool m_single_producer_mode = false;
+  bool m_single_producer_mode = false; // when no sources are specified, only the first one is accepted and DetectorID 0 is assigned.
 
+  std::string m_filePattern;
+  std::string m_fwType;
   std::ofstream m_hidraOutput;
 
   // user custom
@@ -81,7 +86,7 @@ private:
 
   uint64_t TimestampSpread(const PendingTrigger& pending) const {
     if (pending.events_by_source.size() <= 1) {
-      return true;
+      return 0;
     }
 
     uint64_t t_min = UINT64_MAX;
@@ -128,12 +133,16 @@ private:
       fullEvt->AddSubEvent(std::move(it->second.event));
     }
 
-    HIDRA_DEBUG("FULL EVENT BUILT: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
+    HIDRA_DEBUG("MERGED EVENT BUILT: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
 
     return fullEvt;
   }
 
   void FlushOldIncompleteEvents() {
+
+    if (m_single_producer_mode) {
+      return; 
+    }
 
     for (auto it = m_pending_events.begin(); it != m_pending_events.end();) {
 
@@ -168,14 +177,17 @@ private:
       }
 
       mergedEvt->SetTag("SYNC_STATUS", "INCOMPLETE");
-      // WriteEvent(std::move(mergedEvt));
+      m_n_incomplete_events++;
+      //WriteEvent(std::move(mergedEvt));
       hidra::EventSerializer::WriteToStream(*mergedEvt, m_hidraOutput);
       ++m_event_count;
+      UpdateStatusTags();
+
       it = m_pending_events.erase(it);
     }
   }
 
-  void CheckMaxEvents() {
+  void CheckMaxEvents() { 
 
     if (!m_stop_sent && m_max_events != 0 && m_event_count >= m_max_events) {
       m_stop_sent = true;
@@ -183,6 +195,14 @@ private:
       SetStatus(eudaq::Status::STATE_RUNNING, "STOP_REQUEST");
       SendStatus();
     }
+  }
+
+  void UpdateStatusTags() {
+    SetStatusTag("EventN", std::to_string(m_event_count));
+    SetStatusTag("Pending", std::to_string(m_pending_events.size()));
+    SetStatusTag("Completes", std::to_string(m_n_complete_events));
+    SetStatusTag("Incompletes", std::to_string(m_n_incomplete_events));
+    SendStatus();
   }
 
   //////////////////////////////////////////////
@@ -220,6 +240,9 @@ private:
       HIDRA_ERROR("HidraDataCollector: missing run configuration");
     }
 
+    m_filePattern = conf->Get("EUDAQ_FW_PATTERN", "$12D_run$6R$X");
+    m_fwType = conf->Get("EUDAQ_FW", "native");
+
     m_max_events = conf->Get("MAX_EVENTS", 0);
     m_sync_timeout_us = conf->Get("SYNC_TIMEOUT_US", 1000);
     m_tstamp_window_ns = conf->Get("TIMESTAMP_WINDOW_NS", 50000);
@@ -229,7 +252,8 @@ private:
     /////// splitting the string
     if (configsources == "") {
       m_expected_sources_map = std::map<std::string, int>{};
-      std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), true);
+      std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
+      m_is_source_enabled[0] = true;
       m_single_producer_mode = true;
     } else {
       std::stringstream ss(configsources);
@@ -245,7 +269,7 @@ private:
             m_expected_sources_map[sourcename] = detID;
             m_is_source_enabled[detID] = true;
           } else {
-            HIDRA_ERROR("Detector ID {} cannot be assigned. ID must be between "
+            HIDRA_THROW("Detector ID {} cannot be assigned. ID must be between "
                         "0 and {}",
                         detID,
                         MAX_SOURCES);
@@ -256,8 +280,7 @@ private:
     ////////
 
     if (m_expected_sources_map.empty()) {
-      HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept everything "
-                 "but cannot build full events with more than 1 producer.");
+      HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept only the first source received, assigning it DetectorID 0");
     }
 
     HIDRA_INFO("HidraDataCollector configured");
@@ -267,12 +290,37 @@ private:
     m_event_count = 0;
     m_stop_sent = false;
     m_running = true;
+    m_n_complete_events = 0;
+    m_n_incomplete_events = 0;
     m_pending_events.clear();
 
     if (m_hidraOutput.is_open()) {
       m_hidraOutput.close();
     }
-    m_hidraOutput.open("temp_data.dat", std::ios::binary);
+
+    std::string extension = "." + m_fwType;
+    if (m_fwType == "native") {
+      extension = ".raw";
+    } else if (m_fwType == "root") {
+      extension = ".root";
+    } else if (m_fwType == "slcio") {
+      extension = ".slcio";
+    }
+
+    std::time_t time_now = std::time(nullptr);
+    char time_buff[13];
+    time_buff[12] = 0;
+    std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", std::localtime(&time_now));
+    std::string outputFile = eudaq::FileNamer(m_filePattern)
+                                 .Set('X', extension)
+                                 .Set('R', GetRunNumber())
+                                 .Set('D', std::string(time_buff));
+
+    m_hidraOutput.open(outputFile, std::ios::binary);
+    if (!m_hidraOutput) {
+      HIDRA_THROW("Cannot open Hidra output file {} ", outputFile);
+    }
+    HIDRA_INFO("HidraDataCollector output file {}", outputFile);
 
     HIDRA_INFO("HidraDataCollector start run {}", GetRunNumber());
   }
@@ -280,8 +328,8 @@ private:
   void DoStopRun() override {
     m_stop_sent = true;
     m_running = false;
-
-    FlushOldIncompleteEvents();
+    // TOOD: what do we want to happen to incomplete events when we click stop? If discard, keep the line commented.
+    // FlushOldIncompleteEvents();
     m_pending_events.clear();
     HIDRA_INFO("HidraDataCollector stop run {}", GetRunNumber());
   }
@@ -335,15 +383,20 @@ private:
     auto desc = ev->GetDescription();
     int detectorID = 0;
 
+    if (m_single_producer_mode && m_expected_sources_map.empty() && m_pending_events.empty()) {
+      // if here, we are in single producer mode and this is the first event received, so we assign the source to detID 0
+      HIDRA_INFO("Single producer mode: assigning source {} to detID 0", source);
+      m_expected_sources_map[source] = 0;
+      m_is_source_enabled[0] = true;
+    }
+
     if (!IsExpectedSource(source)) {
       HIDRA_ERROR("Event received from unexpected source {}", source);
       return;
     }
 
-    if (!m_single_producer_mode) {
-      // if here, it is an expected source
-      detectorID = m_expected_sources_map[source];
-    }
+    detectorID = m_expected_sources_map[source];
+    
 
     if (ev->IsBORE()) {
       HIDRA_INFO("Received BORE from {} type= {}", id->GetName(), desc);
@@ -372,7 +425,7 @@ private:
     auto& pending = m_pending_events[trigger_number]; // creates a default if trigger_number
                                                       // does not exist
 
-    ////////////// BEFFERING PENDING //////////
+    ////////////// BUFFERING PENDING //////////
 
     // assign triggerN and time ....
     if (pending.events_by_source.empty()) {
@@ -401,6 +454,7 @@ private:
 
     //////////////////////////////////////////////
 
+
     if (!IsComplete(pending)) { // wait for next received, if this is not complete yet
       auto t_end = std::chrono::high_resolution_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
@@ -424,11 +478,13 @@ private:
 
     // if arriving here, the event is complete
     mergedEvt->SetTag("SYNC_STATUS", "COMPLETE");
+    m_n_complete_events++;
 
-    // WriteEvent(std::move(mergedEvt));
+    //WriteEvent(std::move(mergedEvt));
     hidra::EventSerializer::WriteToStream(*mergedEvt, m_hidraOutput);
-
     ++m_event_count;
+    UpdateStatusTags();
+    
 
     m_pending_events.erase(trigger_number);
 
