@@ -95,7 +95,8 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const std::uint8_t DATA_VERSION = 0x2;
+  const uint8_t DataFormatVersion = 3;
+  
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
   const std::uint16_t EVENT_TRAILER = 0xD04E;
@@ -111,7 +112,7 @@ marker (16 bit)
 
   // specific for data format
   const int MAX_N_DETECTORS = 8;
-  const uint8_t DataFormatVersion = 1;
+  
   const uint32_t TrailerSize = 2;
 
   // TODO: implement missing tags
@@ -195,7 +196,25 @@ marker (16 bit)
     std::vector<uint32_t> block_ids = sub_ev->GetBlockNumList();
     for (uint32_t ib : block_ids) {
       auto block = sub_ev->GetBlock(ib);
-      buffer.insert(buffer.end(), block.begin(), block.end());
+
+      // handling endianness
+      if (sub_ev->HasTag("endianness") && sub_ev->GetTag("endianness") == "BE32"){
+	if (block.size() % 4 != 0){
+	  HIDRA_ERROR("Block from detID {} has size {} but should be interpreted as 4-bytes words",detID,block.size());
+	}
+	else{
+	  for (size_t i = 0; i < block.size(); i += 4) {
+	    // Reverse endian of each 32-bit word
+	    buffer.push_back(block[i + 3]);
+	    buffer.push_back(block[i + 2]);
+	    buffer.push_back(block[i + 1]);
+	    buffer.push_back(block[i + 0]);
+	  }
+	} 
+      } // if endianness == BE32
+      else{
+	buffer.insert(buffer.end(), block.begin(), block.end());
+      }
     }
 
     appendLE(buffer, DETECTOR_EVENT_ENDMARKER);

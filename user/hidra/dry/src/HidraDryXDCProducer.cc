@@ -220,6 +220,7 @@ void HidraDryXDCProducer::Mainloop() {
     ev->SetTag("sanityFlag", sanity_flag);
     ev->SetTag("dataWords", data_size);
     ev->SetTag("eventWords", event_size);
+    ev->SetTag("endianness", "BE32");
 
     std::vector<uint8_t> payload(data_size * sizeof(uint32_t));
     if (data_size > 0) {

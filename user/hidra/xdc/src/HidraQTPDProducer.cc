@@ -418,12 +418,15 @@ private:
     ev->SetEventN(static_cast<uint32_t>(m_evt));
     ev->SetRunN(static_cast<uint32_t>(m_runNumber));
 
+    // TODO: clean clean clean tags everywhere in the class
+    /*
     ev->SetTag("BCNT", std::to_string(bcnt));
     ev->SetTag("WCNT", std::to_string(wcnt));
     ev->SetTag("ADC0", std::to_string(m_adcval[0]));
     ev->SetTag("ADC1", std::to_string(m_adcval[1]));
     ev->SetTag("ADC2", std::to_string(m_adcval[2]));
     ev->SetTag("ADC3", std::to_string(m_adcval[3]));
+    */
 
     ev->SetTag("V977", std::to_string(v977_pattern));
 
@@ -431,6 +434,7 @@ private:
                              reinterpret_cast<uint8_t*>(m_buffer.data()) + bcnt);
     ev->AddBlock(0, raw);
 
+    ev->SetTag("endianness","BE32"); // this tag is needed :)
     SendEvent(std::move(ev));
     ++m_evt;
 
