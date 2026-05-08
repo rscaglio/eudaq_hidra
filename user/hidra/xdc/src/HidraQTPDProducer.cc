@@ -33,7 +33,7 @@ constexpr uint16_t INVALID_ADC = 4444;
 
 constexpr uint32_t DATATYPE_FILLER = 0x06000000;
 
-// V977 registers
+// --- V977 registers ---
 constexpr uint16_t V977_INPUT_SET_REG = 0x0000;
 constexpr uint16_t V977_INPUT_MASK_REG = 0x0002;
 constexpr uint16_t V977_OUTPUT_MASK_REG = 0x000C;
@@ -86,7 +86,7 @@ public:
         m_evt(0),
         m_iped(100),
         m_controllerType(cvV2718),
-        // m_pid(49086)
+        // m_pid(49086) // --- To connect controller via USB --- 
         m_pid(0) {
     m_adcval.fill(INVALID_ADC);
     m_buffer.fill(0);
@@ -101,15 +101,9 @@ public:
     }
   }
 
-  // static const std::string m_id_factory;
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraQTPDProducer");
 
 private:
-  uint64_t m_max_events_p;
-  bool m_eos_sent = false;
-  // --------------------------------------------------------------------------
-  // EUDAQ FSM hooks
-  // --------------------------------------------------------------------------
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
 
@@ -117,18 +111,16 @@ private:
       EUDAQ_THROW("Init configuration is missing");
     }
 
-    // controller setup
+    // --- Controller setup ---
     std::string ctrl = ini->Get("ControllerType", std::string("V2718"));
     if (ctrl == "V2718") {
       m_controllerType = cvV2718;
     }
-    // Add more mappings if you need them:
-    // else if (ctrl == "USB_A4818_V2718") m_controllerType = cvUSB_A4818_V2718;
     else {
       EUDAQ_THROW("Unsupported ControllerType: " + ctrl);
     }
 
-    // m_pid = parse_u32(ini->Get("LinkOrPid", std::string("49086")));
+    // m_pid = parse_u32(ini->Get("LinkOrPid", std::string("49086"))); // --- To connect controller via USB ---
     m_pid = parse_u32(ini->Get("LinkOrPid", std::string("0")));
 
     OpenController();
@@ -139,19 +131,14 @@ private:
   void DoConfigure() override {
     auto conf = GetConfiguration();
     m_evt = 0;
-    m_eos_sent = false;
     if (!conf) {
       EUDAQ_THROW("Run configuration is missing");
-    }
-    m_max_events_p = conf->Get("EX0_MAX_EVENTS", 0);
-    if (m_max_events_p == 0) {
-      EUDAQ_WARN("In hidra.config file: missing max event number initializzation");
     }
     m_iped = static_cast<int>(parse_u16(conf->Get("Iped", std::string("100"))));
 
     m_boards.clear();
 
-    // up to 4 boards, following your standalone example
+    // --- XDC module configuration --- 
     AddBoardFromConf(*conf, 0, "0x06000000", "2", "2");
     AddBoardFromConf(*conf, 1, "0x05000000", "4", "4");
     AddBoardFromConf(*conf, 2, "0x09000000", "8", "8");
@@ -169,12 +156,12 @@ private:
       EUDAQ_THROW("Board initialization failed: " + m_errorString);
     }
 
-    // block transfer setup, same logic as your program
+    // --- Register to perform block transfer ---
     for (std::size_t i = 0; i < m_boards.size(); ++i) {
       WriteReg(0x1004, 0xAA, m_boards[i].baseAddr);
     }
 
-    // same board-specific crate order mapping you had before
+    // --- Set initial (0x02), active (0x03), last (0x01) and inactive (0x00) board ---
     if (m_boards.size() > 0) {
       WriteReg(0x101A, 0x02, m_boards[0].baseAddr);
     }
@@ -191,18 +178,16 @@ private:
     m_adcval.fill(INVALID_ADC);
 
     // --- Configure I/O register ---
-    m_v977_base = parse_u32(conf->Get("V977_BASE", "0x01000000")); // INSERT BASE ADDRESS
+    m_v977_base = parse_u32(conf->Get("V977_BASE", "0x01000000")); // --- Base Address configuration ---
 
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base); // Reset OUTPUT registers
-    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977_base);    // All inputs set to 0
-    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);   // All outputs set to 0
-    WriteReg(V977_INPUT_MASK_REG, 0xFFFE, m_v977_base);   // Deactivate all input channels except channel 0
-    WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977_base);  // Deactivate all output channels except channel 0
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base); // --- Reset all output registers ---
+    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977_base);    // --- All inputs set to 0 ---
+    PrepareForRun(); // --- To VETO the trigger ---
+    WriteReg(V977_INPUT_MASK_REG, 0xFFFE, m_v977_base);   // --- Deactivate all input channels except channel 0 (or the ones you want to use) ---
+    WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977_base);  // --- Deactivate all output channels except channel 0 ---
 
-    EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977_base)); // Config message
+    EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977_base)); 
 
-    // uint16_t v977_pattern_b = ReadReg(V977_INPUT_READ_REG, m_v977_base);
-    // std::cout << "Before:  " << v977_pattern_b << std::endl;
     EUDAQ_INFO("Producer configured");
   }
 
@@ -212,26 +197,23 @@ private:
     m_evt = 0;
     m_adcval.fill(INVALID_ADC);
     m_running = true;
-    // Optional begin-of-run event. This is useful for converters.
     SendBORE();
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); // Clear output register
+    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);   // --- When starting run ---> All outputs set to 0 ---> VETO OFF ---
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); // --- Clear output register ---
     m_thd_run = std::thread(&HidraQTPDProducer::MainLoop, this);
-    m_eos_sent = false;
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
   }
 
   void DoStopRun() override {
     m_running = false;
-    m_eos_sent = true;
     StopAcquisitionThread();
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
-    // EUDAQ_INFO("Stopping run " + std::to_string(m_runNumber));
+    PrepareForRun();
   }
 
   void DoReset() override {
     StopAcquisitionThread();
-    // CloseController();
     m_running = false;
     m_evt = 0;
     m_adcval.fill(INVALID_ADC);
@@ -245,8 +227,7 @@ private:
   }
 
   void RunLoop() override {
-    // This is called by EUDAQ after initialization of the producer instance.
-    // We keep polling continuously and only acquire while m_running == true.
+    // -- Keep polling continuously and only acquire while m_running == true ---
     return;
     while (m_running) {
       if (m_handle < 0) {
@@ -257,13 +238,19 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         continue;
       }
+      // --- Main function to read XDCs and use the I/O Register logic ---
       ReadOneBlockAndSendEvent();
     }
   }
 
+  void PrepareForRun(){
+         WriteReg(V977_OUTPUT_SET_REG, 0x0001, m_v977_base);   // --- VETO ON ---
+	 HIDRA_INFO("trigger vetoed");
+  }	  
+
+
   void MainLoop() {
-    // This is called by EUDAQ after initialization of the producer instance.
-    // We keep polling continuously and only acquire while m_running == true.
+    // -- Keep polling continuously and only acquire while m_running == true ---
     while (m_running) {
       if (m_handle < 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -274,20 +261,16 @@ private:
         continue;
       }
 
+      // --- Main function to read XDCs and use the I/O Register logic ---
       ReadOneBlockAndSendEvent();
     }
   }
 
-  // --------------------------------------------------------------------------
-  // CAEN helpers
-  // --------------------------------------------------------------------------
   void OpenController() {
     if (m_handle >= 0) {
       return;
     }
 
-    // uint32_t pid = m_pid;
-    // uint32_t pid = 49086;
     uint32_t pid = m_pid;
     CVErrorCodes ret = CAENVME_Init2(m_controllerType, &pid, 0, &m_handle);
     if (ret != cvSuccess) {
@@ -330,9 +313,6 @@ private:
       m_errorString = "Cannot write at address " + hex32(baseAddr + reg_addr);
       m_vmeError = true;
     }
-    /*else {
-         HIDRA_INFO("Written {} to reg {} of base address {} ", data, reg_addr, baseAddr);
-    }*/
   }
 
   int InfoWord792(uint32_t w, uint8_t& chan, uint16_t& val) {
@@ -348,13 +328,13 @@ private:
   void InitBoard(const BoardConfig& b) {
     EUDAQ_INFO("Initializing board at " + hex32(b.baseAddr));
 
-    WriteReg(0x1002, b.geoAddr, b.baseAddr); // geo addr
-    WriteReg(0x1006, 0x80, b.baseAddr);      // reset board
+    WriteReg(0x1002, b.geoAddr, b.baseAddr); // --- Geo addr ---
+    WriteReg(0x1006, 0x80, b.baseAddr);      // --- reset XDCs board ---
     if (m_vmeError) {
       EUDAQ_THROW(m_errorString);
     }
 
-    WriteReg(0x1008, 0x80, b.baseAddr); // release reset
+    WriteReg(0x1008, 0x80, b.baseAddr); // --- release reset ---
 
     int model = (ReadReg(0x803E, b.baseAddr) & 0xFF) + ((ReadReg(0x803A, b.baseAddr) & 0xFF) << 8);
 
@@ -376,11 +356,11 @@ private:
 
   void ReadOneBlockAndSendEvent() {
 
-    // uint16_t v977_pattern = ReadReg(V977_INPUT_READ_REG, m_v977_base); //Read input channles of I/O register
-    uint16_t v977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base);
-    bool trigger = v977_pattern & 0x0001; // Trigger is when channel 1 is active
+    uint16_t v977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base); // --- Check input active channels of the I/O Regsiter ---
+    bool trigger = v977_pattern & 0x0001; // --- Trigger is when channel 1 is active ---
 
-    static int cnt = 0; // No trigger check
+    static int cnt = 0;
+    // --- Check on trigger presence --- 
     if (!trigger) {
       if (++cnt % 100000 == 0) {
 
@@ -390,7 +370,7 @@ private:
       return;
     }
 
-    constexpr uint32_t readAddress = 0xAA000000;
+    constexpr uint32_t readAddress = 0xAA000000; // --- Block transfer address ---
     int bcnt = 0;
 
     CVErrorCodes ret = CAENVME_FIFOMBLTReadCycle(m_handle,
@@ -431,9 +411,7 @@ private:
     EUDAQ_INFO("Event Triggered");
     EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
 
-    // Build EUDAQ event
-    // If your installed tag prefers RawEvent::MakeUnique("CAENQTPRaw"),
-    // replace the next line accordingly.
+    // --- Build EUDAQ event ---
     auto ev = eudaq::Event::MakeUnique("CAENQTPRaw");
 
     ev->SetTriggerN(static_cast<uint32_t>(m_evt));
@@ -458,15 +436,6 @@ private:
 
     WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); // Clear output register
 
-    // --- Producer sends a STOP REQUEST to the RC when has produced maximum setted events ---
-    if (!m_eos_sent && m_evt >= m_max_events_p && m_max_events_p > 0) {
-
-      EUDAQ_INFO("Event " + std::to_string(m_evt));
-      m_eos_sent = true;
-      SetStatus(eudaq::Status::STATE_RUNNING, "END_OF_STREAM");
-      SendStatus();
-      EUDAQ_INFO("End of stream reached, waiting for StopRun()");
-    }
   }
 
   void SendBORE() {
@@ -500,7 +469,6 @@ private:
   }
 
   void StopAcquisitionThread() {
-    // kept for symmetry in case you later move acquisition to a dedicated thread
     m_running = false;
 
     if (m_thd_run.joinable()) {
@@ -547,9 +515,9 @@ private:
   uint64_t m_evt;
   int m_iped;
 
-  std::chrono::duration<double> elapsed_t;     // NEW
-  std::chrono::steady_clock::time_point start; // NEW
-  std::chrono::steady_clock::time_point stop;  // NEW
+  std::chrono::duration<double> elapsed_t;
+  std::chrono::steady_clock::time_point start;
+  std::chrono::steady_clock::time_point stop;
 
   CVBoardTypes m_controllerType;
   uint32_t m_pid;
@@ -560,9 +528,6 @@ private:
 
   std::thread m_thd_run;
 };
-
-// const std::string HidraQTPDProducer::m_id_factory = "HidraQTPDProducer";
-// static const uint32_t m_id_factory = eudaq::cstr2hash("HidraQTPDProducer");
 
 namespace {
 auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<HidraQTPDProducer, const std::string&, const std::string&>(
