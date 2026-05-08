@@ -47,7 +47,7 @@ void HidraDryFERSProducer::DoStartRun() {
   bore->SetTag("FileRunNumber", std::to_string(m_file_run_number));
   bore->SetTag("Producer", "HidraDryFERSProducer");
   EUDAQ_INFO("Starting HidraDryFERSProducer run");
-  EUDAQ_INFO("Sending Dry FERS BORE " + GetEventInfo(bore.get()));
+  EUDAQ_INFO("Sending Dry FERS BORE " + hidra::utils::GetEventInfo(bore.get()));
   SendEvent(std::move(bore));
 
   if (m_bytes_read > FILE_HEADER_SIZE) {
@@ -65,7 +65,7 @@ void HidraDryFERSProducer::DoStopRun() {
   eore->SetEORE();
   eore->SetRunN(m_eudaq_run_number);
   eore->SetTag("FileRunNumber", std::to_string(m_file_run_number));
-  EUDAQ_INFO("Sending Dry FERS EORE " + GetEventInfo(eore.get()));
+  EUDAQ_INFO("Sending Dry FERS EORE " + hidra::utils::GetEventInfo(eore.get()));
   m_exit_of_run = true;
   EUDAQ_INFO("Exiting HidraDryFERSProducer Run");
   if (m_thd_run.joinable()) {
@@ -115,20 +115,6 @@ void HidraDryFERSProducer::ReadFileInfo() {
   memcpy(&m_file_run_number, &file_header[7], 2);
   EUDAQ_WARN("Run number from file is " + std::to_string(m_file_run_number));
   eudaq::mSleep(2000);
-}
-
-std::string HidraDryFERSProducer::GetEventInfo(eudaq::Event* ev) {
-  std::string info = "Event Info:";
-  if (ev->IsBORE() || ev->IsEORE()) {
-    info += " runN " + std::to_string(ev->GetRunN());
-  } else {
-    info += " evtN " + std::to_string(ev->GetEventN());
-    info += " trgN " + std::to_string(ev->GetTriggerN());
-    info += " start/stop " + std::to_string(ev->GetTimestampBegin()) + "/" + std::to_string(ev->GetTimestampEnd());
-    info += " nblk " + std::to_string(ev->GetNumBlock());
-    info += " totB " + ev->GetTag("eventWords");
-  }
-  return info;
 }
 
 void HidraDryFERSProducer::sleepUntilNext(uint64_t last_evt, uint64_t current_evt, uint64_t last_real) {
@@ -260,7 +246,7 @@ void HidraDryFERSProducer::Mainloop() {
         sleepUntilNext(evt_time_last_sent / 1000, current_evt->GetTimestampBegin() / 1000, real_time_last_sent);
         // send
         EUDAQ_INFO("Sending DryFERS evt " + std::to_string(ievt) + " (at block " + std::to_string(iblock) + ")-- " +
-                   GetEventInfo(current_evt.get()));
+                   hidra::utils::GetEventInfo(current_evt.get()));
         evt_time_last_sent = current_evt->GetTimestampBegin();
         real_time_last_sent = hidra::utils::getTimeus();
         SendEvent(std::move(current_evt));
@@ -297,7 +283,7 @@ void HidraDryFERSProducer::Mainloop() {
       sleepUntilNext(evt_time_last_sent / 1000, current_evt->GetTimestampBegin() / 1000, real_time_last_sent);
       // send
       EUDAQ_INFO("Sending DryFFRS evt " + std::to_string(ievt) + " (at block " + std::to_string(iblock) + ")-- " +
-                 GetEventInfo(current_evt.get()));
+                 hidra::utils::GetEventInfo(current_evt.get()));
       SendEvent(std::move(current_evt));
       event_size = 0;
       ievt++;

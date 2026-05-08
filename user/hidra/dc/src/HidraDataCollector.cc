@@ -60,7 +60,14 @@ private:
 
   // user custom
 
-  bool IsExpectedSource(std::string& source) { return m_is_source_enabled[m_expected_sources_map.at(source)]; }
+  bool IsExpectedSource(std::string& source) {
+    auto it = m_expected_sources_map.find(source);
+    if (it == m_expected_sources_map.end()) {
+      return false;
+    } else {
+      return m_is_source_enabled[m_expected_sources_map.at(source)];
+    }
+  }
   bool IsExpectedSource(int& detID) { return m_is_source_enabled[detID]; }
 
   bool IsComplete(PendingTrigger& pending) {
@@ -86,21 +93,6 @@ private:
       t_max = std::max(t_max, timestamp);
     }
     return (t_max - t_min);
-  }
-
-  std::string GetEventInfo(eudaq::Event* ev) {
-    std::string info = "Event Info:";
-    info += " n_source " + ev->GetTag("N_SOURCES");
-    info += " trig " + std::to_string(ev->GetTriggerN());
-    info += " ts " + std::to_string(ev->GetTimestampBegin());
-    info += " -- (s/tg/ev/ts) ";
-    for (int isub = 0; isub < ev->GetNumSubEvent(); isub++) {
-      info += "(" + ev->GetSubEvent(isub)->GetTag("Producer") + "/" +
-              std::to_string(ev->GetSubEvent(isub)->GetTriggerN()) + "/" +
-              std::to_string(ev->GetSubEvent(isub)->GetEventN()) + "/" +
-              std::to_string(ev->GetSubEvent(isub)->GetTimestampBegin()) + ")";
-    }
-    return info;
   }
 
   eudaq::EventSP BuildFullEvent(PendingTrigger& pending) {
@@ -136,7 +128,7 @@ private:
       fullEvt->AddSubEvent(std::move(it->second.event));
     }
 
-    EUDAQ_DEBUG("FULL EVENT BUILT: " + GetEventInfo(fullEvt.get()));
+    HIDRA_DEBUG("FULL EVENT BUILT: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
 
     return fullEvt;
   }
@@ -349,7 +341,8 @@ private:
     }
 
     if (!m_single_producer_mode) {
-      detectorID = m_expected_sources_map.at(source);
+      // if here, it is an expected source
+      detectorID = m_expected_sources_map[source];
     }
 
     if (ev->IsBORE()) {

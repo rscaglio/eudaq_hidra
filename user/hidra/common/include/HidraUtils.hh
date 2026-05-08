@@ -12,6 +12,8 @@ namespace hidra::utils {
 std::uint64_t getTimeus();
 std::uint64_t getTimens();
 
+std::string GetEventInfo(eudaq::Event* ev, int opt = 1);
+
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
 #if FMT_VERSION >= 80000
   return fmt::format(fmt::runtime(fmt_str), std::forward<Args>(args)...);
