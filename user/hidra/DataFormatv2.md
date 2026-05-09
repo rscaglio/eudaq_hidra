@@ -1,4 +1,4 @@
-# HIDRA Binary Event Format (v2)
+# HIDRA Binary Event Format (v3)
 
 The binary event format is produced by the `EventSerializer` utility.
 
@@ -55,7 +55,7 @@ Each bit corresponds to a detector ID (`detID`), where bit `N` represents detect
 Detector IDs are assigned in the `DataCollector` configuration through the `EXPECTED_SOURCES` entry in the `.conf` file:
 
 ```ini
-EXPECTED_SOURCES = 6:DryFERSProducer,7:DryXDCProducer
+EXPECTED_SOURCES = 6:DryXDCProducer,7:DryFERSProducer
 ```
 
 Each source is specified as:
@@ -76,13 +76,14 @@ The following detector ID convention is recommended:
 | 0           | Don't use |
 | 1           | XDC       |
 | 2           | FERS      |
+| ...         | ...       |
 | 6           | Dry XDC   |
 | 7           | Dry FERS  |
 
 
-Index 0 is assigned when the collector is run is `single producer` mode.
+Index 0 is assigned when the collector is run in `single producer` mode.
 
-Example: `detectorMask = 0b00000101` means that detectors with `detID = 0` and `detID = 2` are present in the event. The corresponding detector event data blocks follow after the Header endMarker, ordered by increasing `detID`.
+Example: `detectorMask = 0b00000110` means that detectors with `detID = 1` and `detID = 2` are present in the event. The corresponding detector event data blocks follow after the Header endMarker, ordered by increasing `detID`.
 
 
 
