@@ -4,8 +4,10 @@ declare(strict_types=1);
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
 
-$WATCH_DIR = "/home/nicolo/eudaq_hidra/user/hidra/run/monitoring";   // <-- EDIT THIS
-$GLOB      = "*.jsonl";
+
+$EUDAQHIDRA = getenv("EUDAQHIDRA");
+$WATCH_DIR = rtrim($EUDAQHIDRA, "/") . "/run/monitoring/";
+$GLOB = "*.jsonl";
 
 function fail_json(string $msg, int $code = 500): never {
     http_response_code($code);
