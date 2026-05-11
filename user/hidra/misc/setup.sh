@@ -74,6 +74,7 @@ cmake_config() {
             -DEUDAQ_BUILD_ONLINE_ROOT_MONITOR=OFF \
             -DEUDAQ_LIBRARY_BUILD_TTREE=OFF \
             -DUSER_HIDRA_BUILD=ON \
+            -DUSER_HIDRA_DC_ROOT_OUTPUT=ON \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 
     fi
 

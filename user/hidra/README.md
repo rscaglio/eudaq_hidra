@@ -52,6 +52,10 @@ Brief description of the `user/hidra` structure (main folders)
 - `xdc/`       : XDC producers/decoders
 - `common/`    : utilities and shared declarations
 
+The collector documentation now lives in [dc/README.md](dc/README.md). It
+describes the asynchronous binary writer, the optional ROOT writer, and the
+runtime toggles used in the `DataCollector` config.
+
 The main part for running the software after compilation is the `user/hidra/run`
 folder. The scripts in that folder launch the binaries installed into `bin/` and
 are the easiest way to start a test run, for example:
