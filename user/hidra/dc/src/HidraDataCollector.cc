@@ -1,4 +1,5 @@
 #include "HidraDataCollector.hh"
+#include "HidraRootPayloadDecoders.hh"
 #include "HidraUtils.hh"
 #include <eudaq/Event.hh>
 #include <eudaq/Exception.hh>
@@ -222,7 +223,7 @@ void HidraDataCollector::DoConfigure() {
   m_write_binary_output = conf->Get("WRITE_BINARY_OUTPUT", 1);
   m_write_root_output = conf->Get("WRITE_ROOT_OUTPUT", 0);
   m_writer_flush_interval_ms = conf->Get("WRITER_FLUSH_INTERVAL_MS", 50);
-
+ 
   if (!m_write_binary_output && !m_write_root_output) {
     HIDRA_WARN("Both WRITE_BINARY_OUTPUT and WRITE_ROOT_OUTPUT are disabled. Collector will run without file output.");
   }
@@ -233,35 +234,43 @@ void HidraDataCollector::DoConfigure() {
 
   std::string configsources = conf->Get("EXPECTED_SOURCES", "");
 
-  /////// splitting the string
   if (configsources == "") {
     m_expected_sources_map = std::map<std::string, int>{};
     std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
     m_is_source_enabled[0] = true;
     m_single_producer_mode = true;
   } else {
-    std::stringstream ss(configsources);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-      std::stringstream pairStream(token);
-      std::string detIDs, sourcename;
-
-      if (std::getline(pairStream, detIDs, ':') && std::getline(pairStream, sourcename)) {
-        int detID = std::stoi(detIDs);
-        if (detID >= 0 && detID < MAX_SOURCES) {
-          HIDRA_INFO("Detector ID {} assigned to producer {}", detID, sourcename);
-          m_expected_sources_map[sourcename] = detID;
+    std::map<std::string, std::string> tempprod = hidra::utils::parseConfigMap(configsources);
+    for (const auto& kv : tempprod) {
+      const std::string& idetid = kv.first;
+      const std::string& iproducer = kv.second;
+      int detID = std::stoi(idetid);
+      if (detID >= 0 && detID < MAX_SOURCES) {
+          HIDRA_INFO("Detector ID {} assigned to producer {}", detID, iproducer);
+          m_expected_sources_map[iproducer] = detID;
           m_is_source_enabled[detID] = true;
-        } else {
-          HIDRA_THROW("Detector ID {} cannot be assigned. ID must be between "
-                      "0 and {}",
-                      detID,
-                      MAX_SOURCES);
-        }
-      } // end of split :
-    } // end of split ,
+      } else {
+	HIDRA_THROW("Detector ID {} cannot be assigned. ID must be between "
+		    "0 and {}",
+		    detID,
+		    MAX_SOURCES);
+      }
+    }
   }
-  ////////
+
+  m_vme_geo_map.clear();
+  std::string vmecrateconfig = conf->Get("VME_CRATE_1", "");
+  if (vmecrateconfig != ""){
+    std::map<std::string, std::string> tempvme = hidra::utils::parseConfigMap(vmecrateconfig);
+    for (const auto& kv : tempvme) {
+      const std::string& geo = kv.first;
+      const std::string& modname = kv.second;
+      int geoaddr = std::stoi(geo);
+      m_vme_geo_map[geoaddr] = modname;
+      HIDRA_INFO("VME module at geo address {} is {}", geoaddr, modname);
+    }
+  }
+  
 
   if (m_expected_sources_map.empty()) {
     HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept only the first source received, assigning it "
@@ -300,7 +309,9 @@ void HidraDataCollector::DoStartRun() {
 
   if (m_write_root_output) {
     m_root_output_file = MakeOutputFile(".root");
-    auto root_writer = std::make_unique<hidra::HidraRootEventWriter>(m_root_output_file, m_writer_flush_interval_ms);
+    auto root_writer =
+        std::make_unique<hidra::HidraRootEventWriter>(m_root_output_file, m_writer_flush_interval_ms, 32,
+                                                      m_vme_geo_map);
     root_writer->Start();
     if (!root_writer->IsActive()) {
       HIDRA_ERROR("ROOT writer could not start: {}", root_writer->GetLastError());

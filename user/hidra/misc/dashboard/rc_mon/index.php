@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>EUDAQ Run Dashboard</title>
+<title>HIDRA Run Monitoring</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -190,7 +190,7 @@ main {
 <body>
 <header>
   <div>
-    <h1><span id="liveDot" class="status-dot"></span>EUDAQ Control-Room Dashboard</h1>
+    <h1><span id="liveDot" class="status-dot"></span>HIDRA Run Monitoring</h1>
     <div class="sub" id="subtitle">Waiting for data...</div>
   </div>
   <div class="sub" id="clock"></div>
@@ -219,7 +219,7 @@ main {
     </div>
 
     <div class="card">
-      <div class="metric-label">Total EventN</div>
+      <div class="metric-label">Merged EventN</div>
       <div class="metric-value" id="totalEvents">—</div>
     </div>
 
@@ -356,13 +356,17 @@ function render(data) {
   ageEl.textContent = fmtAge(ageSec);
   ageEl.className = ageSec > 10 ? "metric-value stale" : "metric-value";
 
-  let totalEvents = 0;
+ 
+    let totalEvents = 0;
+    /*
   for (const name of deviceNames) {
     const ev = Number(tagValue(devices[name].tags, "EventN"));
     if (Number.isFinite(ev)) {
       totalEvents += ev;
     }
   }
+    */
+    totalEvents = Number(tagValue(devices["HidraDataCollector"].tags,"Completes")) + Number(tagValue(devices["HidraDataCollector"].tags,"Incompletes"));
 
   document.getElementById("totalEvents").textContent = totalEvents;
 

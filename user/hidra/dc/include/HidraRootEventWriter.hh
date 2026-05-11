@@ -3,6 +3,7 @@
 #include <eudaq/Event.hh>
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -11,7 +12,8 @@ namespace hidra {
 class HidraRootEventWriter {
 public:
   HidraRootEventWriter(const std::string& output_file, std::uint64_t flush_interval_ms = 50,
-                       std::size_t flush_every_events = 32);
+                       std::size_t flush_every_events = 32,
+                       std::map<int, std::string> vme_geo_map = {});
   ~HidraRootEventWriter();
 
   void Start();

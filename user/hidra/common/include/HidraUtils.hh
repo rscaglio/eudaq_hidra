@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <fmt/core.h>
 
+#include <type_traits>
+#include <limits>
+#include <string>
+
 #include <eudaq/Event.hh>
 #include <eudaq/Logger.hh>
 
@@ -14,6 +18,8 @@ std::uint64_t getTimens();
 
 std::string GetEventInfo(eudaq::Event* ev, int opt = 1);
 
+std::map<std::string, std::string> parseConfigMap(const std::string& configstring);
+
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
 #if FMT_VERSION >= 80000
   return fmt::format(fmt::runtime(fmt_str), std::forward<Args>(args)...);
@@ -22,31 +28,41 @@ template <typename... Args> std::string format(const std::string& fmt_str, Args&
 #endif
 }
 
-template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag, T default_value) {
-
-  static_assert(std::is_integral<T>::value, "getTagOr only supports integral types");
+inline std::string getTagOr(const eudaq::Event& ev, const std::string& tag, const std::string& default_value) {
 
   if (!ev.HasTag(tag)) {
     EUDAQ_WARN("Returning default value for tag " + tag);
     return default_value;
   }
 
-  const std::string& s = ev.GetTag(tag);
+  return ev.GetTag(tag);
+}
 
+template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag, T default_value) {
+  static_assert(
+      std::is_integral<T>::value,
+      "getTagOr<T> only supports integral types");
+
+  if (!ev.HasTag(tag)){
+    EUDAQ_WARN("Returning default value for tag " + tag);
+    return default_value;
+  }
+
+  const std::string& s = ev.GetTag(tag);
   try {
     unsigned long long v = std::stoull(s);
-
     if (v > std::numeric_limits<T>::max()) {
       EUDAQ_WARN("Returning default value for tag " + tag);
       return default_value;
     }
-
     return static_cast<T>(v);
   } catch (...) {
     EUDAQ_WARN("Returning default value for tag " + tag);
     return default_value;
   }
 }
+
+  
 
 } // namespace hidra::utils
 

@@ -74,6 +74,8 @@ private:
   uint64_t m_sync_timeout_us = 1000000;
   uint64_t m_tstamp_window_ns = 50000;
 
+  std::map<int, std::string> m_vme_geo_map;
+
   bool m_single_producer_mode = false; // when no sources are specified, only the first one is accepted and DetectorID 0 is assigned.
   bool m_write_binary_output = true;
   bool m_write_root_output = false;
@@ -81,6 +83,7 @@ private:
 
   std::string m_filePattern;
   std::string m_fwType;
+  std::string m_xdc_config_json;
   std::string m_binary_output_file;
   std::string m_root_output_file;
 
