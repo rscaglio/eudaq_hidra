@@ -61,7 +61,7 @@ void HidraDryFERSProducer::DoStartRun() {
 }
 
 void HidraDryFERSProducer::DoStopRun() {
-  auto eore = eudaq::Event::MakeUnique("DruFERS");
+  auto eore = eudaq::Event::MakeUnique("DryFERS");
   eore->SetEORE();
   eore->SetRunN(m_eudaq_run_number);
   eore->SetTag("FileRunNumber", std::to_string(m_file_run_number));
