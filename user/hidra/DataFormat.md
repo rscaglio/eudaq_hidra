@@ -1,8 +1,8 @@
-# HIDRA Binary Event Format (v3)
+# HIDRA Binary Event Format (v4)
 
 The binary event format is produced by the `EventSerializer` utility.
 
-All fields are encoded in **little-endian** format.
+All fields except the detector payload are encoded in **little-endian** format. The detector payload itself is stored using the native byte ordering provided by the front-end system. Its endianness is specified by the dedicated `endianness` field and must be used to correctly interpret the payload data.
 
 
 ## Event Structure
@@ -99,11 +99,25 @@ Each detector payload is stored as:
 | 7        | uint32 | `spillNumber`    | Spill number       |
 | 11       | uint64 | `eventTimeBegin` | Begin timestamp    |
 | 19       | uint64 | `eventTimeEnd`   | End timestamp      |
-| 27       | uint32 | `reserved`       | Reserved           |
+| 27       | uint16 | `reserved`       | Reserved           |
+| 29       | uint8  | `reserved`       | Reserved           |
+| 30       | uint8  | `endianness`     | Endianness         |
 | 31       | byte[] | `payload`        | Detector payload   |
 | variable | uint16 | `endMarker`      | `0xDDDD`           |
 
 The payload is the concatenation of all EUDAQ blocks associated to the detector.
+
+The `endianness` field specifies the byte ordering used by the detector payload:
+
+- `0x1`: Little-endian
+- `0x2`: Big-endian
+- `0xFF`: Not specified
+
+The payload byte ordering is preserved as received from the front-end electronics and is **not** converted during event building or serialization. Therefore, the payload endianness may depend on the architecture or firmware implementation of the front-end system producing the data.
+
+
+
+
 
 
 

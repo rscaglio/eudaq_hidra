@@ -17,6 +17,32 @@ std::uint64_t getTimens() {
   return static_cast<std::uint64_t>(ns.count());
 }
 
+std::map<std::string, std::string> parseConfigMap(const std::string& configstring) {
+
+  std::map<std::string, std::string> out_map{};
+
+  if (configstring.empty()) {
+    return out_map;
+  }
+
+  std::stringstream ss(configstring);
+  std::string token;
+
+  while (std::getline(ss, token, ',')) {
+
+    std::stringstream pairStream(token);
+
+    std::string key;
+    std::string val;
+
+    if (std::getline(pairStream, key, ':') && std::getline(pairStream, val)) {
+        out_map[key] = val;
+      }
+  }
+  
+  return out_map;
+}
+
 std::string GetEventInfo(eudaq::Event* ev, int opt) {
 
   std::string info = "Event Info:";

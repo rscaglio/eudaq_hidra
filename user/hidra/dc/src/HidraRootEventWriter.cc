@@ -12,8 +12,11 @@
 #include "TFile.h"
 #include "TTree.h"
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <exception>
+#include <map>
+#include <string>
 #include <vector>
 #define HIDRA_HAS_ROOT_HEADERS 1
 #else
@@ -46,11 +49,26 @@ RootDetectorPayload MakeDetectorPayload(const eudaq::Event& event, int det_id, c
   return detector;
 }
 
+std::string MakeRootBranchName(std::string name) {
+  for (auto& ch : name) {
+    const auto value = static_cast<unsigned char>(ch);
+    if (!std::isalnum(value) && ch != '_') {
+      ch = '_';
+    }
+  }
+  if (name.empty() || std::isdigit(static_cast<unsigned char>(name.front()))) {
+    name.insert(name.begin(), '_');
+  }
+  return name;
+}
+
 } // namespace
 
 struct HidraRootEventWriter::Impl {
-  Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events)
-      : output_file(std::move(output_file)), flush_interval_ms(flush_interval_ms), flush_every_events(flush_every_events) {
+  Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events,
+       std::map<int, std::string> vme_geo_map)
+      : output_file(std::move(output_file)), flush_interval_ms(flush_interval_ms),
+        flush_every_events(flush_every_events), xdc_decoder(std::move(vme_geo_map)) {
     if (this->flush_interval_ms == 0) {
       this->flush_interval_ms = 1;
     }
@@ -82,6 +100,7 @@ struct HidraRootEventWriter::Impl {
   std::vector<std::string> q_name;
   std::vector<double> q_value;
   std::vector<std::string> q_unit;
+  std::map<std::string, std::vector<double>> root_branch_values;
 
   HidraXdcPayloadDecoder xdc_decoder;
   HidraFersPayloadDecoder fers_decoder;
@@ -92,6 +111,9 @@ struct HidraRootEventWriter::Impl {
     q_name.clear();
     q_value.clear();
     q_unit.clear();
+    for (auto& branch : root_branch_values) {
+      branch.second.clear();
+    }
   }
 
   void FillMetadata(const eudaq::Event& event) {
@@ -114,18 +136,50 @@ struct HidraRootEventWriter::Impl {
     }
   }
 
-  void DecodeDetector(int det_id, const std::string& producer, const eudaq::Event& detector_event) {
+  std::vector<double>& EnsureRootBranch(TTree* tree, const std::string& requested_name) {
+    const auto branch_name = MakeRootBranchName(requested_name);
+    auto result = root_branch_values.insert(std::make_pair(branch_name, std::vector<double>{}));
+    auto& values = result.first->second;
+
+    if (result.second) {
+      tree->Branch(branch_name.c_str(), &values);
+    }
+
+    return values;
+  }
+
+  void RegisterKnownRootBranches(TTree* tree) {
+    for (const auto& name : generic_decoder.BranchNames()) {
+      EnsureRootBranch(tree, name);
+    }
+    for (const auto& name : xdc_decoder.BranchNames()) {
+      EnsureRootBranch(tree, name);
+    }
+    for (const auto& name : fers_decoder.BranchNames()) {
+      EnsureRootBranch(tree, name);
+    }
+  }
+
+  void AddBranchValues(TTree* tree, const RootBranchValues& branches) {
+    for (const auto& branch : branches) {
+      auto& values = EnsureRootBranch(tree, branch.first);
+      values.insert(values.end(), branch.second.begin(), branch.second.end());
+    }
+  }
+
+  void DecodeDetector(TTree* tree, int det_id, const std::string& producer, const eudaq::Event& detector_event) {
     auto detector = MakeDetectorPayload(detector_event, det_id, producer);
 
     if (xdc_decoder.Matches(detector)) {
-      xdc_decoder.Decode(detector, detector.quantities);
+      xdc_decoder.Decode(detector, detector.quantities, detector.branches);
     } else if (fers_decoder.Matches(detector)) {
-      fers_decoder.Decode(detector, detector.quantities);
+      fers_decoder.Decode(detector, detector.quantities, detector.branches);
     } else {
-      generic_decoder.Decode(detector, detector.quantities);
+      generic_decoder.Decode(detector, detector.quantities, detector.branches);
     }
 
     AddQuantities(det_id, detector.quantities);
+    AddBranchValues(tree, detector.branches);
   }
 
   void WriteEvent(TTree* tree, const eudaq::Event& event) {
@@ -140,7 +194,7 @@ struct HidraRootEventWriter::Impl {
 
       const int det_id = hidra::utils::getTagOr<int>(*subevent, "detID", index);
       const std::string producer = subevent->HasTag("Producer") ? subevent->GetTag("Producer") : "";
-      DecodeDetector(det_id, producer, *subevent);
+      DecodeDetector(tree, det_id, producer, *subevent);
     }
 
     tree->Fill();
@@ -175,6 +229,7 @@ struct HidraRootEventWriter::Impl {
       tree->Branch("q_name", &q_name);
       tree->Branch("q_value", &q_value);
       tree->Branch("q_unit", &q_unit);
+      RegisterKnownRootBranches(tree.get());
 
       size_t events_since_flush = 0;
       auto last_flush = std::chrono::steady_clock::now();
@@ -239,8 +294,9 @@ struct HidraRootEventWriter::Impl {
 };
 
 HidraRootEventWriter::HidraRootEventWriter(const std::string& output_file, std::uint64_t flush_interval_ms,
-                                           std::size_t flush_every_events)
-    : m_impl(std::make_unique<Impl>(output_file, flush_interval_ms, flush_every_events)) {}
+                                           std::size_t flush_every_events,
+                                           std::map<int, std::string> vme_geo_map)
+    : m_impl(std::make_unique<Impl>(output_file, flush_interval_ms, flush_every_events, std::move(vme_geo_map))) {}
 
 HidraRootEventWriter::~HidraRootEventWriter() { Stop(); }
 
@@ -324,7 +380,8 @@ std::size_t HidraRootEventWriter::GetPendingEventCount() const {
 #else
 
 struct HidraRootEventWriter::Impl {
-  Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events)
+  Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events,
+       std::map<int, std::string>)
       : output_file(std::move(output_file)), flush_interval_ms(flush_interval_ms), flush_every_events(flush_every_events) {}
 
   std::string output_file;
@@ -341,8 +398,9 @@ struct HidraRootEventWriter::Impl {
 };
 
 HidraRootEventWriter::HidraRootEventWriter(const std::string& output_file, std::uint64_t flush_interval_ms,
-                                           std::size_t flush_every_events)
-    : m_impl(std::make_unique<Impl>(output_file, flush_interval_ms, flush_every_events)) {}
+                                           std::size_t flush_every_events,
+                                           std::map<int, std::string> vme_geo_map)
+    : m_impl(std::make_unique<Impl>(output_file, flush_interval_ms, flush_every_events, std::move(vme_geo_map))) {}
 
 HidraRootEventWriter::~HidraRootEventWriter() = default;
 

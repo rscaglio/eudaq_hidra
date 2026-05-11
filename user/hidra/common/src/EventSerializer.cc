@@ -87,7 +87,9 @@ event number (32 bit) [3,4,5,6]
 spill number (0xFFFFFFFF if not applicable) (32 bit) [7,8,9,10]
 eventTime1 (64 bit) [11..18]
 eventTime2 (64 bit) [19..16]
-reserved (32 bit) [17..20]
+reserved (16 bit) [17..18]
+reserved (8 bit) [19]
+Endianness (8 bit) [20]
 Blocks (payload)
 detEventEndMarker (16 bit)
 
@@ -95,7 +97,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 3;
+  const uint8_t DataFormatVersion = 4;
   
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
@@ -105,6 +107,7 @@ marker (16 bit)
   uint8_t placeholder8 = 0xFF;
   uint16_t placeholder16 = 0xFFFF;
   uint32_t placeholder32 = 0xFFFFFFFF;
+  uint8_t reserved8 = 0x0;
   uint16_t reserved16 = 0x0;
   uint32_t reserved32 = 0x0;
   uint64_t reserved64 = 0x0;
@@ -192,31 +195,22 @@ marker (16 bit)
     appendLE(buffer, getTagOr<std::uint32_t>(*sub_ev, "spillNumber", 0xFFFFFFFF));
     appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampBegin()));
     appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampEnd()));
-    appendLE(buffer, reserved32);
+    appendLE(buffer, reserved16);
+    appendLE(buffer, reserved8);
+    std::string endiannessTag = getTagOr(*sub_ev, "endianness", std::string("unknown"));
+    uint8_t endianness = 0xFF;
+    if (endiannessTag.find("LE") != std::string::npos) {
+      endianness &= 0x01;
+    }
+    if (endiannessTag.find("BE") != std::string::npos) {
+      endianness &= 0x02;
+    }
+    appendLE(buffer, endianness);
     std::vector<uint32_t> block_ids = sub_ev->GetBlockNumList();
     for (uint32_t ib : block_ids) {
       auto block = sub_ev->GetBlock(ib);
-
-      // handling endianness
-      if (sub_ev->HasTag("endianness") && sub_ev->GetTag("endianness") == "BE32"){
-	if (block.size() % 4 != 0){
-	  HIDRA_ERROR("Block from detID {} has size {} but should be interpreted as 4-bytes words",detID,block.size());
-	}
-	else{
-	  for (size_t i = 0; i < block.size(); i += 4) {
-	    // Reverse endian of each 32-bit word
-	    buffer.push_back(block[i + 3]);
-	    buffer.push_back(block[i + 2]);
-	    buffer.push_back(block[i + 1]);
-	    buffer.push_back(block[i + 0]);
-	  }
-	} 
-      } // if endianness == BE32
-      else{
-	buffer.insert(buffer.end(), block.begin(), block.end());
-      }
+      buffer.insert(buffer.end(), block.begin(), block.end());
     }
-
     appendLE(buffer, DETECTOR_EVENT_ENDMARKER);
   }
 

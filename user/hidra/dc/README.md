@@ -70,6 +70,7 @@ of the `.conf` file:
 - `WRITE_ROOT_OUTPUT` - enable or disable the ROOT ntuple output
 - `WRITER_FLUSH_INTERVAL_MS` - polling / flush interval used by the writers
 - `WRITER_FLUSH_EVERY_EVENTS` - flush after this many queued events
+- `XDC_CONFIG_JSON` - optional path to a JSON file used by the XDC payload decoders
 
 Example:
 
@@ -81,6 +82,7 @@ WRITE_BINARY_OUTPUT = 1
 WRITE_ROOT_OUTPUT = 0
 WRITER_FLUSH_INTERVAL_MS = 50
 WRITER_FLUSH_EVERY_EVENTS = 32
+XDC_CONFIG_JSON = user/hidra/run/config/root_decoder_config.json
 ```
 
 ## Output modes
@@ -114,6 +116,42 @@ conversion flow:
 The ROOT writer is intended for quick inspection and analysis rather than for
 preserving the raw binary payload as-is.
 
+## ROOT decoder JSON configuration
+
+The ROOT payload decoders can optionally read a JSON file before the ROOT writer
+starts. This is intended for simple hardware lookup tables that influence the
+decoder logic without hard-coding every module choice in C++.
+
+Enable it from the `DataCollector` section:
+
+```ini
+[DataCollector.HidraDataCollector]
+WRITE_ROOT_OUTPUT = 1
+XDC_CONFIG_JSON = /path/to/root_decoder_config.json
+```
+
+The current parser keeps the schema intentionally open. A minimal XDC module
+map can look like this:
+
+```json
+{
+  "XDCModules": {
+    "1": "V792",
+    "5": "V792N"
+  }
+}
+```
+
+Decoder code can then query values with:
+
+```cpp
+const std::string module_type = GetRootDecoderConfigValue("XDCModules", detector.det_id);
+```
+
+For example, detector/module `"1"` returns `"V792"` for the JSON above. Missing
+sections or keys return the supplied fallback, or an empty string if no fallback
+is provided.
+
 ## Notes on payload decoding
 
 The payload decoders are intentionally kept modular:
@@ -136,25 +174,36 @@ check or modify how payloads are parsed:
    - For unknown detectors: `HidraGenericPayloadDecoder` (fallback)
 
 2. **Modify the `Decode()` method**:
-   Each decoder has a `Decode(const eudaq::Event&, Quantities&)` method that
-   extracts quantities from the subevent payload and populates the `Quantities`
-   struct with detector-specific fields.
+   Each decoder has a `Decode(..., std::vector<RootQuantity>&, RootBranchValues&)`
+   method that extracts quantities from the subevent payload. The
+   `RootQuantity` list is kept for the generic `q_*` branches, while
+   `RootBranchValues` is used for detector-specific ROOT branches.
+   If decoding depends on the hardware module, read the JSON value with
+   `GetRootDecoderConfigValue(...)` and branch on that string.
 
 3. **Add new quantities**:
-   - Define the new field in the `Quantities` struct
-   - Extract it in the `Decode()` method from the subevent payload
-   - The `HidraRootEventWriter::WriteEvent()` method will automatically
-     store it in the ROOT tree branches
+   - Extract the value in the `Decode()` method from the subevent payload
+   - Push scalar summaries into the `RootQuantity` list when you want them in
+     `q_det/q_name/q_value/q_unit`
+   - Push vectors into `branches["branch_name"]` when you want a dedicated
+     `std::vector<double>` ROOT branch
+   - The `HidraRootEventWriter::WriteEvent()` method will automatically create
+     and fill custom ROOT tree branches as they appear
 
 4. **ROOT tree branches**:
-   The ROOT writer stores all quantities as vectors in branches:
+   The ROOT writer stores generic quantities as vectors in branches:
    - `q_det` - detector ID for each quantity
    - `q_name` - quantity name (e.g., "energy", "amplitude")
    - `q_value` - numeric value
    - `q_unit` - unit string
+   It also stores detector-specific branches produced by decoders, for example:
+   - `xdc_words`
+   - `fers2_energy_hg`
+   - `fers2_tstamp_us`
 
 Example: to add a new XDC quantity, modify `HidraXdcPayloadDecoder::Decode()`
-to extract and store the value, then update the `Quantities` struct accordingly.
+to extract and store the value in either the generic quantities or a named
+`RootBranchValues` vector.
 
 The worker thread that owns the ROOT I/O will handle writing all quantities to
 the ntuple automatically.
