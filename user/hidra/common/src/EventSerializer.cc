@@ -227,7 +227,7 @@ marker (16 bit)
   return buffer;
 }
 
-void EventSerializer::WriteToStream(const eudaq::Event& event, std::ostream& out) {
+int EventSerializer::WriteToStream(const eudaq::Event& event, std::ostream& out) {
   const auto buffer = Serialize(event);
 
   out.write(reinterpret_cast<const char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
@@ -235,9 +235,11 @@ void EventSerializer::WriteToStream(const eudaq::Event& event, std::ostream& out
   if (!out) {
     throw std::runtime_error("Failed to write event to stream");
   }
+
+  return buffer.size();
 }
 
-void EventSerializer::WriteToFile(const eudaq::Event& event, const std::string& filename) {
+int EventSerializer::WriteToFile(const eudaq::Event& event, const std::string& filename) {
 
   const auto buffer = Serialize(event);
 
@@ -247,6 +249,8 @@ void EventSerializer::WriteToFile(const eudaq::Event& event, const std::string& 
   }
 
   output.write(reinterpret_cast<const char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
+
+  return buffer.size();
 }
 
 } // namespace hidra

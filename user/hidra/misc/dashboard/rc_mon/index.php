@@ -219,7 +219,7 @@ main {
     </div>
 
     <div class="card">
-      <div class="metric-label">Merged EventN</div>
+      <div class="metric-label">Events on disk</div>
       <div class="metric-value" id="totalEvents">—</div>
     </div>
 
@@ -366,7 +366,7 @@ function render(data) {
     }
   }
     */
-    totalEvents = Number(tagValue(devices["HidraDataCollector"].tags,"Completes")) + Number(tagValue(devices["HidraDataCollector"].tags,"Incompletes"));
+    totalEvents = Number(tagValue(devices["HidraDataCollector"].tags,"EventsOnDisk")) || 0;
 
   document.getElementById("totalEvents").textContent = totalEvents;
 

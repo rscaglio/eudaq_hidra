@@ -17,7 +17,6 @@ namespace hidra {
 
 namespace {
 
-
 template <typename T> T ReadLE(const std::vector<std::uint8_t>& buffer, std::size_t offset) {
   T value = 0;
   std::memcpy(&value, buffer.data() + offset, sizeof(T));
@@ -52,11 +51,13 @@ void AddBranchValues(RootBranchValues& branches, const std::string& name, const 
 
 } // namespace
 
+std::vector<std::string> RootPayloadDecoder::BranchNames() const {
+  return {};
+}
 
-
-std::vector<std::string> RootPayloadDecoder::BranchNames() const { return {}; }
-
-bool HidraGenericPayloadDecoder::Matches(const RootDetectorPayload&) const { return true; }
+bool HidraGenericPayloadDecoder::Matches(const RootDetectorPayload&) const {
+  return true;
+}
 
 HidraXdcPayloadDecoder::HidraXdcPayloadDecoder(std::map<int, std::string> vme_geo_map)
     : m_vme_geo_map(std::move(vme_geo_map)) {}
@@ -65,7 +66,8 @@ std::vector<std::string> HidraGenericPayloadDecoder::BranchNames() const {
   return {"payload_bytes", "timestamp_span_ns"};
 }
 
-void HidraGenericPayloadDecoder::Decode(const RootDetectorPayload& detector, std::vector<RootQuantity>& quantities,
+void HidraGenericPayloadDecoder::Decode(const RootDetectorPayload& detector,
+                                        std::vector<RootQuantity>& quantities,
                                         RootBranchValues& branches) const {
   AddQuantity(quantities, "payload_bytes", static_cast<double>(detector.payload.size()), "B");
   const auto span_ns = (detector.event_time_end >= detector.event_time_begin)
@@ -90,11 +92,11 @@ std::vector<std::string> HidraXdcPayloadDecoder::BranchNames() const {
   return names;
 }
 
-void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector, std::vector<RootQuantity>& quantities,
+void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
+                                    std::vector<RootQuantity>& quantities,
                                     RootBranchValues& branches) const {
   HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
 
-  
   const auto payload_size = detector.payload.size();
   if (payload_size % 4 != 0) {
     HIDRA_ERROR("XDC payload size is not a multiple of 4 bytes {}. Aborting", payload_size);
@@ -109,74 +111,81 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector, std::ve
   std::vector<std::uint32_t> words(word_count);
   std::memcpy(words.data(), detector.payload.data(), word_count * sizeof(std::uint32_t));
 
-  std::vector<double> ADCvalues(1500, -1);
-  std::vector<double> ADCflags(1500, -1);
+  const int max_channel_index = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map);
+  std::vector<double> ADCvalues(max_channel_index, -1);
+  std::vector<double> ADCflags(max_channel_index, -1);
   std::vector<double> TDCvalues(1500, -1);
   std::vector<double> TDCflags(1500, -1);
 
-  uint8_t expected_word_mask = 0b010; //0b010 is header, 0b000 is channel, 0b100 is trailer
+  uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
 
   for (auto it = words.begin(); it != words.end(); ++it) {
 
     auto word = *it;
 
     if ((word & 0xFE000000) == 0xFE000000) { // this is expected at the end of buffer
-      continue; 
+      continue;
     }
 
     else {
 
-    expected_word_mask = 0b010;
+      expected_word_mask = 0b010;
 
-    ADCHeaderWord W{word};
+      ADCHeaderWord W{word};
 
-    if (W.type() != expected_word_mask) {
-      HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Header Word. Aborting {}", word, W.type(), word & 0xFE000000);
-      return;
-    }
-
-    int nchan = W.cnt();
-    const auto module_it = m_vme_geo_map.find(W.geo());
-    const std::string* module_type = module_it == m_vme_geo_map.end() ? nullptr : &module_it->second;
-
-
-    expected_word_mask = 0b000;
-    for (int ichan = 0; ichan < nchan; ++ichan) {
-      ++it;
-      word = *it;
-      if (module_type == nullptr || *module_type == "V792" || *module_type == "V862") { // Like this V792 is the default
-        V792Word V{word};
-        if (V.type() != expected_word_mask) {
-          HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Channel Word. Aborting", word, V.type() );
-          return;
-        }
-        if (V.geo() != W.geo()) {
-          HIDRA_ERROR("Mismatched geo in XDC words: header geo {} vs channel geo {}. Aborting", W.geo(), V.geo());
-          return;
-        }
-      int encoded_channel = V.geo()*100 + V.channel();
-      ADCvalues[encoded_channel] = V.value();
-      ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
-
-      } // if 792 or 862
-      else{
-        HIDRA_ERROR("Unknown XDC module type {} for crate {} geo {}. Cannot decode channel word. Aborting", *module_type, W.crate(), W.geo());
+      if (W.type() != expected_word_mask) {
+        HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Header Word. Aborting {}",
+                    word,
+                    W.type(),
+                    word & 0xFE000000);
         return;
       }
 
-    } // loop over channels
+      int nchan = W.cnt();
+      const auto module_it = m_vme_geo_map.find(W.geo());
+      const std::string module_type = module_it == m_vme_geo_map.end() ? "unknown" : module_it->second;
 
-    ++it;
-    word = *it;
+      expected_word_mask = 0b000;
+      for (int ichan = 0; ichan < nchan; ++ichan) {
+        ++it;
+        word = *it;
+        if (module_type == "unknown" || module_type == "V792" ||
+            module_type == "V862") { // Like this, V792 is the default
+          V792Word V{word};
+          if (V.type() != expected_word_mask) {
+            HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Channel Word. Aborting", word, V.type());
+            return;
+          }
+          if (V.geo() != W.geo()) {
+            HIDRA_ERROR("Mismatched geo in XDC words: header geo {} vs channel geo {}. Aborting", W.geo(), V.geo());
+            return;
+          }
+          int encoded_channel = (module_type == "unknown") ? V.channel() : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), V.channel());
+          ADCvalues[encoded_channel] = V.value();
+          ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
 
-    expected_word_mask = 0b100;
+        } // if 792 or 862 or unknown
+        else {
+          HIDRA_ERROR("Unknown XDC module type {} for crate {} geo {}. Cannot decode channel word. Aborting",
+                      module_type,
+                      W.crate(),
+                      W.geo());
+          return;
+        }
 
-    ADCTrailerWord T{word};
-    if (T.type() != expected_word_mask) {
-      HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Trailer Word. Aborting", word, T.type());
-      return;
+      } // loop over channels
+
+      ++it;
+      word = *it;
+
+      expected_word_mask = 0b100;
+
+      ADCTrailerWord T{word};
+      if (T.type() != expected_word_mask) {
+        HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Trailer Word. Aborting", word, T.type());
+        return;
+      }
     }
-  }
   }
 
   AddBranchValues(branches, "ADCs", ADCvalues);
@@ -205,7 +214,8 @@ std::vector<std::string> HidraFersPayloadDecoder::BranchNames() const {
   return names;
 }
 
-void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector, std::vector<RootQuantity>& quantities,
+void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
+                                     std::vector<RootQuantity>& quantities,
                                      RootBranchValues& branches) const {
   HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
 

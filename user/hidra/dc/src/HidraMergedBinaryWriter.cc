@@ -31,6 +31,7 @@ void HidraMergedBinaryWriter::Start() {
     m_has_error = false;
     m_error_message.clear();
     m_events_written = 0;
+    m_bytes_written = 0;
     m_events.clear();
   }
 
@@ -106,6 +107,11 @@ uint64_t HidraMergedBinaryWriter::GetWrittenEventCount() const {
   return m_events_written;
 }
 
+uint64_t HidraMergedBinaryWriter::GetWrittenByteCount() const {
+  std::lock_guard<std::mutex> lock(m_mutex);
+  return m_bytes_written;
+}
+
 void HidraMergedBinaryWriter::WriterLoop() {
   std::ofstream output;
 
@@ -138,8 +144,9 @@ void HidraMergedBinaryWriter::WriterLoop() {
         if (!event) {
           continue;
         }
-        EventSerializer::WriteToStream(*event, output);
+        uint64_t bytes_written = EventSerializer::WriteToStream(*event, output);
         ++m_events_written;
+        m_bytes_written += bytes_written;
       }
 
       if (!local_batch.empty()) {
