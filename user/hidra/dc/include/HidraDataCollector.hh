@@ -72,6 +72,7 @@ private:
   std::vector<long long> m_calib_timing_events;
   long long m_calib_timing_mean = 0;
   long long m_calib_timing_spread = 0;
+  bool m_calib_timing_needed = true;
   bool m_calib_timing_validated = false;
   std::vector<bool> m_is_source_enabled = std::vector<bool>(MAX_SOURCES, false);
   std::map<std::string, int> m_expected_sources_map;

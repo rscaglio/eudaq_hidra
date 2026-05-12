@@ -2,6 +2,11 @@
 
 #include <chrono>
 #include <sstream>
+#include <utility>
+#include <vector>
+#include <cmath>
+#include <map>
+#include <string>
 
 namespace hidra::utils {
 
@@ -15,6 +20,25 @@ std::uint64_t getTimens() {
   const auto now = std::chrono::system_clock::now();
   const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch());
   return static_cast<std::uint64_t>(ns.count());
+}
+
+std::pair<long long, long long> ComputeMeanAndStdDev(const std::vector<long long> &values){
+  // TOOD: implement this
+  double mean = 0;
+  double mean2 = 0;
+  double stddev = 0;
+  if (values.empty()) {
+    return {mean, stddev};
+  }
+  for (const auto& v : values) {
+    long long v_safe = v - values[0]; // to avoid overflow, we compute mean and stddev of (v - v0), which has the same stddev as v, and mean that is shifted by v0.
+    mean += v_safe;
+    mean2 += v_safe * v_safe;
+  }
+  mean /= values.size();
+  mean2 /= values.size();
+  stddev = std::sqrt(mean2 - mean * mean);
+  return {(long long)(values[0] + mean), (long long)stddev};
 }
 
 std::map<std::string, std::string> parseConfigMap(const std::string& configstring) {
