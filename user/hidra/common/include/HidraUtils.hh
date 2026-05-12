@@ -13,6 +13,12 @@
 
 namespace hidra::utils {
 
+const std::map<std::string, std::map<std::string, int>> VMESpec{
+  {"V792", {{"nchannels", 32}, {"dummy", 0}}},
+  {"V792N", {{"nchannels", 16}, {"dummy", 0}}},
+  {"V862", {{"nchannels", 32}, {"dummy", 0}}}
+};
+
 std::uint64_t getTimeus();
 std::uint64_t getTimens();
 
@@ -20,11 +26,8 @@ std::string GetEventInfo(eudaq::Event* ev, int opt = 1);
 
 std::map<std::string, std::string> parseConfigMap(const std::string& configstring);
 
-const std::map<std::string, std::map<std::string, int>> VMESpec{
-  {"V792", {{"nchannels", 32}, {"dummy", 0}}},
-  {"V792N", {{"nchannels", 16}, {"dummy", 0}}},
-  {"V862", {{"nchannels", 32}, {"dummy", 0}}}
-};
+std::pair<long long, long long> ComputeMeanAndStdDev(const std::vector<long long>& values);
+
 
 int computeADCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel);
 

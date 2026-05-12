@@ -382,8 +382,15 @@ private:
           timestamp_set = true;
         }
 
-        ev->AddBlock(static_cast<uint32_t>(board_id), event.payload);
-        total_payload_bytes += event.payload.size();
+        // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID AND THE BLOCK SIZE 
+        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 3u);
+        std::vector<uint8_t> ext_block(ext_block_size);
+        ext_block[0] = static_cast<uint8_t>(ext_block_size);
+        ext_block[1] = static_cast<uint8_t>(ext_block_size >> 8);
+        ext_block[2] = static_cast<uint8_t>(board_id);
+        std::memcpy(ext_block.data() + 3u, event.payload.data(), event.payload.size());
+        ev->AddBlock(static_cast<uint32_t>(board_id), ext_block);
+        total_payload_bytes += ext_block.size();
         queue.pop_front();
       }
 
