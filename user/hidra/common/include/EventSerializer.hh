@@ -12,8 +12,8 @@ class EventSerializer {
 public:
   static std::vector<std::uint8_t> Serialize(const eudaq::Event& event);
 
-  static void WriteToFile(const eudaq::Event& event, const std::string& filename);
-  static void WriteToStream(const eudaq::Event& event, std::ostream& out);
+  static int WriteToFile(const eudaq::Event& event, const std::string& filename);
+  static int WriteToStream(const eudaq::Event& event, std::ostream& out);
 };
 
 } // namespace hidra

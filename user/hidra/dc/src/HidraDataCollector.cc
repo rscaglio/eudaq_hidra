@@ -1,6 +1,7 @@
 #include "HidraDataCollector.hh"
 #include "HidraRootPayloadDecoders.hh"
 #include "HidraUtils.hh"
+#include <cmath>
 #include <eudaq/Event.hh>
 #include <eudaq/Exception.hh>
 #include <eudaq/FileNamer.hh>
@@ -10,6 +11,7 @@
 #include <cstdint>
 #include <ctime>
 #include <map>
+#include <numeric>
 #include <string>
 
 // user custom
@@ -180,6 +182,10 @@ void HidraDataCollector::UpdateStatusTags() {
   SetStatusTag("Pending", std::to_string(m_pending_events.size()));
   SetStatusTag("Completes", std::to_string(m_n_complete_events));
   SetStatusTag("Incompletes", std::to_string(m_n_incomplete_events));
+  SetStatusTag("EventsOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenEventCount() : 0));
+  SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount()/1000 : 0));
+  SetStatusTag("CalibTimingValid", m_calib_timing_validated ? "Yes" : "No");
+  SetStatusTag("CalibTimingSpread", std::to_string(m_calib_timing_spread));
   SendStatus();
 }
 
@@ -199,6 +205,7 @@ void HidraDataCollector::DoInitialise() {
 
   m_event_count = 0;
   m_pending_events.clear();
+  m_calib_timing_events.clear();
 
   HIDRA_INFO("HidraDataCollector initialized");
 }
@@ -209,6 +216,7 @@ void HidraDataCollector::DoConfigure() {
   m_event_count = 0;
   m_stop_sent = false;
   m_pending_events.clear();
+  m_calib_timing_events.clear();
 
   m_expected_sources_map.clear();
   std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
@@ -287,6 +295,7 @@ void HidraDataCollector::DoStartRun() {
   m_n_complete_events = 0;
   m_n_incomplete_events = 0;
   m_pending_events.clear();
+  m_calib_timing_events.clear();
 
   m_binary_writer.reset();
   m_root_writer.reset();
@@ -331,6 +340,7 @@ void HidraDataCollector::DoStopRun() {
   // TOOD: what do we want to happen to incomplete events when we click stop? If discard, keep the line commented.
   FlushOldIncompleteEvents();
   m_pending_events.clear();
+  m_calib_timing_events.clear();
 
   if (m_binary_writer) {
     m_binary_writer->Stop();
@@ -348,6 +358,7 @@ void HidraDataCollector::DoReset() {
   m_running = false;
   m_max_events = 0;
   m_pending_events.clear();
+  m_calib_timing_events.clear();
   m_expected_sources_map.clear();
   std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
 
@@ -476,8 +487,26 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
     return;
   }
 
+  if (m_calib_timing_events.size() < CALIB_TIMING_EVENTS) {
+    m_calib_timing_events.push_back((long long)TimestampSpread(pending));
+  }
+  else if (m_calib_timing_events.size() == CALIB_TIMING_EVENTS) {
+    m_calib_timing_mean = std::accumulate(m_calib_timing_events.begin(), m_calib_timing_events.end(), 0LL) / CALIB_TIMING_EVENTS;
+    long long sq_sum = std::inner_product(m_calib_timing_events.begin(), m_calib_timing_events.end(), m_calib_timing_events.begin(), 0LL);
+    m_calib_timing_spread = 3* std::sqrt(sq_sum / CALIB_TIMING_EVENTS - m_calib_timing_mean * m_calib_timing_mean);
+    HIDRA_INFO("Calibration of timestamp spread: mean = {} ns, spread = {} ns", m_calib_timing_mean, m_calib_timing_spread);
+    m_calib_timing_validated = true;
+    for (long long t : m_calib_timing_events) {
+      if (std::abs(t - m_calib_timing_mean) > m_calib_timing_spread) {
+        HIDRA_ERROR("Calibrated timestamp spread: event with {} ns spread is outside of mean +/- 3*spread. Check your timing!", t);
+        m_calib_timing_validated = false;
+      }
+    }
+  }
+
+
   uint64_t tstampSpread = TimestampSpread(pending);
-  if (tstampSpread > m_tstamp_window_ns) {
+  if (std::abs((long long)tstampSpread - m_calib_timing_mean) > m_calib_timing_spread) {
     HIDRA_ERROR("Timestamp mismatch for trigger {}, max-min is {}", trigger_number, tstampSpread);
     // TODO: handle this
   }

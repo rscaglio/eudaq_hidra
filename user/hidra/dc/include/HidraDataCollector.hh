@@ -68,6 +68,11 @@ private:
   bool m_stop_sent = false;
   bool m_running = false;
 
+  const int CALIB_TIMING_EVENTS = 100;
+  std::vector<long long> m_calib_timing_events;
+  long long m_calib_timing_mean = 0;
+  long long m_calib_timing_spread = 0;
+  bool m_calib_timing_validated = false;
   std::vector<bool> m_is_source_enabled = std::vector<bool>(MAX_SOURCES, false);
   std::map<std::string, int> m_expected_sources_map;
   std::map<uint64_t, PendingTrigger> m_pending_events;

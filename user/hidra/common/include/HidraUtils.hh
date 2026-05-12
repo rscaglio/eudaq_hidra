@@ -20,6 +20,16 @@ std::string GetEventInfo(eudaq::Event* ev, int opt = 1);
 
 std::map<std::string, std::string> parseConfigMap(const std::string& configstring);
 
+const std::map<std::string, std::map<std::string, int>> VMESpec{
+  {"V792", {{"nchannels", 32}, {"dummy", 0}}},
+  {"V792N", {{"nchannels", 16}, {"dummy", 0}}},
+  {"V862", {{"nchannels", 32}, {"dummy", 0}}}
+};
+
+int computeADCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel);
+
+int computeMaxADCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
+
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
 #if FMT_VERSION >= 80000
   return fmt::format(fmt::runtime(fmt_str), std::forward<Args>(args)...);

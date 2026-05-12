@@ -27,6 +27,7 @@ public:
   bool HasError() const;
   std::string GetLastError() const;
   uint64_t GetWrittenEventCount() const;
+  uint64_t GetWrittenByteCount() const;
 
 private:
   void WriterLoop();
@@ -42,6 +43,7 @@ private:
   bool m_has_error = false;
   std::string m_error_message;
   uint64_t m_events_written = 0;
+  uint64_t m_bytes_written = 0;
 };
 
 } // namespace hidra
