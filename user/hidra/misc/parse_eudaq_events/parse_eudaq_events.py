@@ -386,7 +386,7 @@ def get_file_statistics(parser: EUDAQEventParser) -> Dict[str, Any]:
         )
         
         # Count XDC and FERS events
-        has_xdc = any(key in ev.tags for key in ['dataWords', 'eventWords', 'spillNumber'])
+        has_xdc = any(key in ev.tags for key in ['dataWords', 'detectorDataSize', 'spillNumber'])
         has_fers = 'FERS' in ev.description or 'fers' in ev.description.lower()
         
         if has_xdc:

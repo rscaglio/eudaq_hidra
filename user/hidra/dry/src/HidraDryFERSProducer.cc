@@ -241,7 +241,7 @@ void HidraDryFERSProducer::Mainloop() {
       if (have_open_evt && trigger_id > current_trigger_id) {
 
         // prepare sending
-        current_evt->SetTag("eventWords", std::to_string(event_size));
+        current_evt->SetTag("detectorDataSize", std::to_string(event_size));
         current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
         sleepUntilNext(evt_time_last_sent / 1000, current_evt->GetTimestampBegin() / 1000, real_time_last_sent);
         // send
@@ -278,7 +278,7 @@ void HidraDryFERSProducer::Mainloop() {
 
     if (have_open_evt && current_evt) {
       // prepare sending
-      current_evt->SetTag("eventWords", std::to_string(event_size));
+      current_evt->SetTag("detectorDataSize", std::to_string(event_size));
       current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
       sleepUntilNext(evt_time_last_sent / 1000, current_evt->GetTimestampBegin() / 1000, real_time_last_sent);
       // send

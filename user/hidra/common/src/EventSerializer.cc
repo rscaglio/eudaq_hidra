@@ -97,7 +97,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 5;
+  const uint8_t DataFormatVersion = 6;
   
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
@@ -153,6 +153,8 @@ marker (16 bit)
   // SERIALIZING SUB-EVENTS
   for (int is = 0; is < NSources; is++) {
 
+    int anchorpoint_subdetector_payload_1 = buffer.size();
+
     auto sub_ev = event.GetSubEvent(is);
     if (!sub_ev) {
       HIDRA_ERROR("Sub event index {} does not exist for trigger {}. "
@@ -178,17 +180,7 @@ marker (16 bit)
 
     detMask |= (1 << detID);
 
-    uint16_t ev_size_1 = getTagOr<std::uint16_t>(*sub_ev, "eventWords", 0xFEFE);
-    uint16_t ev_size_2 = getTagOr<std::uint16_t>(event, detIDs + "_size", 0xFDFD);
-    if (ev_size_1 != ev_size_2) {
-      HIDRA_ERROR("Data format check failed at trigger {}: inconsistent "
-                  "datasize tags {} vs {}",
-                  event.GetTriggerN(),
-                  ev_size_1,
-                  ev_size_2);
-    }
-    writeLE(buffer, anchorpoint_detsize + 2 * detID, ev_size_1);
-
+  
     appendLE(buffer, DETECTOR_EVENT_MARKER);
     appendLE(buffer, static_cast<std::uint8_t>(detID));
     appendLE(buffer, static_cast<std::uint32_t>(sub_ev->GetTriggerN()));
@@ -207,11 +199,28 @@ marker (16 bit)
     }
     appendLE(buffer, endianness);
     std::vector<uint32_t> block_ids = sub_ev->GetBlockNumList();
+
+    // appending real payload blocks
     for (uint32_t ib : block_ids) {
       auto block = sub_ev->GetBlock(ib);
       buffer.insert(buffer.end(), block.begin(), block.end());
     }
+    
     appendLE(buffer, DETECTOR_EVENT_ENDMARKER);
+
+    int anchorpoint_subdetector_payload_2 = buffer.size();
+
+    int subdetector_payload_size = anchorpoint_subdetector_payload_2 - anchorpoint_subdetector_payload_1;
+    int16_t ev_size_1 = getTagOr<std::uint16_t>(*sub_ev, "detectorDataSize", 0xFEDE);
+    if (subdetector_payload_size > 0xFFFF || static_cast<int16_t>(subdetector_payload_size) != ev_size_1 + 33) {
+      // TODO: do not hardcode "33"
+      HIDRA_ERROR("Subdetector payload size {} don't match the detectorDataSize tag {} for detID {}. ",
+                  subdetector_payload_size,
+                  ev_size_1,
+                  detID);
+      // TODO: handle this
+    }
+    writeLE(buffer, anchorpoint_detsize + 2 * detID, static_cast<std::uint16_t>(subdetector_payload_size & 0xFFFF));
   }
 
   // updating detector mask
