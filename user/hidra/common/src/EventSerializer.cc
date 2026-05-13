@@ -97,7 +97,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 4;
+  const uint8_t DataFormatVersion = 5;
   
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
@@ -134,13 +134,13 @@ marker (16 bit)
   appendLE(buffer, reserved64); // reserved
   appendLE(buffer, reserved32); // reserved
   int anchorpoint_detmask = buffer.size();
-  appendLE(buffer, placeholder8); // detector mask
+  appendLE(buffer, reserved8); // detector mask
 
   int NSources = std::stoi(event.GetTag("N_SOURCES"));
 
   int anchorpoint_detsize = buffer.size();
   for (int is = 0; is < MAX_N_DETECTORS; is++) {
-    appendLE(buffer, placeholder16); // data size for the subdetector
+    appendLE(buffer, reserved16); // data size for the subdetector
   }
 
   appendLE(buffer, EVENT_HEADER_ENDMARKER);

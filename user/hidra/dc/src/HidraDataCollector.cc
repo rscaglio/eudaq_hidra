@@ -411,6 +411,11 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
     return;
   }
 
+  if (hidra::utils::getTagOr(*ev, "DoNotBuild", std::string("no"), false) == "yes") {
+    // Utilities to process non-physical events used for communication
+    return;
+  }
+
   if (!ev) {
     HIDRA_WARN("HidraDataCollector received null event");
     return;

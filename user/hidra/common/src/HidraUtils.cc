@@ -95,6 +95,11 @@ int computeADCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int 
 int computeMaxADCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map) {
   int max_channel = 0;
 
+  if (vme_geo_map.empty()) {
+    HIDRA_ERROR("VME geo map is empty. Cannot compute max ADC channel index. Returning 1500");
+    return 1500;
+  }
+
   for (const auto& pair : vme_geo_map) {
     const std::string& module_type = pair.second;
     const auto spec = hidra::utils::VMESpec.find(module_type);

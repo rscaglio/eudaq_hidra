@@ -92,9 +92,11 @@ struct HidraRootEventWriter::Impl {
   std::uint64_t event_time = 0;
   std::uint32_t spill_number = 0;
   std::uint8_t detector_mask = 0;
+  std::uint8_t trigger_mask = 0;
+  std::uint32_t event_flags = 0;
   std::uint32_t event_size = 0;
   int n_detectors = 0;
-  std::string sync_status;
+  
 
   std::vector<int> q_det;
   std::vector<std::string> q_name;
@@ -122,9 +124,10 @@ struct HidraRootEventWriter::Impl {
     event_time = event.GetTimestampBegin();
     spill_number = hidra::utils::getTagOr<std::uint32_t>(event, "spillNumber", 0xFFFFFFFF);
     detector_mask = hidra::utils::getTagOr<std::uint8_t>(event, "detectorMask", 0xFF);
+    trigger_mask = hidra::utils::getTagOr<std::uint8_t>(event, "triggerMask", 0xFF);
+    event_flags = hidra::utils::getTagOr<std::uint32_t>(event, "eventFlags", 0);
     event_size = hidra::utils::getTagOr<std::uint32_t>(event, "eventSize", 0);
     n_detectors = event.GetNumSubEvent();
-    sync_status = event.HasTag("SYNC_STATUS") ? event.GetTag("SYNC_STATUS") : "";
   }
 
   void AddQuantities(int det_id, const std::vector<RootQuantity>& quantities) {
@@ -222,13 +225,17 @@ struct HidraRootEventWriter::Impl {
       tree->Branch("event_time", &event_time, "event_time/l");
       tree->Branch("spill_number", &spill_number, "spill_number/i");
       tree->Branch("detector_mask", &detector_mask, "detector_mask/b");
+      tree->Branch("trigger_mask", &trigger_mask, "trigger_mask/b");
       tree->Branch("event_size", &event_size, "event_size/i");
+      tree->Branch("event_flags", &event_flags, "event_flags/i");
       tree->Branch("n_detectors", &n_detectors, "n_detectors/I");
-      tree->Branch("sync_status", &sync_status);
+      /* 
+      TODO: Clean the rest of the code and delete these obsolete vectors and all the functions specifically for filling them, then remove these branches as well
       tree->Branch("q_det", &q_det);
       tree->Branch("q_name", &q_name);
       tree->Branch("q_value", &q_value);
       tree->Branch("q_unit", &q_unit);
+      */
       RegisterKnownRootBranches(tree.get());
 
       size_t events_since_flush = 0;
