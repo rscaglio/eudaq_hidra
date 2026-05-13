@@ -41,23 +41,27 @@ template <typename... Args> std::string format(const std::string& fmt_str, Args&
 #endif
 }
 
-inline std::string getTagOr(const eudaq::Event& ev, const std::string& tag, const std::string& default_value) {
+inline std::string getTagOr(const eudaq::Event& ev, const std::string& tag, const std::string& default_value, bool doComplain = true) {
 
   if (!ev.HasTag(tag)) {
-    EUDAQ_WARN("Returning default value for tag " + tag);
+    if (doComplain) {
+      EUDAQ_WARN("Returning default value for tag " + tag);
+    }
     return default_value;
   }
 
   return ev.GetTag(tag);
 }
 
-template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag, T default_value) {
+template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag, T default_value, bool doComplain = true) {
   static_assert(
       std::is_integral<T>::value,
       "getTagOr<T> only supports integral types");
 
   if (!ev.HasTag(tag)){
-    EUDAQ_WARN("Returning default value for tag " + tag);
+    if (doComplain) {
+      EUDAQ_WARN("Returning default value for tag " + tag);
+    }
     return default_value;
   }
 

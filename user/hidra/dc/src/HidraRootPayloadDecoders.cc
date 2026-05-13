@@ -161,8 +161,12 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
             return;
           }
           int encoded_channel = (module_type == "unknown") ? V.channel() : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), V.channel());
-          ADCvalues[encoded_channel] = V.value();
-          ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
+          if (encoded_channel < 0 || encoded_channel >= max_channel_index) {
+            HIDRA_ERROR("Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, max_channel_index);
+          } else {
+            ADCvalues[encoded_channel] = V.value();
+            ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
+          }
 
         } // if 792 or 862 or unknown
         else {
