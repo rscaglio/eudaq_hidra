@@ -44,7 +44,7 @@ fields:
 - `TriggerN` = hardware trigger id for the aligned event
 - `EventN` = same value as the trigger id
 - `Timestamp` = first board timestamp seen for the trigger, when enabled
-- `eventWords` tag = total payload size in bytes across all board blocks
+- `detectorDataSize` tag = total payload size in bytes across all board blocks
 
 The event then contains one block per FERS board. The block id is the board
 index used inside the producer (`0`, `1`, `2`, ...), and the block payload is
@@ -56,7 +56,7 @@ Collector-facing behavior
 The HiDRa DataCollector can consume the producer output as a single source.
 That means the pipeline is valid for one-board runs and for aligned multi-board
 runs, but the collector still sees the FERS2 producer as one source unless you
-introduce extra source splitting logic. The `eventWords` tag is important here:
+introduce extra source splitting logic. The `detectorDataSize` tag is important here:
 the collector uses it when it re-wraps received events into the legacy merged
 format.
 

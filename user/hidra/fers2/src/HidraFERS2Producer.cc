@@ -394,7 +394,7 @@ private:
         queue.pop_front();
       }
 
-      ev->SetTag("eventWords", std::to_string(total_payload_bytes));
+      ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
 
       SendEvent(std::move(ev));
       ++m_evt_f;

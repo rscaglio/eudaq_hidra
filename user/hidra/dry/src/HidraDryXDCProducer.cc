@@ -227,6 +227,8 @@ void HidraDryXDCProducer::Mainloop() {
       const uint32_t* payload_words = event_words.data() + XDC_HEADER_WORDS;
       std::memcpy(payload.data(), payload_words, payload.size());
     }
+
+    ev->SetTag("detectorDataSize", std::to_string(payload.size()));
     ev->AddBlock(0, payload);
 
     if (loop_count == 0) {

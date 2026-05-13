@@ -108,7 +108,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
 
   for (; it != pending.events_by_source.end(); ++it) {
     fullEvt->SetTag(std::to_string(it->first) + "_size",
-                    it->second.event->GetTag("eventWords")); // "<detID>_size = size"
+                    it->second.event->GetTag("detectorDataSize")); // "<detID>_size = size"
     it->second.event->SetTag("Producer", it->second.ConnectionName);
     it->second.event->SetTag("detID", it->first);
     fullEvt->AddSubEvent(std::move(it->second.event));
@@ -183,9 +183,10 @@ void HidraDataCollector::UpdateStatusTags() {
   SetStatusTag("Completes", std::to_string(m_n_complete_events));
   SetStatusTag("Incompletes", std::to_string(m_n_incomplete_events));
   SetStatusTag("EventsOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenEventCount() : 0));
-  SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount()/1000 : 0));
+  SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount() / 1000 : 0));
   SetStatusTag("CalibTimingStatus", m_calib_timing_needed ? "Waiting" : (m_calib_timing_validated ? "Ok" : "Failed"));
-  SetStatusTag("CalibTimingOffset", std::to_string(m_calib_timing_mean)+"+/-"+std::to_string(m_calib_timing_spread)+" ns");
+  SetStatusTag("CalibTimingOffset",
+               std::to_string(m_calib_timing_mean) + "+/-" + std::to_string(m_calib_timing_spread) + " ns");
   SendStatus();
 }
 
@@ -235,7 +236,7 @@ void HidraDataCollector::DoConfigure() {
   m_write_binary_output = conf->Get("WRITE_BINARY_OUTPUT", 1);
   m_write_root_output = conf->Get("WRITE_ROOT_OUTPUT", 0);
   m_writer_flush_interval_ms = conf->Get("WRITER_FLUSH_INTERVAL_MS", 50);
- 
+
   if (!m_write_binary_output && !m_write_root_output) {
     HIDRA_WARN("Both WRITE_BINARY_OUTPUT and WRITE_ROOT_OUTPUT are disabled. Collector will run without file output.");
   }
@@ -258,21 +259,21 @@ void HidraDataCollector::DoConfigure() {
       const std::string& iproducer = kv.second;
       int detID = std::stoi(idetid);
       if (detID >= 0 && detID < MAX_SOURCES) {
-          HIDRA_INFO("Detector ID {} assigned to producer {}", detID, iproducer);
-          m_expected_sources_map[iproducer] = detID;
-          m_is_source_enabled[detID] = true;
+        HIDRA_INFO("Detector ID {} assigned to producer {}", detID, iproducer);
+        m_expected_sources_map[iproducer] = detID;
+        m_is_source_enabled[detID] = true;
       } else {
-	HIDRA_THROW("Detector ID {} cannot be assigned. ID must be between "
-		    "0 and {}",
-		    detID,
-		    MAX_SOURCES);
+        HIDRA_THROW("Detector ID {} cannot be assigned. ID must be between "
+                    "0 and {}",
+                    detID,
+                    MAX_SOURCES);
       }
     }
   }
 
   m_vme_geo_map.clear();
   std::string vmecrateconfig = conf->Get("VME_CRATE_1", "");
-  if (vmecrateconfig != ""){
+  if (vmecrateconfig != "") {
     std::map<std::string, std::string> tempvme = hidra::utils::parseConfigMap(vmecrateconfig);
     for (const auto& kv : tempvme) {
       const std::string& geo = kv.first;
@@ -282,7 +283,6 @@ void HidraDataCollector::DoConfigure() {
       HIDRA_INFO("VME module at geo address {} is {}", geoaddr, modname);
     }
   }
-  
 
   if (m_expected_sources_map.empty()) {
     HIDRA_WARN("No EXPECTED_SOURCES configured. Collector will accept only the first source received, assigning it "
@@ -324,9 +324,8 @@ void HidraDataCollector::DoStartRun() {
 
   if (m_write_root_output) {
     m_root_output_file = MakeOutputFile(".root");
-    auto root_writer =
-        std::make_unique<hidra::HidraRootEventWriter>(m_root_output_file, m_writer_flush_interval_ms, 32,
-                                                      m_vme_geo_map);
+    auto root_writer = std::make_unique<hidra::HidraRootEventWriter>(
+        m_root_output_file, m_writer_flush_interval_ms, 32, m_vme_geo_map);
     root_writer->Start();
     if (!root_writer->IsActive()) {
       HIDRA_ERROR("ROOT writer could not start: {}", root_writer->GetLastError());
@@ -504,9 +503,8 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
 
   if (m_calib_timing_needed && m_calib_timing_events.size() < CALIB_TIMING_EVENTS) {
     m_calib_timing_events.push_back((long long)TimestampSpread(pending));
-    HIDRA_INFO("Calibrated AAAAA {}", m_calib_timing_events[m_calib_timing_events.size()-1]);
-  }
-  else if (m_calib_timing_needed) {
+    HIDRA_INFO("Calibrated AAAAA {}", m_calib_timing_events[m_calib_timing_events.size() - 1]);
+  } else if (m_calib_timing_needed) {
     auto MuStd = hidra::utils::ComputeMeanAndStdDev(m_calib_timing_events);
     m_calib_timing_mean = MuStd.first;
     m_calib_timing_spread = MuStd.second * 5; // 5 sigma
@@ -516,11 +514,12 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
       long long t = m_calib_timing_events[ii];
       if (std::abs(t - m_calib_timing_mean) > m_calib_timing_spread) {
         m_calib_timing_validated = false;
-        HIDRA_ERROR("Calibrated timing: timespread {}, calibrated to {}, at index {} is above the 5*std threshold of {} ns. Calibration failed.",
-                   t,
-                   t - m_calib_timing_mean,
-                   ii,
-                   m_calib_timing_spread);
+        HIDRA_ERROR("Calibrated timing: timespread {}, calibrated to {}, at index {} is above the 5*std threshold of "
+                    "{} ns. Calibration failed.",
+                    t,
+                    t - m_calib_timing_mean,
+                    ii,
+                    m_calib_timing_spread);
         break;
       }
     }
@@ -538,18 +537,22 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
                  m_calib_timing_mean,
                  m_calib_timing_spread);
     } else {
-      HIDRA_ERROR("Calibrated timing is not valid. Timestamp spread mean is {} ns, 5*stddev is {} ns. Calibration failed.",
-                 m_calib_timing_mean,
-                 m_calib_timing_spread);
+      HIDRA_ERROR(
+          "Calibrated timing is not valid. Timestamp spread mean is {} ns, 5*stddev is {} ns. Calibration failed.",
+          m_calib_timing_mean,
+          m_calib_timing_spread);
     }
 
-    m_calib_timing_needed = false; // TODO: we may want to recalibrate timing during the run, if we see many incomplete events, or after a certain time has passed, 
+    m_calib_timing_needed = false; // TODO: we may want to recalibrate timing during the run, if we see many incomplete
+                                   // events, or after a certain time has passed,
   }
-
 
   uint64_t tstampSpread = TimestampSpread(pending);
   if (std::abs((long long)tstampSpread - m_calib_timing_mean) > m_tstamp_window_ns) {
-    HIDRA_ERROR("Timestamp mismatch for trigger {}, max-min is {}, calibrated mean is {}", trigger_number, tstampSpread, m_calib_timing_mean);
+    HIDRA_ERROR("Timestamp mismatch for trigger {}, max-min is {}, calibrated mean is {}",
+                trigger_number,
+                tstampSpread,
+                m_calib_timing_mean);
     // TODO: handle this
   }
 

@@ -134,7 +134,7 @@ Duration:                                 0.100 µs
 
 TAGS (7):
   dataWords                        = 216
-  eventWords                       = 231
+  detectorDataSize                 = 231
   isPedFromScaler                  = 0
   isPedMask                        = 0
   sanityFlag                       = 2

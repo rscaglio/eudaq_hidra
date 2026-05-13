@@ -130,7 +130,7 @@ std::string GetEventInfo(eudaq::Event* ev, int opt) {
       info += " trgN " + std::to_string(ev->GetTriggerN());
       info += " start/stop " + std::to_string(ev->GetTimestampBegin()) + "/" + std::to_string(ev->GetTimestampEnd());
       info += " nblk " + std::to_string(ev->GetNumBlock());
-      info += " totB " + ev->GetTag("eventWords");
+      info += " totB " + ev->GetTag("detectorDataSize");
     }
   }
 
