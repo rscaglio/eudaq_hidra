@@ -41,6 +41,7 @@ constexpr uint16_t V977_OUTPUT_SET_REG = 0x000A;
 constexpr uint16_t V977_OUTPUT_CLEAR_REG = 0x0010;
 constexpr uint16_t V977_INPUT_READ_REG = 0x0004;
 constexpr uint16_t V977_SINGLE_READ_REG = 0x0006;
+constexpr uint16_t V977_SINGLE_READ_CLEAR = 0x0016;
 
 struct BoardConfig {
   uint32_t baseAddr;
@@ -84,6 +85,7 @@ public:
         m_terminate(false),
         m_runNumber(0),
         m_evt(0),
+	m_spill_cnt(0), //NEW
         m_iped(100),
         m_controllerType(cvV2718),
         // m_pid(49086) // --- To connect controller via USB --- 
@@ -131,6 +133,8 @@ private:
   void DoConfigure() override {
     auto conf = GetConfiguration();
     m_evt = 0;
+    m_onspill = false; //NEW
+    m_spill_cnt = 0;
     if (!conf) {
       EUDAQ_THROW("Run configuration is missing");
     }
@@ -181,10 +185,10 @@ private:
     m_v977_base = parse_u32(conf->Get("V977_BASE", "0x01000000")); // --- Base Address configuration ---
 
     WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977_base); // --- Reset all output registers ---
+    WriteReg(V977_INPUT_MASK_REG, 0xFFF8, m_v977_base);   // --- Deactivate all input channels except channel 0, 1, 2 (or the ones you want to use) ---> chann 0 for trigger, 1 for m_onspill, 2 for outspill //NEW
+    WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977_base);  // --- Deactivate all output channels except channel 0 ---
     WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977_base);    // --- All inputs set to 0 ---
     PrepareForRun(); // --- To VETO the trigger ---
-    WriteReg(V977_INPUT_MASK_REG, 0xFFFE, m_v977_base);   // --- Deactivate all input channels except channel 0 (or the ones you want to use) ---
-    WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977_base);  // --- Deactivate all output channels except channel 0 ---
 
     EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977_base)); 
 
@@ -195,17 +199,21 @@ private:
     StopAcquisitionThread();
     m_runNumber = GetRunNumber();
     m_evt = 0;
+    m_spill_cnt = 0;
     m_adcval.fill(INVALID_ADC);
     m_running = true;
+    m_onspill = false;
     SendBORE();
-    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base);   // --- When starting run ---> All outputs set to 0 ---> VETO OFF ---
     WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); // --- Clear output register ---
+    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977_base);    // --- All inputs set to 0 ---
+    PrepareForRun(); // --- To VETO the trigger ---
     m_thd_run = std::thread(&HidraQTPDProducer::MainLoop, this);
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
   }
 
   void DoStopRun() override {
     m_running = false;
+    m_onspill = false;
     StopAcquisitionThread();
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
@@ -215,7 +223,9 @@ private:
   void DoReset() override {
     StopAcquisitionThread();
     m_running = false;
+    m_onspill = false;
     m_evt = 0;
+    m_spill_cnt = 0;
     m_adcval.fill(INVALID_ADC);
     EUDAQ_INFO("Producer reset");
   }
@@ -248,8 +258,122 @@ private:
 	 HIDRA_INFO("trigger vetoed");
   }	  
 
-
   void MainLoop() {
+	while (m_running) {
+            
+	    if (m_handle < 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		continue;
+	    }
+	    if (!m_running) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		continue;
+	    }
+	    
+	    m_V977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base);
+	    bool trigger      = m_V977_pattern & 0x0001;
+	    bool spill_start  = m_V977_pattern & 0x0002;
+	    bool spill_end    = m_V977_pattern & 0x0004;
+
+	    //-------------------------------------------------
+	    // INVALID CONDITION
+	    //-------------------------------------------------
+/*
+	    if (spill_start && spill_end) {
+
+		EUDAQ_ERROR("Spill START and END simultaneously active");
+
+                //WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);   // --- CLEAR FLIP FLOP ---
+		PrepareForRun();
+		m_onspill = false;
+
+		continue;
+	    }
+*/
+	    //-------------------------------------------------
+	    // OFF-SPILL STATE
+	    //-------------------------------------------------
+
+	    if (!m_onspill) {
+
+		// ------------------------------
+		// invalid END without START
+		// ------------------------------
+
+		if (spill_end) {
+
+		    EUDAQ_ERROR(
+			"END OF SPILL while already OFFSPILL "
+			"(missed START?)"
+		    );
+
+//                    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);   // --- CLEAR FLIP FLOP ---
+                    m_clear_requested = true;
+		}
+
+		// ------------------------------
+		// valid START
+		// ------------------------------
+
+		if (spill_start) {
+
+		    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);   // --- CLEAR FLIP FLOP ---	
+		    m_clear_requested = false;
+		    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base); //VETO OFF
+		    m_onspill = true;
+		    m_spill_cnt++;
+		    EUDAQ_INFO(
+			"========== START OF SPILL =========="
+		    );
+		}
+
+		static int cnt_sp = 0;
+		if(++cnt_sp % 1000000 == 0) {
+		
+			EUDAQ_INFO("Waiting for the spill to start...");
+	        }		
+	    } else {
+
+	    //-------------------------------------------------
+	    // ON-SPILL STATE
+	    //-------------------------------------------------
+		    if(spill_end) {
+			PrepareForRun();
+			
+		     }
+		    // Read again to catch end of spill edgecase after raising VETO manually
+	            bool trigger = m_V977_pattern & 0x0001;
+		    static int trig_print_cnt = 0;
+		    if(trigger) { 
+			    ReadOneBlockAndSendEvent(); 
+		    } else {
+			    trig_print_cnt++;
+			    if(trig_print_cnt > 10000000){
+	        	        EUDAQ_INFO("Still waiting for the trigger...");
+				trig_print_cnt = 0;
+	                    }
+		    }
+	
+	            if(spill_end) {
+			    m_onspill = false;
+			    m_clear_requested = true;
+		    } else if(spill_start) {
+			EUDAQ_ERROR(
+	                    "START OF SPILL while already ONSPILL "
+	                    "(missed END?)"
+                	); //TODO decide if it needs different handling
+			m_clear_requested = true;
+		    }
+		    
+	     }
+	     if(m_clear_requested) {
+			    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);   // --- CLEAR FLIP FLOP ---
+       			    m_clear_requested = false;
+		    } 
+	}
+}
+
+  /*void MainLoop() {
     // -- Keep polling continuously and only acquire while m_running == true ---
     while (m_running) {
       if (m_handle < 0) {
@@ -260,11 +384,65 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         continue;
       }
+      
+      m_V977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base); //NEW
+      bool trigger_onspill_fired = m_V977_pattern & 0x0002; // --- Spill is when channel 2 is active ---
+      bool trigger_offspill_fired = m_V977_pattern & 0x0004; // --- OffSpill is when channel 3 is active ---
+      bool trigger = m_V977_pattern & 0x0001; // --- Trigger is when channel 1 is active ---
+      
+      if(!m_onspill) {
+	       if(trigger_offspill_fired) {
+		      EUDAQ_INFO("End of spill signal arrived while already off spill: missed start of spill signal.");
+		      m_onspill = false;
+		      WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
+		      continue;
+	       }
+	       
+	       if(!trigger_onspill_fired && !trigger_offspill_fired) {
+		       static int cnt_sp = 0;
+		       if (++cnt_sp % 100000 == 0) {
+			EUDAQ_INFO("Still waiting for the spill signal...");
+		       }
+		       WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
+		       m_onspill = false;
+		       continue; 
+	       }	       
+	       
+	       if(trigger_onspill_fired && trigger_offspill_fired) {
+		       EUDAQ_INFO("Start and end of spill simultaneously arrived: Error.");
+		       WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
+		       m_onspill = false;
+		       continue; 
+	       }	       
+               
+               if(trigger_onspill_fired) {
+		      m_onspill = true;
+                      WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base); //VETO OFF 
+		      EUDAQ_INFO("START OF SPILL");  
+               }
+	       
+      }  
 
       // --- Main function to read XDCs and use the I/O Register logic ---
       ReadOneBlockAndSendEvent();
+
+      if(trigger_offspill_fired) {
+	    ++m_spill;
+	    HIDRA_INFO("Spill number: {} has just finished", m_spill);
+            m_onspill = false;
+	    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
+            PrepareForRun();
+	    continue;
+      }	      
+      if(trigger_onspill_fired) {
+	      EUDAQ_INFO("Begin of spill signal arrived while already on spill: missed end of spill signal.");
+	      m_onspill = false;
+	      WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
+              PrepareForRun();
+	      continue;
+      }
     }
-  }
+  }*/
 
   void OpenController() {
     if (m_handle >= 0) {
@@ -356,92 +534,81 @@ private:
 
   void ReadOneBlockAndSendEvent() {
 
-    uint16_t v977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base); // --- Check input active channels of the I/O Regsiter ---
-    bool trigger = v977_pattern & 0x0001; // --- Trigger is when channel 1 is active ---
+   
 
-    static int cnt = 0;
-    // --- Check on trigger presence --- 
-    if (!trigger) {
-      if (++cnt % 100000 == 0) {
+	    constexpr uint32_t readAddress = 0xAA000000; // --- Block transfer address ---
+	    int bcnt = 0;
 
-        EUDAQ_INFO("Still waiting for the trigger...");
-      }
+	    CVErrorCodes ret = CAENVME_FIFOMBLTReadCycle(m_handle,
+							 readAddress,
+							 reinterpret_cast<char*>(m_buffer.data()),
+							 static_cast<int>(MAX_BLT_SIZE),
+							 cvA32_U_MBLT,
+							 &bcnt);
 
-      return;
-    }
+	    if (ret != cvSuccess && ret != cvBusError) {
+	      // bus error at end of block can be normal with BERR-enabled block read
+	      EUDAQ_DEBUG("BLT Error: " + std::to_string(ret));
+	      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	    }
 
-    constexpr uint32_t readAddress = 0xAA000000; // --- Block transfer address ---
-    int bcnt = 0;
+	    if (bcnt <= 0) {
+	      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	      EUDAQ_DEBUG("BCNT 0");
+	      return;
+	    }
 
-    CVErrorCodes ret = CAENVME_FIFOMBLTReadCycle(m_handle,
-                                                 readAddress,
-                                                 reinterpret_cast<char*>(m_buffer.data()),
-                                                 static_cast<int>(MAX_BLT_SIZE),
-                                                 cvA32_U_MBLT,
-                                                 &bcnt);
+	    const int wcnt = bcnt / 4;
+	    if (wcnt <= 0) {
+	      return;
+	    }
 
-    if (ret != cvSuccess && ret != cvBusError) {
-      // bus error at end of block can be normal with BERR-enabled block read
-      EUDAQ_DEBUG("BLT Error: " + std::to_string(ret));
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+	    m_adcval.fill(INVALID_ADC);
 
-    if (bcnt <= 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      EUDAQ_DEBUG("BCNT 0");
-      return;
-    }
+	    uint8_t adc_chan = 0xFF;
+	    uint16_t adc_val = 0xFFFF;
 
-    const int wcnt = bcnt / 4;
-    if (wcnt <= 0) {
-      return;
-    }
+	    for (int pnt = 0; pnt < wcnt; ++pnt) {
+	      int dtype = InfoWord792(m_buffer[pnt], adc_chan, adc_val);
+	      if (dtype == 0 && adc_chan < NCHAN) {
+		m_adcval[adc_chan] = adc_val;
+	      }
+	    }
+	    EUDAQ_INFO("Event Triggered");
+	    //EUDAQ_INFO("V977 PATTERN: " + std::to_string(trigger));
 
-    m_adcval.fill(INVALID_ADC);
+	    // --- Build EUDAQ event ---
+	    auto ev = eudaq::Event::MakeUnique("CAENQTPRaw");
 
-    uint8_t adc_chan = 0xFF;
-    uint16_t adc_val = 0xFFFF;
+	    ev->SetTriggerN(static_cast<uint32_t>(m_evt));
+	    ev->SetEventN(static_cast<uint32_t>(m_evt));
+	    ev->SetRunN(static_cast<uint32_t>(m_runNumber));
 
-    for (int pnt = 0; pnt < wcnt; ++pnt) {
-      int dtype = InfoWord792(m_buffer[pnt], adc_chan, adc_val);
-      if (dtype == 0 && adc_chan < NCHAN) {
-        m_adcval[adc_chan] = adc_val;
-      }
-    }
-    EUDAQ_INFO("Event Triggered");
-    EUDAQ_INFO("V977 PATTERN: " + std::to_string(v977_pattern));
+	    // TODO: clean clean clean tags everywhere in the class
+	    /*
+	    ev->SetTag("BCNT", std::to_string(bcnt));
+	    ev->SetTag("WCNT", std::to_string(wcnt));
+	    ev->SetTag("ADC0", std::to_string(m_adcval[0]));
+	    ev->SetTag("ADC1", std::to_string(m_adcval[1]));
+	    ev->SetTag("ADC2", std::to_string(m_adcval[2]));
+	    ev->SetTag("ADC3", std::to_string(m_adcval[3]));
+	    */
 
-    // --- Build EUDAQ event ---
-    auto ev = eudaq::Event::MakeUnique("CAENQTPRaw");
+	    //ev->SetTag("V977", std::to_string(trigger));
 
-    ev->SetTriggerN(static_cast<uint32_t>(m_evt));
-    ev->SetEventN(static_cast<uint32_t>(m_evt));
-    ev->SetRunN(static_cast<uint32_t>(m_runNumber));
-
-    // TODO: clean clean clean tags everywhere in the class
-    /*
-    ev->SetTag("BCNT", std::to_string(bcnt));
-    ev->SetTag("WCNT", std::to_string(wcnt));
-    ev->SetTag("ADC0", std::to_string(m_adcval[0]));
-    ev->SetTag("ADC1", std::to_string(m_adcval[1]));
-    ev->SetTag("ADC2", std::to_string(m_adcval[2]));
-    ev->SetTag("ADC3", std::to_string(m_adcval[3]));
-    */
-
-    ev->SetTag("V977", std::to_string(v977_pattern));
-
-    std::vector<uint8_t> raw(reinterpret_cast<uint8_t*>(m_buffer.data()),
+	    std::vector<uint8_t> raw(reinterpret_cast<uint8_t*>(m_buffer.data()),
                              reinterpret_cast<uint8_t*>(m_buffer.data()) + bcnt);
-    ev->AddBlock(0, raw);
+	    ev->AddBlock(0, raw);
 
-    ev->SetTag("endianness","BE32"); // this tag is needed :)
-    SendEvent(std::move(ev));
-    ++m_evt;
+	    ev->SetTag("endianness","BE32"); // this tag is needed :)
+	    SendEvent(std::move(ev));
+	    ++m_evt;
+	    
+	    //WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
+	    m_clear_requested = true;
 
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base); // Clear output register
-
-  }
-
+    }
+    
   void SendBORE() {
     auto bore = eudaq::Event::MakeUnique("CAENQTPRaw");
     bore->SetBORE();
@@ -509,6 +676,9 @@ private:
   int32_t m_handle;
   bool m_vmeError;
   std::string m_errorString;
+  uint16_t m_V977_pattern; //NEW
+  bool m_onspill; //NEW
+  bool m_clear_requested;
 
   uint32_t m_v977_base = 0;
 
@@ -517,6 +687,7 @@ private:
 
   uint32_t m_runNumber;
   uint64_t m_evt;
+  uint64_t m_spill_cnt; //NEW
   int m_iped;
 
   std::chrono::duration<double> elapsed_t;
