@@ -381,7 +381,7 @@ private:
           ev->SetTimestamp(start_ts, start_ts + 1u);
           timestamp_set = true;
         }
-
+	EUDAQ_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " + std::to_string(trigger_n));
         // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID AND THE BLOCK SIZE 
         const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 3u);
         std::vector<uint8_t> ext_block(ext_block_size);
