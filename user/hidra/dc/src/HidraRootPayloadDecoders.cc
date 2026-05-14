@@ -160,9 +160,12 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
             HIDRA_ERROR("Mismatched geo in XDC words: header geo {} vs channel geo {}. Aborting", W.geo(), V.geo());
             return;
           }
-          int encoded_channel = (module_type == "unknown") ? V.channel() : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), V.channel());
+          int encoded_channel = (module_type == "unknown")
+                                    ? V.channel()
+                                    : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), V.channel());
           if (encoded_channel < 0 || encoded_channel >= max_channel_index) {
-            HIDRA_ERROR("Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, max_channel_index);
+            HIDRA_ERROR(
+                "Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, max_channel_index);
           } else {
             ADCvalues[encoded_channel] = V.value();
             ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
@@ -199,25 +202,25 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
 }
 
 bool HidraFersPayloadDecoder::Matches(const RootDetectorPayload& detector) const {
-  return detector.det_id == 2 || detector.det_id == 7 || detector.producer.find("FERS") != std::string::npos;
+  // TODO: temporary enabling only det_id 2 to abvoid using current decoder for Dry runs on 2025 data
+  //return detector.det_id == 2 || detector.det_id == 7 || detector.producer.find("FERS") != std::string::npos;
+  return detector.det_id == 2;
 }
 
 std::vector<std::string> HidraFersPayloadDecoder::BranchNames() const {
   auto names = HidraGenericPayloadDecoder{}.BranchNames();
-  names.push_back("fers2_tstamp_us");
-  names.push_back("fers2_rel_tstamp_us");
-  names.push_back("fers2_trigger_id");
-  names.push_back("fers2_chmask");
-  names.push_back("fers2_qdmask");
-  names.push_back("fers2_energy_hg");
-  names.push_back("fers2_energy_hg_sum");
-  names.push_back("fers2_energy_hg_max");
-  names.push_back("fers_first_board_id");
-  names.push_back("fers_first_trigger_timestamp_ns");
-  names.push_back("fers_first_trigger_id");
+  names.push_back("FERStsamp_us");
+  names.push_back("FERSrel_tsamp_us");
+  names.push_back("FERStrigger_id");
+  names.push_back("FERSboard_id");
+  names.push_back("FERShg");
+  names.push_back("FERSlg");
+  names.push_back("FERStoa");
+  names.push_back("FERStot");
   return names;
 }
 
+/* reimplementing below (Nicolo)
 void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
                                      std::vector<RootQuantity>& quantities,
                                      RootBranchValues& branches) const {
@@ -277,6 +280,72 @@ void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
     AddBranchValue(branches, "fers_first_trigger_timestamp_ns", timestamp_ns);
     AddBranchValue(branches, "fers_first_trigger_id", trigger_id);
   }
+
+}
+*/
+
+void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
+                                     std::vector<RootQuantity>& quantities,
+                                     RootBranchValues& branches) const {
+  HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
+
+  const auto& payload = detector.payload; // this is concatenation of all blocks
+  if (payload.size() % 699 != 0) {
+    HIDRA_ERROR("Unexpected FERS payload size {}. Should be a multiple of 699", payload.size());
+  }
+
+  const int FERS_N_CHAN_MAX = 64 * 20;
+
+  std::vector<double> FERStsamp_us(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERSrel_tsamp_us(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERStrigger_id(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERSboard_id(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERShg(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERSlg(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERStoa(FERS_N_CHAN_MAX, -1);
+  std::vector<double> FERStot(FERS_N_CHAN_MAX, -1);
+
+  int nboards = payload.size() / 699;
+  for (int iboard = 0; iboard < nboards; ++iboard) {
+    const auto* block_ptr = payload.data() + iboard * 699;
+    FERS_spect_64 boardblock;
+    std::memcpy(&boardblock, block_ptr, sizeof(FERS_spect_64));
+
+    if (boardblock.board_id < 0 || boardblock.board_id >= 20) {
+      HIDRA_ERROR("FERS block {} has invalid board_id {}. Skipping", iboard, boardblock.board_id);
+      continue;
+    }
+    uint64_t allchan_mask = std::numeric_limits<uint64_t>::max();
+
+    if (boardblock.chmask != allchan_mask) {
+      HIDRA_WARN("FERS block {} has chmask {:016X}. Refusing to decode if less then 64 channels are enabled",
+                 iboard,
+                 boardblock.chmask);
+      continue;
+    }
+
+    for (int ichan = 0; ichan < 64; ++ichan) {
+      int index = boardblock.board_id * 64 + ichan;
+      FERStsamp_us[index] = boardblock.tstamp_us;
+      FERSrel_tsamp_us[index] = boardblock.rel_tstamp_us;
+      FERStrigger_id[index] = static_cast<double>(boardblock.trigger_id);
+      FERSboard_id[index] = static_cast<double>(boardblock.board_id);
+      FERShg[index] = static_cast<double>(boardblock.energyHG[ichan]);
+      FERSlg[index] = static_cast<double>(boardblock.energyLG[ichan]);
+      FERStoa[index] = static_cast<double>(boardblock.tstamp[ichan]);
+      FERStot[index] = static_cast<double>(boardblock.ToT[ichan]);
+    }
+
+  } // loop over board blocks
+
+  AddBranchValues(branches, "FERStsamp_us", FERStsamp_us);
+  AddBranchValues(branches, "FERSrel_tsamp_us", FERSrel_tsamp_us);
+  AddBranchValues(branches, "FERStrigger_id", FERStrigger_id);
+  AddBranchValues(branches, "FERSboard_id", FERSboard_id);
+  AddBranchValues(branches, "FERShg", FERShg);
+  AddBranchValues(branches, "FERSlg", FERSlg);
+  AddBranchValues(branches, "FERStoa", FERStoa);
+  AddBranchValues(branches, "FERStot", FERStot);
 }
 
 } // namespace hidra
