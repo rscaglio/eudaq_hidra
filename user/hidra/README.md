@@ -61,10 +61,11 @@ folder. The scripts in that folder launch the binaries installed into `bin/` and
 are the easiest way to start a test run, for example:
 
 ```sh
+cd user/hidra/run
 # start a "dry" run (no hardware)
-user/hidra/run/hidra_startrun_dry.sh
+./hidra_startrun_dry.sh
 # or the full run
-user/hidra/run/hidra_startrun.sh
+./hidra_startrun.sh
 ```
 
 For more details about the available helpers see `user/hidra/misc/setup.sh`.
