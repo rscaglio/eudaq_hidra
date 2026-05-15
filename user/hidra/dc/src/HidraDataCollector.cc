@@ -1,6 +1,7 @@
 #include "HidraDataCollector.hh"
 #include "HidraRootPayloadDecoders.hh"
 #include "HidraUtils.hh"
+#include "TimeAlignmentCalibrator.hh"
 #include <cmath>
 #include <eudaq/Event.hh>
 #include <eudaq/Exception.hh>
@@ -13,6 +14,7 @@
 #include <map>
 #include <numeric>
 #include <string>
+#include <vector>
 
 // user custom
 
@@ -34,22 +36,6 @@ bool HidraDataCollector::IsComplete(PendingTrigger& pending) {
   return true;
 }
 
-uint64_t HidraDataCollector::TimestampSpread(const PendingTrigger& pending) const {
-  if (pending.events_by_source.size() <= 1) {
-    return 0;
-  }
-
-  uint64_t t_min = UINT64_MAX;
-  uint64_t t_max = 0;
-
-  for (const auto& item : pending.events_by_source) {
-    const auto timestamp = item.second.timestamp;
-    t_min = std::min(t_min, timestamp);
-    t_max = std::max(t_max, timestamp);
-  }
-  return (t_max - t_min);
-}
-
 std::string HidraDataCollector::MakeOutputFile(const std::string& extension) const {
   std::time_t time_now = std::time(nullptr);
   char time_buff[13];
@@ -61,6 +47,12 @@ std::string HidraDataCollector::MakeOutputFile(const std::string& extension) con
 
 bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event) {
   if (!event) {
+    return false;
+  }
+
+  if (m_calib_timing_needed) {
+    HIDRA_INFO("Merged event for trigger {} will not be enqueued because timing calibration is not yet validated",
+               event->GetTriggerN());
     return false;
   }
 
@@ -185,9 +177,25 @@ void HidraDataCollector::UpdateStatusTags() {
   SetStatusTag("EventsOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenEventCount() : 0));
   SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount() / 1000 : 0));
   SetStatusTag("CalibTimingStatus", m_calib_timing_needed ? "Waiting" : (m_calib_timing_validated ? "Ok" : "Failed"));
-  SetStatusTag("CalibTimingOffset",
-               std::to_string(m_calib_timing_mean) + "+/-" + std::to_string(m_calib_timing_spread) + " ns");
+  SetStatusTag("CalibMaxTimeSpread", std::to_string(m_maxTimeSpread) + " ns");
   SendStatus();
+}
+
+int HidraDataCollector::getDetectorProgressiveIndex(int detID) {
+  // TODO: rewrite so to be sorted by detID and not by source name
+  if (detID < 0 || detID >= MAX_SOURCES) {
+    HIDRA_THROW("Invalid detID {}. Must be between 0 and {}", detID, MAX_SOURCES - 1);
+  }
+  int index = 0;
+
+  if (!m_is_source_enabled[detID]) {
+    HIDRA_THROW("detID {} is not an enabled source", detID);
+  }
+  for (int currentDetID = 0; currentDetID < detID; ++currentDetID) {
+    index += m_is_source_enabled[currentDetID] ? 1 : 0;
+  }
+
+  return index;
 }
 
 //////////////////////////////////////////////
@@ -243,7 +251,8 @@ void HidraDataCollector::DoConfigure() {
 
   m_max_events = conf->Get("MAX_EVENTS", 0);
   m_sync_timeout_us = conf->Get("SYNC_TIMEOUT_US", 1000);
-  m_tstamp_window_ns = conf->Get("TIMESTAMP_WINDOW_NS", 50000);
+  m_tstamp_window_ns = conf->Get("TIME_ALIGNMENT_WINDOW_NS", 50000);
+  m_Nevents_time_calib = conf->Get("TIME_ALIGNMENT_NEVENTS_CALIB", 100);
 
   std::string configsources = conf->Get("EXPECTED_SOURCES", "");
 
@@ -289,6 +298,8 @@ void HidraDataCollector::DoConfigure() {
                "DetectorID 0");
   }
 
+  m_calib_timing_cfg = hidra::timealignment::TriggerAlignmentConfig{.maxAbsTrgOffset = m_Nevents_time_calib, .minMatches = m_Nevents_time_calib / 2, .maxDeltaTRange = static_cast<long long>(m_tstamp_window_ns), .stopAtFirstValid = false};
+
   HIDRA_INFO("HidraDataCollector configured");
 }
 
@@ -300,6 +311,12 @@ void HidraDataCollector::DoStartRun() {
   m_n_incomplete_events = 0;
   m_pending_events.clear();
   m_calib_timing_events.clear();
+  m_calib_timing_events.assign(
+      m_expected_sources_map.size(),
+      std::map<long long, long long>{}); // initialize the vector of maps with the number of expected sources. Each map
+                                         // will be filled with <triggerN, timestamp> for the calibration events of the
+                                         // corresponding source.
+  m_calib_timing_n_stored = 0;
   m_calib_timing_validated = false;
   m_calib_timing_needed = true;
 
@@ -410,13 +427,13 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
     return;
   }
 
-  if (hidra::utils::getTagOr(*ev, "DoNotBuild", std::string("no"), false) == "yes") {
-    // Utilities to process non-physical events used for communication
+  if (!ev) {
+    HIDRA_WARN("HidraDataCollector received null event");
     return;
   }
 
-  if (!ev) {
-    HIDRA_WARN("HidraDataCollector received null event");
+  if (hidra::utils::getTagOr(*ev, "DoNotBuild", std::string("no"), false) == "yes") {
+    // use this to skip building: events with this tag can be used for communication
     return;
   }
 
@@ -501,59 +518,81 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
     return;
   }
 
-  if (m_calib_timing_needed && m_calib_timing_events.size() < CALIB_TIMING_EVENTS) {
-    m_calib_timing_events.push_back((long long)TimestampSpread(pending));
-    HIDRA_INFO("Calibrated AAAAA {}", m_calib_timing_events[m_calib_timing_events.size() - 1]);
-  } else if (m_calib_timing_needed) {
-    auto MuStd = hidra::utils::ComputeMeanAndStdDev(m_calib_timing_events);
-    m_calib_timing_mean = MuStd.first;
-    m_calib_timing_spread = MuStd.second * 5; // 5 sigma
-    m_calib_timing_validated = true;
+  if (m_calib_timing_needed && m_expected_sources_map.size() > 1 && m_calib_timing_n_stored < m_Nevents_time_calib) {
 
-    for (int ii = 0; ii < m_calib_timing_events.size(); ii++) {
-      long long t = m_calib_timing_events[ii];
-      if (std::abs(t - m_calib_timing_mean) > m_calib_timing_spread) {
-        m_calib_timing_validated = false;
-        HIDRA_ERROR("Calibrated timing: timespread {}, calibrated to {}, at index {} is above the 5*std threshold of "
-                    "{} ns. Calibration failed.",
-                    t,
-                    t - m_calib_timing_mean,
-                    ii,
-                    m_calib_timing_spread);
-        break;
-      }
+    // TODO: if here, the event is complete, but we should consider also incomplete events
+    for (const auto& s : pending.events_by_source) {
+      m_calib_timing_events.at(getDetectorProgressiveIndex(s.first))[(long long)(pending.trigger_number)] = (long long)(s.second.timestamp);
+      HIDRA_DEBUG(
+          "Alignment  -- Storing event for timing calibration: detID {}, progressive index {}, trigger {}, tstamp {}",
+          s.first,
+          getDetectorProgressiveIndex(s.first),
+          (long long)(pending.trigger_number),
+          (long long)(s.second.timestamp));
     }
-
-    if (m_calib_timing_spread > m_tstamp_window_ns) {
-      HIDRA_ERROR("Calibrated timing spread {} ns is above the configured timestamp window of {} ns. This may lead to "
-                  "many incomplete events.",
-                  m_calib_timing_spread,
-                  m_tstamp_window_ns);
-      m_calib_timing_validated = false;
-    }
-
-    if (m_calib_timing_validated) {
-      HIDRA_INFO("Calibrated timing: timestamp spread mean is {} ns, 5*stddev is {} ns. Calibration successful.",
-                 m_calib_timing_mean,
-                 m_calib_timing_spread);
-    } else {
-      HIDRA_ERROR(
-          "Calibrated timing is not valid. Timestamp spread mean is {} ns, 5*stddev is {} ns. Calibration failed.",
-          m_calib_timing_mean,
-          m_calib_timing_spread);
-    }
+    m_calib_timing_n_stored++;
+  } else if (m_calib_timing_needed && m_expected_sources_map.size() > 1) {
+    auto t_calib_start = std::chrono::high_resolution_clock::now();
+    auto results = hidra::timealignment::alignTriggerMapsToFirstReference(m_calib_timing_events, m_calib_timing_cfg);
+    m_calib_timing_mean = hidra::timealignment::meanDeltaTsFromAlignments(results);
+    m_calib_timing_spread = hidra::timealignment::deltaTRangesFromAlignments(results);
+    m_calib_timing_trg_offsets = hidra::timealignment::triggerOffsetsFromAlignments(results);
+    m_calib_timing_validated = hidra::timealignment::validateTriggerAlignments(results);
 
     m_calib_timing_needed = false; // TODO: we may want to recalibrate timing during the run, if we see many incomplete
                                    // events, or after a certain time has passed,
+
+    int maxIndex = -1;
+    long long m_maxTimeSpread = -1;
+    std::vector<long long> calib_timing_spread_abs;
+    for (const auto& s : m_calib_timing_spread) {
+      calib_timing_spread_abs.push_back(std::llabs(s));
+    }
+    auto maxIt = std::max_element(calib_timing_spread_abs.begin(), calib_timing_spread_abs.end());
+    if (maxIt != calib_timing_spread_abs.end()) {
+      maxIndex = std::distance(calib_timing_spread_abs.begin(), maxIt);
+      m_maxTimeSpread = *maxIt;
+    }
+
+    auto t_calib_end = std::chrono::high_resolution_clock::now();
+    auto calib_duration_us = std::chrono::duration_cast<std::chrono::microseconds>(t_calib_end - t_calib_start).count();
+
+    if (m_calib_timing_validated) {
+      HIDRA_INFO("Timing calibration successful! max deltaT spread is {} ns for index {}. Calibration took {} us",
+                 m_maxTimeSpread,
+                 maxIndex,
+                 calib_duration_us);
+    } else {
+      HIDRA_ERROR("Timing calibration failed! max deltaT spread is {} ns for index {}, max allowed is {} ns. "
+                  "Calibration took {} us",
+                  m_maxTimeSpread,
+                  maxIndex,
+                  m_calib_timing_cfg.maxDeltaTRange,
+                  calib_duration_us);
+    }
   }
 
-  uint64_t tstampSpread = TimestampSpread(pending);
-  if (std::abs((long long)tstampSpread - m_calib_timing_mean) > m_tstamp_window_ns) {
-    HIDRA_ERROR("Timestamp mismatch for trigger {}, max-min is {}, calibrated mean is {}",
-                trigger_number,
-                tstampSpread,
-                m_calib_timing_mean);
-    // TODO: handle this
+  // TODO: if here, the event is complete. Nevertheless we should check also incomplete events.
+  if (m_calib_timing_validated && !m_calib_timing_mean.empty()) {
+    const int refDetectorID = m_expected_sources_map.begin()->second;
+    const long long refTimestamp = static_cast<long long>(pending.events_by_source.at(refDetectorID).timestamp);
+
+    for (const auto& expectedSource : m_expected_sources_map) {
+      const int currentDetectorID = expectedSource.second;
+      const int currentIndex = getDetectorProgressiveIndex(currentDetectorID);
+      const long long deltaT =
+          static_cast<long long>(pending.events_by_source.at(currentDetectorID).timestamp) - refTimestamp;
+      const long long expectedDeltaT = m_calib_timing_mean[currentIndex];
+
+      if (std::llabs(deltaT - expectedDeltaT) > static_cast<long long>(m_tstamp_window_ns)) {
+        HIDRA_ERROR("Timestamp mismatch for trigger {}, detID {}: deltaT to detID {} is {} ns, expected {} ns",
+                    trigger_number,
+                    currentDetectorID,
+                    refDetectorID,
+                    deltaT,
+                    expectedDeltaT);
+      }
+    }
   }
 
   auto mergedEvt = BuildFullEvent(pending);
