@@ -147,6 +147,7 @@ private:
     AddBoardFromConf(*conf, 1, "0x05000000", "4", "4");
     AddBoardFromConf(*conf, 2, "0x09000000", "8", "8");
     AddBoardFromConf(*conf, 3, "0x88880000", "16", "16");
+    AddBoardFromConf(*conf, 4, "0x0B000000", "32", "32");
 
     if (m_boards.empty()) {
       EUDAQ_THROW("No boards configured");
@@ -176,7 +177,10 @@ private:
       WriteReg(0x101A, 0x03, m_boards[2].baseAddr);
     }
     if (m_boards.size() > 3) {
-      WriteReg(0x101A, 0x01, m_boards[3].baseAddr);
+      WriteReg(0x101A, 0x03, m_boards[3].baseAddr);
+    }
+    if (m_boards.size() > 4) {
+      WriteReg(0x101A, 0x01, m_boards[4].baseAddr);
     }
 
     m_adcval.fill(INVALID_ADC);
