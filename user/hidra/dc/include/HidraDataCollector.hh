@@ -1,3 +1,4 @@
+#include "TimeAlignmentCalibrator.hh"
 #include "TransportBase.hh"
 #include "HidraMergedBinaryWriter.hh"
 #include "HidraRootEventWriter.hh"
@@ -7,6 +8,7 @@
 #include <memory>
 #include <map>
 #include <string>
+#include <vector>
 
 
 class HidraDataCollector : public eudaq::DataCollector {
@@ -47,13 +49,15 @@ private:
   bool IsExpectedSource(std::string& source);
   bool IsExpectedSource(int& detID) { return m_is_source_enabled[detID]; }
   bool IsComplete(PendingTrigger& pending);
-  uint64_t TimestampSpread(const PendingTrigger& pending) const;
+
   eudaq::EventSP BuildFullEvent(PendingTrigger& pending);
   bool EnqueueMergedEvent(const eudaq::EventSP& event);
   std::string MakeOutputFile(const std::string& extension) const;
   void FlushOldIncompleteEvents();
   void CheckMaxEvents();
   void UpdateStatusTags();
+
+  int getDetectorProgressiveIndex(int detID);
 
 
   const int MAX_SOURCES = 8;
@@ -68,12 +72,16 @@ private:
   bool m_stop_sent = false;
   bool m_running = false;
 
-  const int CALIB_TIMING_EVENTS = 100;
-  std::vector<long long> m_calib_timing_events;
-  long long m_calib_timing_mean = 0;
-  long long m_calib_timing_spread = 0;
+  int m_Nevents_time_calib = 100;
+  hidra::timealignment::TriggerAlignmentConfig m_calib_timing_cfg; 
+  std::vector<std::map<long long, long long>> m_calib_timing_events; // vector of maps <triggerN, timestamp> 
+  int m_calib_timing_n_stored = 0;
+  std::vector<long long> m_calib_timing_mean{};
+  std::vector<long long> m_calib_timing_spread{};
+  std::vector<long long> m_calib_timing_trg_offsets{};
   bool m_calib_timing_needed = true;
   bool m_calib_timing_validated = false;
+  long long m_maxTimeSpread = -1;
   std::vector<bool> m_is_source_enabled = std::vector<bool>(MAX_SOURCES, false);
   std::map<std::string, int> m_expected_sources_map;
   std::map<uint64_t, PendingTrigger> m_pending_events;
