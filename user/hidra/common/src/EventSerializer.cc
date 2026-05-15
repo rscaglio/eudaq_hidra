@@ -211,7 +211,7 @@ marker (16 bit)
     int anchorpoint_subdetector_payload_2 = buffer.size();
 
     int subdetector_payload_size = anchorpoint_subdetector_payload_2 - anchorpoint_subdetector_payload_1;
-    int16_t ev_size_1 = getTagOr<std::uint16_t>(*sub_ev, "detectorDataSize", 0xFEDE);
+    uint16_t ev_size_1 = getTagOr<std::uint16_t>(*sub_ev, "detectorDataSize", 0xFEDE);
     if (subdetector_payload_size > 0xFFFF || static_cast<int16_t>(subdetector_payload_size) != ev_size_1 + 33) {
       // TODO: do not hardcode "33"
       HIDRA_ERROR("Subdetector payload size {} don't match the detectorDataSize tag {} for detID {}. ",
