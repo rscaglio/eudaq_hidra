@@ -1,0 +1,46 @@
+name: hidra_build
+
+on:
+  push:
+    paths:
+      - "user/hidra/**"
+      - ".github/workflows/ci-build.yml"
+  pull_request:
+    paths:
+      - "user/hidra/**"
+      - ".github/workflows/ci-build.yml"
+
+jobs:
+  build:
+    name: Hidra Build (compile only)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libfmt-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEUDAQ_BUILD_GUI=OFF \
+            -DUSER_EXAMPLE_BUILD=OFF \
+            -DUSER_EUDET_BUILD=OFF \
+            -DUSER_HIDRA_BUILD=ON \
+            -DUSER_HIDRA_FERS_BUILD=OFF \
+            -DUSER_HIDRA_FERS2_BUILD=OFF \
+            -DUSER_HIDRA_XDC_BUILD=OFF \
+            -DUSER_HIDRA_DRY_BUILD=ON \
+            -DUSER_HIDRA_DAQ_BUILD=OFF
+
+      - name: Build
+        run: cmake --build build-ci --parallel
