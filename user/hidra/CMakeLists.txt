@@ -14,6 +14,15 @@ if(NOT USER_HIDRA_BUILD)
 endif()
 message(STATUS "user/hidra is to be built (USER_HIDRA_BUILD=ON)")
 
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+	find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp)
+	if(NOT NLOHMANN_JSON_INCLUDE_DIR)
+		message(FATAL_ERROR "nlohmann/json.hpp not found. Install nlohmann-json3-dev or provide the include path before configuring HiDRA.")
+	endif()
+	include_directories(${NLOHMANN_JSON_INCLUDE_DIR})
+endif()
+
 
 ##-- Global Preparation:
 #-- EUDAQ_MODULE needed for compilation at lower level CMakeLists
