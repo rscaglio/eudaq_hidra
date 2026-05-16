@@ -205,6 +205,6 @@ TEST_F(HidraDryXDCProducerTest, DataIntegrity) {
 
   // Verify data payload contains expected values (generator uses 0xdeadbeef + i)
   for (size_t i = 0; i < 0x20; ++i) {
-    EXPECT_EQ(event_words[14 + i], 0xdeadbeef + i) << "Data word at offset " << i << " mismatch";
+    EXPECT_EQ(event_words[14 + i], 0xdeadbeefu + static_cast<uint32_t>(i)) << "Data word at offset " << i << " mismatch";
   }
 }
