@@ -26,7 +26,8 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
-            libfmt-dev
+            libfmt-dev \
+            nlohmann-json3-dev
 
       - name: Configure
         run: |

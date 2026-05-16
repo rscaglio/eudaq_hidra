@@ -12,6 +12,7 @@ Prerequisites and build
 
 - Other prerequisites:
   - `fmt` formatting library (`sudo apt install libfmt-dev`, or `sudo dnf install fmt fmt-devel`, or...)
+  - `nlohmann/json` headers (`sudo apt install nlohmann-json3-dev`, or equivalent on your distro)
 
 - Quick install (recommended — uses local helpers):
 
