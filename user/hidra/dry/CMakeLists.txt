@@ -19,3 +19,5 @@ install(TARGETS
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
 
+# Add tests subdirectory
+add_subdirectory(test)

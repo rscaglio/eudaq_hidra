@@ -23,6 +23,7 @@ public:
   void ReadFileSize();
   bool ReadXDCEvent(std::vector<uint32_t>& event_words);
   void Mainloop();
+  void SetDataPath(const std::string& path);
 
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraDryXDCProducer");
 

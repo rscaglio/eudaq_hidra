@@ -23,6 +23,10 @@ HidraDryXDCProducer::HidraDryXDCProducer(const std::string& name, const std::str
     : eudaq::Producer(name, runcontrol),
       m_exit_of_run(false) {}
 
+void HidraDryXDCProducer::SetDataPath(const std::string& path) {
+  m_data_in_path = path;
+}
+
 void HidraDryXDCProducer::DoInitialise() {
   auto ini = GetInitConfiguration();
   (void)ini;
