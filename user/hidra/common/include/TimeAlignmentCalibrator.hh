@@ -1,6 +1,7 @@
 #ifndef HIDRA_TIMEALIGNMENT_CALIBRATOR_HH
 #define HIDRA_TIMEALIGNMENT_CALIBRATOR_HH
 
+#include <cstddef>
 #include <map>
 #include <vector>
 
