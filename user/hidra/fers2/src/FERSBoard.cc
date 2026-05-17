@@ -143,6 +143,24 @@ bool FERSBoard::StopAcquisition(int start_mode, int run_number) {
   return true;
 }
 
+bool FERSBoard::SetHighVoltage(bool on) {
+  if (handle_ < 0) {
+    status_.last_error = "Cannot change high voltage state: board is not connected.";
+    status_.last_return_code = FERSLIB_ERR_INVALID_HANDLE;
+    return false;
+  }
+
+  const int ret = FERS_HV_Set_OnOff(handle_, on ? 1 : 0);
+  status_.last_return_code = ret;
+  if (ret != 0) {
+    status_.last_error = BuildError(std::string("FERS_HV_Set_OnOff failed for ") + (on ? "on" : "off"), ret);
+    return false;
+  }
+
+  status_.last_error.clear();
+  return true;
+}
+
 bool FERSBoard::SendCommand(uint32_t command) {
   if (handle_ < 0) {
     status_.last_error = "Cannot send command: board is not connected.";
