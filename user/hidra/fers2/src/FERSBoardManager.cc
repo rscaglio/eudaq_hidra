@@ -66,6 +66,20 @@ bool FERSBoardManager::ConfigureAll(const FERSConfiguration& config,
   return true;
 }
 
+bool FERSBoardManager::SetHighVoltageAll(bool on, std::string* error) {
+  for (auto& board : boards_) {
+    if (!board.SetHighVoltage(on)) {
+      if (error != nullptr) {
+        *error = "High voltage toggle failed for board id " + std::to_string(board.board_id()) + ": " +
+                 board.status().last_error;
+      }
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string* error) {
   if (boards_.empty()) {
     if (error != nullptr) {

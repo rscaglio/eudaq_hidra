@@ -1,4 +1,3 @@
-#include "eudaq/Configuration.hh"
 #include "eudaq/Event.hh"
 #include "eudaq/Factory.hh"
 #include "eudaq/Logger.hh"
@@ -23,7 +22,6 @@
 
 namespace {
 
-using hidra::fers2::FERSBoard;
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
 using hidra::fers2::FERSEvent;
@@ -203,6 +201,11 @@ private:
       EUDAQ_THROW(error);
     }
 
+    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+      m_board_manager.DisconnectAll(nullptr);
+      EUDAQ_THROW(error);
+    }
+
     m_board_ids.clear();
     m_board_ids.reserve(m_board_manager.boards().size());
     for (const auto& board : m_board_manager.boards()) {
@@ -214,7 +217,6 @@ private:
   }
 
   void DoStartRun() override {
-    StopAcquisitionThread();
     m_exit_of_run = false;
     m_evt_f = 0;
     m_run_number = GetRunNumber();
@@ -231,6 +233,10 @@ private:
     SendEvent(std::move(bore));
 
     std::string error;
+    if (!m_board_manager.SetHighVoltageAll(true, &error)) {
+      EUDAQ_THROW(error);
+    }
+
     if (!m_board_manager.StartAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_THROW(error);
     }
@@ -239,10 +245,13 @@ private:
   }
 
   void DoStopRun() override {
-    StopAcquisitionThread();
     m_exit_of_run = true;
     std::string error;
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
+      EUDAQ_WARN(error);
+    }
+
+    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
       EUDAQ_WARN(error);
     }
 
@@ -255,11 +264,13 @@ private:
   }
 
   void DoReset() override {
-    StopAcquisitionThread();
     m_exit_of_run = true;
     m_evt_f = 0;
     std::string error;
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
+      EUDAQ_WARN(error);
+    }
+    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
       EUDAQ_WARN(error);
     }
     if (!m_board_manager.DisconnectAll(&error)) {
@@ -271,9 +282,11 @@ private:
 
   void DoTerminate() override {
     m_exit_of_run = true;
-    StopAcquisitionThread();
     std::string error;
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
+      EUDAQ_WARN(error);
+    }
+    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
       EUDAQ_WARN(error);
     }
     if (!m_board_manager.DisconnectAll(&error)) {
@@ -382,15 +395,8 @@ private:
           timestamp_set = true;
         }
 	EUDAQ_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " + std::to_string(trigger_n));
-        // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID AND THE BLOCK SIZE 
-        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 3u);
-        std::vector<uint8_t> ext_block(ext_block_size);
-        ext_block[0] = static_cast<uint8_t>(ext_block_size);
-        ext_block[1] = static_cast<uint8_t>(ext_block_size >> 8);
-        ext_block[2] = static_cast<uint8_t>(board_id);
-        std::memcpy(ext_block.data() + 3u, event.payload.data(), event.payload.size());
-        ev->AddBlock(static_cast<uint32_t>(board_id), ext_block);
-        total_payload_bytes += ext_block.size();
+        ev->AddBlock(static_cast<uint32_t>(board_id), event.payload);
+        total_payload_bytes += event.payload.size();
         queue.pop_front();
       }
 
@@ -399,14 +405,6 @@ private:
       SendEvent(std::move(ev));
       ++m_evt_f;
      
-    }
-  }
-
-  void StopAcquisitionThread() {
-    m_exit_of_run = true;
-
-    if (m_thd_run.joinable()) {
-      m_thd_run.join();
     }
   }
 
@@ -425,7 +423,6 @@ private:
   bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
-  std::thread m_thd_run;
 };
 
 namespace {

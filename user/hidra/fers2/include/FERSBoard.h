@@ -62,6 +62,11 @@ public:
   bool StopAcquisition(int start_mode, int run_number);
 
   /**
+   * Enable or disable the SiPM high voltage channel on this board.
+   */
+  bool SetHighVoltage(bool on);
+
+  /**
    * Send a raw command to the board through the FERS API.
    * Useful for lower-level control or vendor-specific operations.
    */

@@ -55,6 +55,7 @@ namespace fers2 {
                      bool load_config_file_first = true,
                      std::string* error = nullptr);
 
+  bool SetHighVoltageAll(bool on, std::string* error = nullptr);
    bool StartAll(int start_mode, int run_number, std::string* error = nullptr);
    bool StopAll(int start_mode, int run_number, std::string* error = nullptr);
    bool DisconnectAll(std::string* error = nullptr);

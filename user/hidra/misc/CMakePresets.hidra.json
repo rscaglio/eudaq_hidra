@@ -13,6 +13,7 @@
                 "USER_HIDRA_BUILD": "ON",
                 "USER_HIDRA_XDC_BUILD": "ON",
                 "USER_HIDRA_FERS_BUILD": "OFF",
+                "USER_HIDRA_FERS2_BUILD": "ON",
                 "USER_HIDRA_DRY_BUILD": "ON",
                 "USER_HIDRA_DC_ROOT_OUTPUT": "ON",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
