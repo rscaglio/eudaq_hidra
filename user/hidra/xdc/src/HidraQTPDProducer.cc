@@ -147,7 +147,7 @@ private:
     AddBoardFromConf(*conf, 1, "0x05000000", "4", "4");
     AddBoardFromConf(*conf, 2, "0x09000000", "8", "8");
     AddBoardFromConf(*conf, 3, "0x88880000", "16", "16");
-    AddBoardFromConf(*conf, 4, "0x0B000000", "32", "32");
+    AddBoardFromConf(*conf, 4, "0x0B000000", "20", "20");
 
     if (m_boards.empty()) {
       EUDAQ_THROW("No boards configured");
