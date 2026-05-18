@@ -75,13 +75,13 @@ private:
   int m_Nevents_time_calib = 100;
   hidra::timealignment::TriggerAlignmentConfig m_calib_timing_cfg; 
   std::vector<std::map<long long, long long>> m_calib_timing_events; // vector of maps <triggerN, timestamp> 
-  int m_calib_timing_n_stored = 0;
   std::vector<long long> m_calib_timing_mean{};
   std::vector<long long> m_calib_timing_spread{};
   std::vector<long long> m_calib_timing_trg_offsets{};
   bool m_calib_timing_needed = true;
   bool m_calib_timing_validated = false;
   long long m_maxTimeSpread = -1;
+  std::string m_calib_trg_offset_report = "";
   std::vector<bool> m_is_source_enabled = std::vector<bool>(MAX_SOURCES, false);
   std::map<std::string, int> m_expected_sources_map;
   std::map<uint64_t, PendingTrigger> m_pending_events;
