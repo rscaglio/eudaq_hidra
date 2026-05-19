@@ -48,6 +48,7 @@ private:
 
   std::ofstream m_status_dump;
   std::chrono::steady_clock::time_point m_last_status_dump;
+  uint32_t m_last_run_n = 0;
 };
 
 namespace {
@@ -86,12 +87,16 @@ void HidraRunControl::StartRun() {
 }
 
 void HidraRunControl::StopRun() {
-  RunControl::StopRun();
 
+  m_last_run_n = GetRunN();
+
+  RunControl::StopRun();
   m_tp_stop_run = std::chrono::steady_clock::now();
   m_flag_running = false;
-
   DumpStatusJsonl();
+
+
+
 
   if (m_status_dump.is_open()) {
     m_status_dump.flush();
@@ -188,7 +193,7 @@ void HidraRunControl::DumpStatusJsonl() {
 
   json j;
   j["time_unix_ns"] = unix_ns;
-  j["run"] = GetRunN();
+  j["run"] = m_flag_running ? GetRunN() : m_last_run_n;
 
   for (const auto& p : snapshot) {
     const auto& name = p.first;
