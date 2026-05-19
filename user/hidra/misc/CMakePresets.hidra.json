@@ -39,6 +39,33 @@
             "jobs": 10
         }
     ],
+    "testPresets": [
+        {
+            "name": "hidra-test-all",
+            "displayName": "HiDRA Test (all)",
+            "description": "Esegue tutti i test CTest della build HiDRA",
+            "configurePreset": "hidra-configure",
+            "output": {
+                "outputOnFailure": true,
+                "verbosity": "verbose"
+            }
+        },
+        {
+            "name": "hidra-test-dc",
+            "displayName": "HiDRA Test (dc payload decoders)",
+            "description": "Esegue solo i test DataCollector/payload decoder",
+            "configurePreset": "hidra-configure",
+            "filter": {
+                "include": {
+                    "name": "HidraRootPayloadDecoders.*"
+                }
+            },
+            "output": {
+                "outputOnFailure": true,
+                "verbosity": "verbose"
+            }
+        }
+    ],
     "workflowPresets": [
         {
             "name": "hidra-full",

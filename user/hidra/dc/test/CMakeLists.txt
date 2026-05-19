@@ -6,7 +6,7 @@ enable_testing()
 # Find Google Test
 find_package(GTest QUIET)
 
-if(NOT GTEST_FOUND)
+if(NOT GTest_FOUND)
   message(STATUS "Google Test not found, attempting to use system GTest")
   # Try to find it another way or provide instructions
   message(WARNING "Google Test (gtest) is required for tests. Install with:")

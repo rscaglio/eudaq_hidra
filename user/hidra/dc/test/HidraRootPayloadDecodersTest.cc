@@ -22,22 +22,6 @@ protected:
     return payload;
   }
 
-  std::vector<std::uint8_t> CreateXDCPayload(size_t word_count = 10) {
-    std::vector<std::uint8_t> payload(word_count * 4);
-    // Fill with valid XDC word pattern (simplified)
-    // Header word: type=0x2 (010), geo=0x1, crate=0x0, count=0x0
-    uint32_t header = 0xA2000000;  // type 0x5 (101) in bits 26:24
-    std::memcpy(payload.data(), &header, sizeof(uint32_t));
-    
-    // Add trailer word
-    uint32_t trailer = 0xC0000000; // type 0x6 (110) in bits 26:24
-    if (word_count > 1) {
-      std::memcpy(payload.data() + (word_count - 1) * 4, &trailer, sizeof(uint32_t));
-    }
-    
-    return payload;
-  }
-
   std::vector<std::uint8_t> CreateFERSPayload() {
     // Create a minimal FERS payload (699 bytes)
     std::vector<std::uint8_t> payload(699, 0xFF);
@@ -310,7 +294,7 @@ TEST(RootDetectorPayloadTest, AssignValues) {
   EXPECT_EQ(payload.payload.size(), 3);
 }
 
-// ============ Quantitities and Branches Tests ============
+// ============ Quantities and Branches Tests ============
 
 // Verifies default initialization values for RootQuantity.
 TEST(RootQuantityTest, DefaultConstruction) {
