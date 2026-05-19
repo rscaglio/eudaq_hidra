@@ -1,5 +1,4 @@
 #include "../include/HidraDryFERSProducer.hh"
-#include "EventSerializer.hh"
 #include "HidraUtils.hh"
 #include <iostream>
 #include <fstream>
@@ -166,6 +165,7 @@ void HidraDryFERSProducer::Mainloop() {
   while (!m_exit_of_run) {
 
     uint64_t current_trigger_id = std::numeric_limits<uint64_t>::max();
+    uint64_t current_timestamp = 0;
 
     // std::unique_ptr<eudaq::Event> current_evt;
     eudaq::EventUP current_evt;
@@ -231,6 +231,7 @@ void HidraDryFERSProducer::Mainloop() {
 
         current_evt = eudaq::Event::MakeUnique("FERSEvent");
         current_trigger_id = trigger_id;
+        current_timestamp = trigger_timestamp;
         current_evt->SetTriggerN(current_trigger_id);
         current_evt->SetEventN(current_trigger_id);
         current_evt->SetRunN(m_file_run_number);
@@ -239,6 +240,12 @@ void HidraDryFERSProducer::Mainloop() {
       }
 
       if (have_open_evt && trigger_id > current_trigger_id) {
+
+        if ((long long)trigger_timestamp - current_timestamp < 300000){
+          HIDRA_ERROR("New trigger {} is only {} is away from previous trigger {}. Less than 300us --> Skipping block",
+          trigger_id, ((long long)trigger_timestamp - current_timestamp)/1000., current_trigger_id);
+          continue;
+        }
 
         // prepare sending
         current_evt->SetTag("detectorDataSize", std::to_string(event_size));
@@ -249,6 +256,7 @@ void HidraDryFERSProducer::Mainloop() {
                    hidra::utils::GetEventInfo(current_evt.get()));
         evt_time_last_sent = current_evt->GetTimestampBegin();
         real_time_last_sent = hidra::utils::getTimeus();
+        
         SendEvent(std::move(current_evt));
         event_size = 0;
         ievt++;

@@ -28,6 +28,8 @@ struct TriggerAlignmentResult {
 
 std::vector<int> makeOffsetScanOrder(int maxAbsTrgOffset);
 
+std::pair<double, double> getMeanStd(std::vector<long long> v, bool safeoffset);
+
 TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long long>& reference,
                                               const std::map<long long, long long>& other,
                                               size_t mapIndex,

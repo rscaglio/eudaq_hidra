@@ -21,7 +21,42 @@ std::vector<int> makeOffsetScanOrder(int maxAbsTrgOffset) {
   }
 
   return offsets;
+
 }
+
+std::pair<double, double> getMeanStd(std::vector<long long> v, bool safeoffset = false){
+
+  if (v.size() == 0){
+    return {-999., -999.};
+  }
+  else if (v.size() == 1){
+    return {(double)v[0], 0.};
+  }
+
+  if (safeoffset){
+    double x = (double)v[0];
+    std::transform(v.begin(), v.end(), v.begin(),
+               [x](double value) {
+                   return value - x;
+               });
+  }
+
+
+  const double sum = std::accumulate(v.begin(), v.end(), 0.0);
+  const double mean = sum / static_cast<double>(v.size());
+
+  double sumResidual2 = 0.0;
+
+  for (long long x : v) {
+      const double dx = static_cast<double>(x) - mean;
+      sumResidual2 += dx * dx;
+  }
+
+  const double stddev = std::sqrt(sumResidual2 / static_cast<double>(v.size()));
+
+  return {safeoffset ? mean+(double)v[0] : mean, stddev};
+}
+
 
 TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long long>& reference,
                                               const std::map<long long, long long>& other,
@@ -43,7 +78,7 @@ TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long lon
 
     long long dTFirstStep = 0;
 
-    int istep = 0;
+    
     for (const auto& [trigRef, timeRef] : reference) {
 
       const long long trigOther = trigRef + offset;
@@ -56,14 +91,7 @@ TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long lon
       const long long timeOther = itOther->second;
       const long long deltaT = timeOther - timeRef;
 
-      if (istep == 0) {
-        dTFirstStep = deltaT;
-      }
-
-      deltaTs.push_back(deltaT - dTFirstStep); // need to remove the common offset not to lose precision when computing
-                                               // the range and the stddev
-
-      istep++;
+      deltaTs.push_back(deltaT); 
     }
 
     if (deltaTs.size() < cfg.minMatches) {
@@ -76,32 +104,24 @@ TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long lon
     const long long maxDeltaT = *minmax.second;
     const long long range = maxDeltaT - minDeltaT;
 
+    auto meanstd = getMeanStd(deltaTs, true);
+
     // deciding if this is the best alignment so far
     
     if (range < bestRange) {
       bestRange = range;
       bestMatches = static_cast<int>(deltaTs.size());
 
-      const double sum = std::accumulate(deltaTs.begin(), deltaTs.end(), 0.0);
-      const double mean = sum / static_cast<double>(deltaTs.size());
-
-      double sumResidual2 = 0.0;
-
-      for (long long x : deltaTs) {
-        const double dx = static_cast<double>(x) - mean;
-        sumResidual2 += dx * dx;
-      }
-
-      const double stddev = std::sqrt(sumResidual2 / static_cast<double>(deltaTs.size()));
+      auto meanstd = getMeanStd(deltaTs, true);
 
       // reapplying the common offset to the best offset found, to have a more meaningful value to return
       best.bestOffset = offset;
       best.nMatches = static_cast<int>(deltaTs.size());
-      best.minDeltaT = minDeltaT + dTFirstStep;
+      best.minDeltaT = minDeltaT ;
       best.maxDeltaT = maxDeltaT;
       best.deltaTRange = range;
-      best.meanDeltaT = (long long)mean + dTFirstStep;
-      best.stddevDeltaT = stddev;
+      best.meanDeltaT = (long long)meanstd.first;
+      best.stddevDeltaT = meanstd.second;
     }
 
     if (cfg.stopAtFirstValid && range <= cfg.maxDeltaTRange && bestMatches >= cfg.minMatches) {
