@@ -30,8 +30,8 @@ add_executable(hidra_dry_xdc_producer_advanced_test
 target_link_libraries(hidra_dry_xdc_producer_test
   ${EUDAQ_MODULE}_dry
   ${EUDAQ_CORE_LIBRARY}
-  GTest::GTest
-  GTest::Main
+  GTest::gtest
+  GTest::gtest_main
   Threads::Threads
 )
 
@@ -39,8 +39,8 @@ target_link_libraries(hidra_dry_xdc_producer_test
 target_link_libraries(hidra_dry_xdc_producer_advanced_test
   ${EUDAQ_MODULE}_dry
   ${EUDAQ_CORE_LIBRARY}
-  GTest::GTest
-  GTest::Main
+  GTest::gtest
+  GTest::gtest_main
   Threads::Threads
 )
 

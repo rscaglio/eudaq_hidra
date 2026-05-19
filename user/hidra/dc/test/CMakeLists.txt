@@ -31,8 +31,8 @@ target_link_libraries(hidra_dc_payload_decoder_test
   ${EUDAQ_MODULE}_dc
   ${EUDAQ_MODULE}_common
   ${EUDAQ_CORE_LIBRARY}
-  GTest::GTest
-  GTest::Main
+  GTest::gtest
+  GTest::gtest_main
   Threads::Threads
 )
 
@@ -41,8 +41,8 @@ target_link_libraries(hidra_dc_payload_decoder_advanced_test
   ${EUDAQ_MODULE}_dc
   ${EUDAQ_MODULE}_common
   ${EUDAQ_CORE_LIBRARY}
-  GTest::GTest
-  GTest::Main
+  GTest::gtest
+  GTest::gtest_main
   Threads::Threads
 )
 
