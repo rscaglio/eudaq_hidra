@@ -1,3 +1,12 @@
+// Tests for HidraDryXDCProducer — edge cases and robustness checks.
+//
+// Covers: varying data sizes, spill numbers, malformed headers, large events,
+// sequential EOF handling, payload content, consecutive ReadFileSize calls,
+// file-reopen behaviour, and timestamp field values.
+//
+// Run with:  ctest --output-on-failure -R HidraDryXDCProducerAdvancedTest
+// Binary:    bin/tests/hidra_dry_xdc_producer_advanced_test
+
 #include <gtest/gtest.h>
 #include "../include/HidraDryXDCProducer.hh"
 #include "HidraDryXDCProducerTestFixtures.hh"
@@ -19,7 +28,7 @@ protected:
   fs::path test_dir;
 };
 
-// Advanced Test 1: Event with varying data sizes
+// Event with varying data sizes
 TEST_F(HidraDryXDCProducerAdvancedTest, EventsWithVaryingDataSizes) {
   TemporaryXDCFile test_file(test_dir, "varying_sizes.xdc");
   
@@ -41,7 +50,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, EventsWithVaryingDataSizes) {
   }
 }
 
-// Advanced Test 2: Multiple spill numbers
+// Multiple spill numbers
 TEST_F(HidraDryXDCProducerAdvancedTest, MultipleSpillNumbers) {
   TemporaryXDCFile test_file(test_dir, "spills.xdc");
   
@@ -63,7 +72,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, MultipleSpillNumbers) {
   }
 }
 
-// Advanced Test 3: Bad header end marker
+// Bad header end marker
 TEST_F(HidraDryXDCProducerAdvancedTest, BadHeaderEndMarker) {
   TemporaryXDCFile test_file(test_dir, "bad_header_end.xdc");
   EXPECT_TRUE(XDCTestDataGenerator::GenerateBadHeaderEndMarkerFile(test_file.GetPath()));
@@ -76,7 +85,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, BadHeaderEndMarker) {
   EXPECT_FALSE(producer.ReadXDCEvent(read_event));
 }
 
-// Advanced Test 4: Bad event size
+// Bad event size
 TEST_F(HidraDryXDCProducerAdvancedTest, BadEventSize) {
   TemporaryXDCFile test_file(test_dir, "bad_event_size.xdc");
   EXPECT_TRUE(XDCTestDataGenerator::GenerateBadEventSizeFile(test_file.GetPath()));
@@ -89,7 +98,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, BadEventSize) {
   EXPECT_FALSE(producer.ReadXDCEvent(read_event));
 }
 
-// Advanced Test 5: Large event with maximum data
+// Large event with maximum data
 TEST_F(HidraDryXDCProducerAdvancedTest, LargeEventWithMaximumData) {
   TemporaryXDCFile test_file(test_dir, "large_event.xdc");
   
@@ -106,7 +115,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, LargeEventWithMaximumData) {
   EXPECT_EQ(read_event.size(), 0x1000 + 14 + 1);  // header + data + trailer
 }
 
-// Advanced Test 6: Sequential reading with EOF
+// Sequential reading with EOF
 TEST_F(HidraDryXDCProducerAdvancedTest, SequentialReadingWithEOF) {
   TemporaryXDCFile test_file(test_dir, "sequential.xdc");
   
@@ -129,7 +138,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, SequentialReadingWithEOF) {
   EXPECT_EQ(event_count, 100);
 }
 
-// Advanced Test 7: Data payload verification
+// Data payload verification
 TEST_F(HidraDryXDCProducerAdvancedTest, DataPayloadVerification) {
   TemporaryXDCFile test_file(test_dir, "payload.xdc");
   
@@ -151,7 +160,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, DataPayloadVerification) {
   }
 }
 
-// Advanced Test 8: Consecutive ReadFileSize calls maintain consistency
+// Consecutive ReadFileSize calls maintain consistency
 TEST_F(HidraDryXDCProducerAdvancedTest, ConsecutiveReadsAfterResize) {
   TemporaryXDCFile test_file(test_dir, "consecutive.xdc");
 
@@ -171,7 +180,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, ConsecutiveReadsAfterResize) {
   EXPECT_EQ(read_event[1], 1u);
 }
 
-// Advanced Test 9: ReadFileSize resets read position
+// ReadFileSize resets read position
 TEST_F(HidraDryXDCProducerAdvancedTest, FileReopeningAfterClose) {
   TemporaryXDCFile test_file(test_dir, "reopen.xdc");
 
@@ -198,7 +207,7 @@ TEST_F(HidraDryXDCProducerAdvancedTest, FileReopeningAfterClose) {
   EXPECT_EQ(event1_again[1], 1u);
 }
 
-// Advanced Test 10: Timestamp fields
+// Timestamp fields
 TEST_F(HidraDryXDCProducerAdvancedTest, TimestampFields) {
   TemporaryXDCFile test_file(test_dir, "timestamps.xdc");
   

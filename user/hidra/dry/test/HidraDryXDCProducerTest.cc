@@ -1,3 +1,11 @@
+// Tests for HidraDryXDCProducer — basic behaviour and file-parsing checks.
+//
+// Covers: constructor, ReadFileSize, ReadXDCEvent, event field layout, and
+// basic error handling (missing file, bad marker, truncated/empty input).
+//
+// Run with:  ctest --output-on-failure -R HidraDryXDCProducerTest
+// Binary:    bin/tests/hidra_dry_xdc_producer_test
+
 #include <gtest/gtest.h>
 #include "../include/HidraDryXDCProducer.hh"
 #include "HidraDryXDCProducerTestFixtures.hh"
@@ -51,14 +59,14 @@ protected:
   fs::path empty_file;
 };
 
-// Test 1: Constructor and basic initialization
+// Constructor and basic initialization
 TEST_F(HidraDryXDCProducerTest, ConstructorInitialization) {
   EXPECT_NO_THROW({
     HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   });
 }
 
-// Test 2: File size reading with valid file
+// File size reading with valid file
 TEST_F(HidraDryXDCProducerTest, ReadFileSizeValidFile) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());
@@ -71,7 +79,7 @@ TEST_F(HidraDryXDCProducerTest, ReadFileSizeValidFile) {
   EXPECT_TRUE(producer.ReadXDCEvent(event));
 }
 
-// Test 3: File size reading with non-existent file should throw
+// File size reading with non-existent file should throw
 TEST_F(HidraDryXDCProducerTest, ReadFileSizeNonExistentFile) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath((test_dir / "nonexistent.xdc").string());
@@ -81,7 +89,7 @@ TEST_F(HidraDryXDCProducerTest, ReadFileSizeNonExistentFile) {
   }, eudaq::Exception);
 }
 
-// Test 4: Read valid XDC event
+// Read valid XDC event
 TEST_F(HidraDryXDCProducerTest, ReadXDCEventValid) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());
@@ -94,7 +102,7 @@ TEST_F(HidraDryXDCProducerTest, ReadXDCEventValid) {
   EXPECT_EQ(event_words[13], 0xaccadeadu);  // end marker
 }
 
-// Test 5: Read multiple events from file
+// Read multiple events from file
 TEST_F(HidraDryXDCProducerTest, ReadMultipleXDCEvents) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());
@@ -108,7 +116,7 @@ TEST_F(HidraDryXDCProducerTest, ReadMultipleXDCEvents) {
   EXPECT_EQ(event2[1], 0x00000002);  // event number
 }
 
-// Test 6: Read event with invalid marker should return false
+// Read event with invalid marker should return false
 TEST_F(HidraDryXDCProducerTest, ReadXDCEventInvalidMarker) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(invalid_marker_file.string());
@@ -118,7 +126,7 @@ TEST_F(HidraDryXDCProducerTest, ReadXDCEventInvalidMarker) {
   EXPECT_FALSE(producer.ReadXDCEvent(event_words));
 }
 
-// Test 7: Read event from truncated file should return false
+// Read event from truncated file should return false
 TEST_F(HidraDryXDCProducerTest, ReadXDCEventTruncatedFile) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(truncated_file.string());
@@ -128,7 +136,7 @@ TEST_F(HidraDryXDCProducerTest, ReadXDCEventTruncatedFile) {
   EXPECT_FALSE(producer.ReadXDCEvent(event_words));
 }
 
-// Test 8: Read from empty file should return false
+// Read from empty file should return false
 TEST_F(HidraDryXDCProducerTest, ReadXDCEventEmptyFile) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(empty_file.string());
@@ -138,7 +146,7 @@ TEST_F(HidraDryXDCProducerTest, ReadXDCEventEmptyFile) {
   EXPECT_FALSE(producer.ReadXDCEvent(event_words));
 }
 
-// Test 9: Verify event field extraction
+// Verify event field extraction
 TEST_F(HidraDryXDCProducerTest, EventFieldExtraction) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());
@@ -159,7 +167,7 @@ TEST_F(HidraDryXDCProducerTest, EventFieldExtraction) {
   EXPECT_EQ(event_words[event_words.size()-1], 0xbbeeddaau);  // trailer
 }
 
-// Test 10: ReadFileSize enables reading events
+// ReadFileSize enables reading events
 TEST_F(HidraDryXDCProducerTest, ReadFileSizeEnablesEventReading) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());
@@ -176,7 +184,7 @@ TEST_F(HidraDryXDCProducerTest, ReadFileSizeEnablesEventReading) {
   EXPECT_FALSE(producer.ReadXDCEvent(ev3));
 }
 
-// Test 11: ReadFileSize resets the read position to the beginning
+// ReadFileSize resets the read position to the beginning
 TEST_F(HidraDryXDCProducerTest, ReadFileSizeResetsPosition) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());
@@ -194,7 +202,7 @@ TEST_F(HidraDryXDCProducerTest, ReadFileSizeResetsPosition) {
   EXPECT_EQ(ev_again[1], 0x00000001u);  // back at first event
 }
 
-// Test 12: Data integrity check
+// Data integrity check
 TEST_F(HidraDryXDCProducerTest, DataIntegrity) {
   HidraDryXDCProducer producer("TestProducer", "tcp://localhost:44000");
   producer.SetDataPath(valid_data_file.string());

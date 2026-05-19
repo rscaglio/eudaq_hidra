@@ -33,7 +33,7 @@ target_link_libraries(hidra_dc_payload_decoder_test
   ${EUDAQ_CORE_LIBRARY}
   GTest::GTest
   GTest::Main
-  pthread
+  Threads::Threads
 )
 
 # Link libraries for advanced test
@@ -43,7 +43,7 @@ target_link_libraries(hidra_dc_payload_decoder_advanced_test
   ${EUDAQ_CORE_LIBRARY}
   GTest::GTest
   GTest::Main
-  pthread
+  Threads::Threads
 )
 
 # Add tests to CTest

@@ -32,7 +32,7 @@ target_link_libraries(hidra_dry_xdc_producer_test
   ${EUDAQ_CORE_LIBRARY}
   GTest::GTest
   GTest::Main
-  pthread
+  Threads::Threads
 )
 
 # Link libraries for advanced test
@@ -41,7 +41,7 @@ target_link_libraries(hidra_dry_xdc_producer_advanced_test
   ${EUDAQ_CORE_LIBRARY}
   GTest::GTest
   GTest::Main
-  pthread
+  Threads::Threads
 )
 
 # Add tests to CTest
