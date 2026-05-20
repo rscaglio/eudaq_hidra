@@ -78,7 +78,8 @@ private:
   std::vector<long long> m_calib_timing_mean{};
   std::vector<long long> m_calib_timing_spread{};
   std::vector<long long> m_calib_timing_trg_offsets{};
-  bool m_calib_timing_needed = true;
+  bool m_calib_timing_enabled = false; // this is static until re-configuration of EuDAQ
+  bool m_calib_timing_needed = false; // this becomes true/false when calibration along the run is needed. If calib is enabled, is set true at the beginning of each run
   bool m_calib_timing_validated = false;
   long long m_maxTimeSpread = -1;
   std::string m_calib_trg_offset_report = "";

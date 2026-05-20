@@ -175,10 +175,12 @@ void HidraDataCollector::UpdateStatusTags() {
   SetStatusTag("Completes", std::to_string(m_n_complete_events));
   SetStatusTag("Incompletes", std::to_string(m_n_incomplete_events));
   SetStatusTag("EventsOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenEventCount() : 0));
-  SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount() / 1000 : 0));
-  SetStatusTag("CalibTimingStatus", m_calib_timing_needed ? "Waiting" : (m_calib_timing_validated ? "Ok" : "Failed"));
-  SetStatusTag("CalibMaxTimeSpread", m_calib_timing_needed ? "Waiting" : std::to_string(m_maxTimeSpread) + " ns");
-  SetStatusTag("CalibOffsets", m_calib_timing_needed ? "Waiting" : m_calib_trg_offset_report);
+  if (m_calib_timing_enabled){
+    SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount() / 1000 : 0));
+    SetStatusTag("CalibTimingStatus", m_calib_timing_needed ? "Waiting" : (m_calib_timing_validated ? "Ok" : "Failed"));
+    SetStatusTag("CalibMaxTimeSpread", m_calib_timing_needed ? "Waiting" : std::to_string(m_maxTimeSpread) + " ns");
+    SetStatusTag("CalibOffsets", m_calib_timing_needed ? "Waiting" : m_calib_trg_offset_report);
+  }
   SendStatus();
 }
 
@@ -216,7 +218,7 @@ void HidraDataCollector::DoInitialise() {
   m_pending_events.clear();
   m_calib_timing_events.clear();
   m_calib_timing_validated = false;
-  m_calib_timing_needed = true;
+  m_calib_timing_needed = false;
 
   HIDRA_INFO("HidraDataCollector initialized");
 }
@@ -227,9 +229,11 @@ void HidraDataCollector::DoConfigure() {
   m_event_count = 0;
   m_stop_sent = false;
   m_pending_events.clear();
+
+  m_calib_timing_enabled = conf->Get("TIME_ALIGNMENT_ENABLE", 0); // this is static until re-configuration of EuDAQ
   m_calib_timing_events.clear();
   m_calib_timing_validated = false;
-  m_calib_timing_needed = true;
+  m_calib_timing_needed = m_calib_timing_enabled; // this becomes true/false when calibration along the run is needed
 
   m_expected_sources_map.clear();
   std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
@@ -321,7 +325,7 @@ void HidraDataCollector::DoStartRun() {
                                          // will be filled with <triggerN, timestamp> for the calibration events of the
                                          // corresponding source.
   m_calib_timing_validated = false;
-  m_calib_timing_needed = true;
+  m_calib_timing_needed = m_calib_timing_enabled;
 
   m_binary_writer.reset();
   m_root_writer.reset();
@@ -367,7 +371,7 @@ void HidraDataCollector::DoStopRun() {
   m_pending_events.clear();
   m_calib_timing_events.clear();
   m_calib_timing_validated = false;
-  m_calib_timing_needed = true;
+  m_calib_timing_needed = m_calib_timing_enabled;
 
   if (m_binary_writer) {
     m_binary_writer->Stop();
@@ -387,7 +391,7 @@ void HidraDataCollector::DoReset() {
   m_pending_events.clear();
   m_calib_timing_events.clear();
   m_calib_timing_validated = false;
-  m_calib_timing_needed = true;
+  m_calib_timing_needed = false;
   m_expected_sources_map.clear();
   std::fill(m_is_source_enabled.begin(), m_is_source_enabled.end(), false);
 

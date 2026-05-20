@@ -26,7 +26,7 @@ EVENT_TRAILER = 0xD04E
 DETECTOR_EVENT_MARKER = 0xDEDE
 DETECTOR_EVENT_END_MARKER = 0xDDDD
 
-DATA_FORMAT_VERSION = 5
+DATA_FORMAT_VERSION = 7
 EVENT_HEADER_SIZE = 65
 EVENT_TRAILER_SIZE = 2
 DETECTOR_HEADER_SIZE = 31
@@ -397,7 +397,7 @@ def parse_detector_at(
     pos: int,
     trailer_offset: int,
     expected_det_id: int,
-    expected_payload_size: int,
+    expected_detector_size: int,
     options: ParseOptions,
     event_index: int,
 ) -> DetectorRecord:
@@ -426,22 +426,37 @@ def parse_detector_at(
         f"unknown endianness byte 0x{endianness:02x}",
     )
 
-    payload_size = expected_payload_size
+    payload_size = 0
     size_source = "detectorSize"
-    end_marker_offset = payload_offset + payload_size
+    end_marker_offset = payload_offset
     end_marker = None
 
     if (
         options.use_size_table
-        and expected_payload_size != 0xFFFF
-        and end_marker_offset + 2 <= trailer_offset
-        and u16(record, end_marker_offset) == DETECTOR_EVENT_END_MARKER
+        and expected_detector_size != 0xFFFF
+        and expected_detector_size >= DETECTOR_HEADER_SIZE + 2
+        and pos + expected_detector_size <= trailer_offset
+        and u16(record, pos + expected_detector_size - 2) == DETECTOR_EVENT_END_MARKER
     ):
+        end_marker_offset = pos + expected_detector_size - 2
+        payload_size = expected_detector_size - DETECTOR_HEADER_SIZE - 2
+        end_marker = u16(record, end_marker_offset)
+    elif (
+        options.use_size_table
+        and expected_detector_size != 0xFFFF
+        and payload_offset + expected_detector_size + 2 <= trailer_offset
+        and u16(record, payload_offset + expected_detector_size) == DETECTOR_EVENT_END_MARKER
+    ):
+        # Compatibility with files/tools that interpreted detectorSize as payload
+        # bytes only, even though EventSerializer writes the full detector block.
+        payload_size = expected_detector_size
+        end_marker_offset = payload_offset + payload_size
+        size_source = "detectorSize-payload"
         end_marker = u16(record, end_marker_offset)
     else:
         if options.use_size_table:
             warnings.append(
-                f"detectorSize[{expected_det_id}]={expected_payload_size} did not land on 0xDDDD; scanned marker"
+                f"detectorSize[{expected_det_id}]={expected_detector_size} did not land on 0xDDDD as block or payload size; scanned marker"
             )
         end_marker_offset = find_detector_end_marker(record, payload_offset, trailer_offset)
         payload_size = end_marker_offset - payload_offset
