@@ -289,9 +289,14 @@ void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
                                      RootBranchValues& branches) const {
   HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
 
+  
+  static_assert(sizeof(FERS_spect_64_packed) == 701);
+
+  int board_packet_size = (int)sizeof(FERS_spect_64_packed);
+
   const auto& payload = detector.payload; // this is concatenation of all blocks
-  if (payload.size() % 699 != 0) {
-    HIDRA_ERROR("Unexpected FERS payload size {}. Should be a multiple of 699", payload.size());
+  if (payload.size() % board_packet_size != 0) {
+    HIDRA_ERROR("Unexpected FERS payload size {}. Should be a multiple of {}. Only first packet will attempt decoding", payload.size(), board_packet_size);
   }
 
   const int FERS_N_CHAN_MAX = 64 * 20;
@@ -305,11 +310,16 @@ void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
   std::vector<double> FERStoa(FERS_N_CHAN_MAX, -1);
   std::vector<double> FERStot(FERS_N_CHAN_MAX, -1);
 
-  int nboards = payload.size() / 699;
+  int nboards = payload.size() / board_packet_size;
   for (int iboard = 0; iboard < nboards; ++iboard) {
-    const auto* block_ptr = payload.data() + iboard * 699;
-    FERS_spect_64 boardblock;
-    std::memcpy(&boardblock, block_ptr, sizeof(FERS_spect_64));
+
+    if (payload.size() % board_packet_size != 0 && iboard > 0){ // to avoid troubles in case of wrong payload size, but still trying to decode first block
+      break;
+    }
+
+    const auto* block_ptr = payload.data() + iboard * board_packet_size;
+    FERS_spect_64_packed boardblock;
+    std::memcpy(&boardblock, block_ptr, sizeof(FERS_spect_64_packed));
 
     if (boardblock.board_id < 0 || boardblock.board_id >= 20) {
       HIDRA_ERROR("FERS block {} has invalid board_id {}. Skipping", iboard, boardblock.board_id);

@@ -53,8 +53,9 @@ struct V792Word {
   uint8_t geo() const { return (raw >> 27) & 0x1F; }
 };
 
-struct FERS_spect_64 {
-
+#pragma pack(push, 1)
+struct FERS_spect_64_packed {  // no padding 
+  uint16_t marker; // 0xAAAA
   uint16_t block_size;
   uint8_t board_id;
   double tstamp_us;
@@ -69,6 +70,7 @@ struct FERS_spect_64 {
   std::array<uint32_t, 64> tstamp;
   std::array<uint16_t, 64> ToT;
 };
+#pragma pack(pop)
 
 class RootPayloadDecoder {
 public:

@@ -72,16 +72,22 @@ On the current Linux/x86 setup they are emitted in native little-endian layout.
 Do not expect the payload to be portable across architectures with different
 endianness or compiler packing rules.
 
+Whatever the pyload struct, 5 bytes are manually appended on top of each board block when building the EuDAQ event in the FERSProducer:
+
+- `marker = 0xAAAA`, `uint16_t`, offset 0
+- `block size`, `uint16_t`, offset 2 (counting the number of bytes of this Board data, including these 5 bytes header)
+- `board id`, `uint8_t`, offset 4
+
 Spectroscopy / SPECT-TIMING: `SpectEvent_t`
 
-- `tstamp_us` `double` at byte offset `0`
-- `rel_tstamp_us` `double` at offset `8`
-- `tstamp_clk` `uint64_t` at offset `16`
-- `Tref_tstamp` `uint64_t` at offset `24`
-- `trigger_id` `uint64_t` at offset `32`
-- `chmask` `uint64_t` at offset `40`
-- `qdmask` `uint64_t` at offset `48`
-- `energyHG[64]` `uint16_t[64]` starting at offset `56`
+- `tstamp_us` `double` at byte offset `5`
+- `rel_tstamp_us` `double` at offset `13`
+- `tstamp_clk` `uint64_t` at offset `21`
+- `Tref_tstamp` `uint64_t` at offset `29`
+- `trigger_id` `uint64_t` at offset `37`
+- `chmask` `uint64_t` at offset `45`
+- `qdmask` `uint64_t` at offset `56`
+- `energyHG[64]` `uint16_t[64]` starting at offset `61`
 - `energyLG[64]` `uint16_t[64]` after `energyHG`
 - `tstamp[64]` `uint32_t[64]` after `energyLG`
 - `ToT[64]` `uint16_t[64]` after `tstamp`

@@ -202,10 +202,11 @@ private:
       EUDAQ_THROW(error);
     }
 
-    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-      m_board_manager.DisconnectAll(nullptr);
-      EUDAQ_THROW(error);
-    }
+    
+    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //  m_board_manager.DisconnectAll(nullptr);
+    //  EUDAQ_THROW(error);
+    //}
 
     m_board_ids.clear();
     m_board_ids.reserve(m_board_manager.boards().size());
@@ -234,9 +235,10 @@ private:
     SendEvent(std::move(bore));
 
     std::string error;
-    if (!m_board_manager.SetHighVoltageAll(true, &error)) {
-      EUDAQ_THROW(error);
-    }
+    
+    //if (!m_board_manager.SetHighVoltageAll(true, &error)) {
+    //  EUDAQ_THROW(error);
+    //}
 
     if (!m_board_manager.StartAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_THROW(error);
@@ -252,9 +254,9 @@ private:
       EUDAQ_WARN(error);
     }
 
-    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-      EUDAQ_WARN(error);
-    }
+    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //  EUDAQ_WARN(error);
+    //}
 
     auto eore = eudaq::Event::MakeUnique("FERSProducer");
     eore->SetEORE();
@@ -271,9 +273,11 @@ private:
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
     }
-    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-      EUDAQ_WARN(error);
-    }
+
+    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //  EUDAQ_WARN(error);
+    //}
+
     if (!m_board_manager.DisconnectAll(&error)) {
       EUDAQ_WARN(error);
     }
@@ -287,9 +291,12 @@ private:
     if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
     }
-    if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-      EUDAQ_WARN(error);
-    }
+
+
+    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //  EUDAQ_WARN(error);
+    //}
+    
     if (!m_board_manager.DisconnectAll(&error)) {
       EUDAQ_WARN(error);
     }
@@ -400,13 +407,16 @@ private:
 
         // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID
         // AND THE BLOCK SIZE
-        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 3u);
+        uint16_t BOARD_BLOCK_MARKER = 0xAAAA;
+        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 5u);
         std::vector<uint8_t> ext_block(ext_block_size);
-        ext_block[0] = static_cast<uint8_t>(ext_block_size);
-        ext_block[1] = static_cast<uint8_t>(ext_block_size >> 8);
-        ext_block[2] = static_cast<uint8_t>(board_id);
+        ext_block[0] = static_cast<uint8_t>(BOARD_BLOCK_MARKER);
+        ext_block[1] = static_cast<uint8_t>(BOARD_BLOCK_MARKER >> 8);
+        ext_block[2] = static_cast<uint8_t>(ext_block_size);
+        ext_block[3] = static_cast<uint8_t>(ext_block_size >> 8);
+        ext_block[4] = static_cast<uint8_t>(board_id);
         std::memcpy(ext_block.data() + 3u, event.payload.data(), event.payload.size());
-        ev->AddBlock(static_cast<uint32_t>(board_id), ext_block);
+        ev->AddBlock(static_cast<uint32_t>(ev->GetNumBlock()), ext_block); // block ID is in progressive order. Board ID is encoded in the payload
         total_payload_bytes += ext_block.size();
 
         queue.pop_front();
