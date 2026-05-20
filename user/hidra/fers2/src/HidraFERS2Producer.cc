@@ -51,8 +51,8 @@ std::string FormatSummary(const FERSEvent& event) {
       oss << " LG[0..3]=[" << spect->energyLG[0] << ',' << spect->energyLG[1] << ',' << spect->energyLG[2] << ','
           << spect->energyLG[3] << "]";
       if (event.data_qualifier == DTQ_TSPECT) {
-        oss << " ToT[0..3]=[" << spect->ToT[0] << ',' << spect->ToT[1] << ',' << spect->ToT[2] << ','
-            << spect->ToT[3] << "]";
+        oss << " ToT[0..3]=[" << spect->ToT[0] << ',' << spect->ToT[1] << ',' << spect->ToT[2] << ',' << spect->ToT[3]
+            << "]";
       }
     }
   } else if (base_dq == DTQ_TIMING) {
@@ -89,8 +89,8 @@ std::string FormatSummary(const FERSEvent& event) {
     if (event.payload.size() >= sizeof(CountingEvent_t)) {
       const auto* counting = reinterpret_cast<const CountingEvent_t*>(event.payload.data());
       oss << " chmask=0x" << std::hex << counting->chmask << std::dec;
-      oss << " counts[0..3]=[" << counting->counts[0] << ',' << counting->counts[1] << ',' << counting->counts[2]
-          << ',' << counting->counts[3] << "]";
+      oss << " counts[0..3]=[" << counting->counts[0] << ',' << counting->counts[1] << ',' << counting->counts[2] << ','
+          << counting->counts[3] << "]";
       oss << " T_OR=" << counting->t_or_counts << " Q_OR=" << counting->q_or_counts;
     }
   } else if (base_dq == DTQ_SERVICE) {
@@ -177,7 +177,8 @@ private:
                                          STARTRUN_ASYNC);
 
     m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
-    m_max_events_per_board = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
+    m_max_events_per_board =
+        conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
     m_send_trigger_number = conf->Get("FERS_SEND_TRIGGER_NUMBER", 1) != 0;
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
 
@@ -274,7 +275,7 @@ private:
       EUDAQ_WARN(error);
     }
     if (!m_board_manager.DisconnectAll(&error)) {
-        EUDAQ_WARN(error);
+      EUDAQ_WARN(error);
     }
     m_board_ids.clear();
     m_event_queues.clear();
@@ -394,9 +395,20 @@ private:
           ev->SetTimestamp(start_ts, start_ts + 1u);
           timestamp_set = true;
         }
-	EUDAQ_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " + std::to_string(trigger_n));
-        ev->AddBlock(static_cast<uint32_t>(board_id), event.payload);
-        total_payload_bytes += event.payload.size();
+        EUDAQ_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " +
+                    std::to_string(trigger_n));
+
+        // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID
+        // AND THE BLOCK SIZE
+        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 3u);
+        std::vector<uint8_t> ext_block(ext_block_size);
+        ext_block[0] = static_cast<uint8_t>(ext_block_size);
+        ext_block[1] = static_cast<uint8_t>(ext_block_size >> 8);
+        ext_block[2] = static_cast<uint8_t>(board_id);
+        std::memcpy(ext_block.data() + 3u, event.payload.data(), event.payload.size());
+        ev->AddBlock(static_cast<uint32_t>(board_id), ext_block);
+        total_payload_bytes += ext_block.size();
+
         queue.pop_front();
       }
 
@@ -404,7 +416,6 @@ private:
 
       SendEvent(std::move(ev));
       ++m_evt_f;
-     
     }
   }
 
