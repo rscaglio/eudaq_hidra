@@ -49,7 +49,12 @@ protected:
   }
 
   void TearDown() override {
-    fs::remove_all(test_dir);
+    std::error_code ec;
+    fs::remove_all(test_dir, ec);
+    if (ec) {
+      ADD_FAILURE() << "Failed to remove test directory '" << test_dir.string()
+                    << "': " << ec.message();
+    }
   }
 
   fs::path test_dir;
