@@ -46,6 +46,11 @@ if(USER_HIDRA_FERS2_BUILD)
 		message(WARNING "USER_HIDRA_FERS2_BUILD=ON but the CAEN FERS library and/or header FERSlib.h were not found — disabling FERS2 component. Install the CAENFERSlib development files or set USER_HIDRA_FERS2_BUILD=OFF to suppress this warning.")
 		set(USER_HIDRA_FERS2_BUILD OFF)
 	else()
+		# Cache the resolved paths so subdirectories reuse the successful top-level
+		# discovery result instead of re-running a narrower search that may fail
+		# for non-standard installation prefixes.
+		set(CAENFERSLIB_FOUND "${CAENFERSLIB_FOUND}" CACHE FILEPATH "Resolved path to the CAEN FERS library" FORCE)
+		set(CAENFERSLIB_INCLUDE_DIR "${CAENFERSLIB_INCLUDE_DIR}" CACHE PATH "Resolved path to the CAEN FERS headers" FORCE)
 		set(HIDRA_CAENFERSLIB_LIBRARY ${CAENFERSLIB_FOUND})
 		set(HIDRA_CAENFERSLIB_INCLUDE_DIR ${CAENFERSLIB_INCLUDE_DIR})
 	endif()
