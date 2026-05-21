@@ -114,8 +114,13 @@ build_hidra() {
 }
 
 runhidra(){
-    cd "$REPO_RUN"
+    cd $REPO_RUN
+    
+    if [[ "$1" == "dry" ]]; then
     ./hidra_startrun_dry.sh
+    else
+	./hidra_startrun_joint.sh
+	fi
 }
    
 

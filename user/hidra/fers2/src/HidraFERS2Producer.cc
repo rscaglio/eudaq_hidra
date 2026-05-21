@@ -415,7 +415,7 @@ private:
         ext_block[2] = static_cast<uint8_t>(ext_block_size);
         ext_block[3] = static_cast<uint8_t>(ext_block_size >> 8);
         ext_block[4] = static_cast<uint8_t>(board_id);
-        std::memcpy(ext_block.data() + 3u, event.payload.data(), event.payload.size());
+        std::memcpy(ext_block.data() + 5u, event.payload.data(), event.payload.size());
         ev->AddBlock(static_cast<uint32_t>(ev->GetNumBlock()), ext_block); // block ID is in progressive order. Board ID is encoded in the payload
         total_payload_bytes += ext_block.size();
 

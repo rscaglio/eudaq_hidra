@@ -106,6 +106,7 @@ public:
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraQTPDProducer");
 
 private:
+
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
 
@@ -348,7 +349,8 @@ private:
 		    // Read again to catch end of spill edgecase after raising VETO manually
 	            bool trigger = m_V977_pattern & 0x0001;
 		    static int trig_print_cnt = 0;
-		    if(trigger) { 
+		    if(trigger) {
+		      m_evt_time_ns = hidra::utils::getTimens();
 			    ReadOneBlockAndSendEvent(); 
 		    } else {
 			    trig_print_cnt++;
@@ -376,77 +378,6 @@ private:
 		    } 
 	}
 }
-
-  /*void MainLoop() {
-    // -- Keep polling continuously and only acquire while m_running == true ---
-    while (m_running) {
-      if (m_handle < 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        continue;
-      }
-      if (!m_running) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        continue;
-      }
-      
-      m_V977_pattern = ReadReg(V977_SINGLE_READ_REG, m_v977_base); //NEW
-      bool trigger_onspill_fired = m_V977_pattern & 0x0002; // --- Spill is when channel 2 is active ---
-      bool trigger_offspill_fired = m_V977_pattern & 0x0004; // --- OffSpill is when channel 3 is active ---
-      bool trigger = m_V977_pattern & 0x0001; // --- Trigger is when channel 1 is active ---
-      
-      if(!m_onspill) {
-	       if(trigger_offspill_fired) {
-		      EUDAQ_INFO("End of spill signal arrived while already off spill: missed start of spill signal.");
-		      m_onspill = false;
-		      WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
-		      continue;
-	       }
-	       
-	       if(!trigger_onspill_fired && !trigger_offspill_fired) {
-		       static int cnt_sp = 0;
-		       if (++cnt_sp % 100000 == 0) {
-			EUDAQ_INFO("Still waiting for the spill signal...");
-		       }
-		       WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
-		       m_onspill = false;
-		       continue; 
-	       }	       
-	       
-	       if(trigger_onspill_fired && trigger_offspill_fired) {
-		       EUDAQ_INFO("Start and end of spill simultaneously arrived: Error.");
-		       WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
-		       m_onspill = false;
-		       continue; 
-	       }	       
-               
-               if(trigger_onspill_fired) {
-		      m_onspill = true;
-                      WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977_base); //VETO OFF 
-		      EUDAQ_INFO("START OF SPILL");  
-               }
-	       
-      }  
-
-      // --- Main function to read XDCs and use the I/O Register logic ---
-      ReadOneBlockAndSendEvent();
-
-      if(trigger_offspill_fired) {
-	    ++m_spill;
-	    HIDRA_INFO("Spill number: {} has just finished", m_spill);
-            m_onspill = false;
-	    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
-            PrepareForRun();
-	    continue;
-      }	      
-      if(trigger_onspill_fired) {
-	      EUDAQ_INFO("Begin of spill signal arrived while already on spill: missed end of spill signal.");
-	      m_onspill = false;
-	      WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977_base);
-              PrepareForRun();
-	      continue;
-      }
-    }
-  }*/
 
   void OpenController() {
     if (m_handle >= 0) {
@@ -604,7 +535,10 @@ private:
                              reinterpret_cast<uint8_t*>(m_buffer.data()) + bcnt);
 	    ev->AddBlock(0, raw);
 
+	    
 	    ev->SetTag("endianness","BE32"); // this tag is needed :)
+	    ev->SetTimestamp(m_evt_time_ns, m_evt_time_ns + 100ULL);
+	    ev->SetTag("detectorDataSize", std::to_string(raw.size()));
 	    SendEvent(std::move(ev));
 	    ++m_evt;
 	    
@@ -693,6 +627,8 @@ private:
   uint64_t m_evt;
   uint64_t m_spill_cnt; //NEW
   int m_iped;
+
+  uint64_t m_evt_time_ns = 0;
 
   std::chrono::duration<double> elapsed_t;
   std::chrono::steady_clock::time_point start;
