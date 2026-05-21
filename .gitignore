@@ -36,3 +36,5 @@ cmake/eudaqTargets-relwithdebinfo.cmake
 cmake/eudaqTargets.cmake
 
 CMakeUserPresets.json
+
+run*status.jsonl
