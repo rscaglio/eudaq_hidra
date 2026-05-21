@@ -4,13 +4,15 @@ if(ROOT_USE_FILE)
   include(${ROOT_USE_FILE})
 endif()
 
+aux_source_directory(src MONITOR_SRC)
+
 add_library(${EUDAQ_MODULE}_monitor SHARED
-  HidraMonitor.cc
+  ${MONITOR_SRC}
 )
 
 target_include_directories(${EUDAQ_MODULE}_monitor
   PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${ROOT_INCLUDE_DIRS}
 )
 
