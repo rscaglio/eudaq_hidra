@@ -222,6 +222,7 @@ private:
   void DoStartRun() override {
     m_exit_of_run = false;
     m_evt_f = 0;
+    m_stamp_last_sent_ns = 0;
     m_run_number = GetRunNumber();
     m_event_queues.clear();
     for (const auto& board : m_board_manager.boards()) {
@@ -307,10 +308,10 @@ private:
     while (!m_exit_of_run) {
       std::string error;
       
-      uint64_t ts = hidra::utils::getTimeus();
+      uint64_t ts = hidra::utils::getTimens();
       const auto events = m_board_manager.ReadAvailableEvents(m_max_events_per_board, &error);
       if (events.size() > 0) {
-        HIDRA_DEBUG("ReadAvailableEvents took {} us to read {} FERSEvents", hidra::utils::getTimeus() - ts, events.size());
+        HIDRA_DEBUG("ReadAvailableEvents took {} ns to read {} FERSEvents", hidra::utils::getTimens() - ts, events.size());
       }
       
       if (!error.empty()) {
@@ -439,9 +440,13 @@ private:
 
         queue.pop_front();
       }
-
+      int64_t ts_now = hidra::utils::getTimens();
+      if (m_stamp_last_sent_ns > 0){
+	HIDRA_DEBUG("Trig {}, time elapsed since last sent: {} ns", trigger_n, ts_now - m_stamp_last_sent_ns);
+      }
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
-      SendEvent(std::move(ev)); 
+      SendEvent(std::move(ev));
+      m_stamp_last_sent_ns = ts_now;
       HIDRA_DEBUG("FERS producers sent event for trg {}",trigger_n);     
       ++m_evt_f;
     }
@@ -462,6 +467,7 @@ private:
   bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
+  uint64_t m_stamp_last_sent_ns = 0;
 };
 
 namespace {
