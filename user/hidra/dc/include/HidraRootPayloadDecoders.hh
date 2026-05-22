@@ -57,6 +57,7 @@ struct V792Word {
 struct FERS_spect_64_packed {  // no padding 
   uint16_t marker; // 0xAAAA
   uint16_t block_size;
+  uint32_t data_qualifier;
   uint8_t board_id;
   double tstamp_us;
   double rel_tstamp_us;

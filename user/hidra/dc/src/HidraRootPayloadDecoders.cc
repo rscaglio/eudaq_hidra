@@ -290,7 +290,7 @@ void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
   HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
 
   
-  static_assert(sizeof(FERS_spect_64_packed) == 701);
+  static_assert(sizeof(FERS_spect_64_packed) == 705);
 
   int board_packet_size = (int)sizeof(FERS_spect_64_packed);
 
