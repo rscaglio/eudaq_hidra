@@ -1,5 +1,8 @@
 #pragma once
 
+#include "HidraFersDecoder.hh"
+#include "HidraXdcDecoder.hh"
+
 #include <eudaq/Event.hh>
 
 #include <cstdint>
@@ -28,51 +31,6 @@ struct RootDetectorPayload {
   RootBranchValues branches;
 };
 
-struct ADCHeaderWord {
-  uint32_t raw;
-  uint8_t type() const { return (raw >> 24) & 0x7; }
-  uint8_t geo() const { return (raw >> 27) & 0x1F; }
-  uint8_t crate() const { return (raw >> 16) & 0xFF; }
-  uint8_t cnt() const { return (raw >> 8) & 0x3F; }
-};
-
-struct ADCTrailerWord {
-  uint32_t raw;
-  uint32_t evt_cnt() const { return raw & 0x7FFFFF; }
-  uint8_t type() const { return (raw >> 24) & 0x7; }
-  uint8_t geo() const { return (raw >> 27) & 0x1F; }
-};
-
-struct V792Word {
-  uint32_t raw;
-  uint16_t value() const { return raw & 0x7FF; }
-  uint8_t ov() const { return (raw >> 12) & 0x1; }
-  uint8_t un() const { return (raw >> 13) & 0x1; }
-  uint8_t channel() const { return (raw >> 16) & 0x1F; }
-  uint8_t type() const { return (raw >> 24) & 0x7; }
-  uint8_t geo() const { return (raw >> 27) & 0x1F; }
-};
-
-#pragma pack(push, 1)
-struct FERS_spect_64_packed {  // no padding 
-  uint16_t marker; // 0xAAAA
-  uint16_t block_size;
-  uint32_t data_qualifier;
-  uint8_t board_id;
-  double tstamp_us;
-  double rel_tstamp_us;
-  uint64_t tstamp_clk;
-  uint64_t Tref_tstamp;
-  uint64_t trigger_id;
-  uint64_t chmask;
-  uint64_t qdmask;
-  std::array<uint16_t, 64> energyHG;
-  std::array<uint16_t, 64> energyLG;
-  std::array<uint32_t, 64> tstamp;
-  std::array<uint16_t, 64> ToT;
-};
-#pragma pack(pop)
-
 class RootPayloadDecoder {
 public:
   virtual ~RootPayloadDecoder() = default;
@@ -93,7 +51,7 @@ public:
   std::vector<std::string> BranchNames() const override;
 
 private:
-  std::map<int, std::string> m_vme_geo_map;
+  HidraXdcDecoder m_xdc_decoder;
 };
 
 class HidraFersPayloadDecoder final : public RootPayloadDecoder {
@@ -103,6 +61,9 @@ public:
               std::vector<RootQuantity>& quantities,
               RootBranchValues& branches) const override;
   std::vector<std::string> BranchNames() const override;
+
+private:
+  HidraFersDecoder m_fers_decoder;
 };
 
 class HidraGenericPayloadDecoder final : public RootPayloadDecoder {
