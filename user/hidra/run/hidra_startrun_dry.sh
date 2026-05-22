@@ -28,7 +28,7 @@ tmux new-session -d -s "$TMUX_SESSION" \
 $BINPATH/euRun -n HidraRunControl &
 sleep 1
 
-$BINPATH/euLog > "$HOME/temp.eudaq.log" &
+$BINPATH/hidraLog > "$HOME/temp.eudaq.log" &
 sleep 1
 
 $BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &

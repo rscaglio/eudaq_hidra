@@ -25,8 +25,61 @@ include_directories(${EUDAQ_INCLUDE_DIRS})
 add_subdirectory(common)
 
 aux_source_directory(rc/src MODULE_SRC)
+list(REMOVE_ITEM MODULE_SRC
+	rc/src/HidraLogCollectorGUI.cc
+	rc/src/hidraLog.cxx)
+list(REMOVE_DUPLICATES MODULE_SRC)
 add_library(${EUDAQ_MODULE} SHARED ${MODULE_SRC})
 target_link_libraries(${EUDAQ_MODULE} PUBLIC ${EUDAQ_CORE_LIBRARY} ${EUDAQ_TTREE_LIBRARY} ${EUDAQ_ROOT_MONITOR_LIBRARY} ${EUDAQ_MODULE}_common)
+
+if(EUDAQ_BUILD_GUI)
+	if(NOT EUDAQ_FORCE_QT5)
+		find_package(Qt6 COMPONENTS Widgets QUIET)
+	endif()
+
+	if((NOT Qt6_FOUND) OR (NOT DEFINED Qt6_FOUND))
+		find_package(Qt5 5.15 COMPONENTS Widgets QUIET)
+	endif()
+
+	if(Qt6_FOUND OR Qt5_FOUND)
+		set(CMAKE_AUTOUIC YES)
+		set(CMAKE_AUTORCC YES)
+		set(CMAKE_INCLUDE_CURRENT_DIR YES)
+
+		qt_wrap_cpp(HIDRA_LOG_MOCSrcs
+			${CMAKE_SOURCE_DIR}/gui/include/LogCollectorModel.hh
+			${CMAKE_SOURCE_DIR}/gui/include/euLog.hh)
+		qt_wrap_ui(HIDRA_LOG_UIrcs
+			${CMAKE_SOURCE_DIR}/gui/ui/euLog.ui
+			${CMAKE_SOURCE_DIR}/gui/ui/LogDialog.ui)
+
+		add_executable(hidraLog
+			${HIDRA_LOG_MOCSrcs}
+			${HIDRA_LOG_UIrcs}
+			rc/src/hidraLog.cxx
+			rc/src/HidraLogCollectorGUI.cc
+			${CMAKE_SOURCE_DIR}/gui/src/euLog.cc
+			${CMAKE_SOURCE_DIR}/gui/src/LogCollectorModel.cc
+			${CMAKE_SOURCE_DIR}/gui/images/euLog.qrc)
+
+		target_include_directories(hidraLog PRIVATE
+			rc/src
+			${CMAKE_SOURCE_DIR}/gui/include)
+
+		if(Qt6_FOUND)
+			target_link_libraries(hidraLog ${EUDAQ_CORE_LIBRARY} Qt6::Widgets)
+		else()
+			target_link_libraries(hidraLog ${EUDAQ_CORE_LIBRARY} Qt5::Widgets)
+		endif()
+
+		install(TARGETS hidraLog
+			RUNTIME DESTINATION bin
+			LIBRARY DESTINATION lib
+			ARCHIVE DESTINATION lib)
+	else()
+		message(STATUS "HiDRa GUI log collector is NOT built because Qt was not found")
+	endif()
+endif()
 
 ##-- DAQ Components
 #-- Add component folder
@@ -109,4 +162,3 @@ install(TARGETS
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
-
