@@ -144,6 +144,7 @@ public:
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraFERS2Producer");
 
 private:
+
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
     (void)ini;
@@ -221,6 +222,7 @@ private:
   void DoStartRun() override {
     m_exit_of_run = false;
     m_evt_f = 0;
+    m_tstamp_last_sent_ns = 0;
     m_run_number = GetRunNumber();
     m_event_queues.clear();
     for (const auto& board : m_board_manager.boards()) {
@@ -398,8 +400,8 @@ private:
 
         const auto& event = queue.front();
         if (m_send_timestamp && !timestamp_set) {
-          const uint64_t start_ts = event.timestamp_us > 0.0 ? static_cast<uint64_t>(event.timestamp_us) : 0u;
-          ev->SetTimestamp(start_ts, start_ts + 1u);
+          const uint64_t start_ts_ns = event.timestamp_us > 0.0 ? static_cast<uint64_t>(1000 * event.timestamp_us) : 0u;
+          ev->SetTimestamp(start_ts_ns, start_ts_ns + 100UL);
           timestamp_set = true;
         }
         EUDAQ_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " +
@@ -424,7 +426,13 @@ private:
 
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
 
+      uint64_t now_ns = hidra::utils::getTimens();
+      if (m_tstamp_last_sent_ns > 0){
+        long long cycle_duration_ns = now_ns - m_tstamp_last_sent_ns;
+        HIDRA_DEBUG("FERS producer: {} ns elapsed since last sent event", cycle_duration_ns);
+      }
       SendEvent(std::move(ev));
+      m_tstamp_last_sent_ns = now_ns;
       ++m_evt_f;
     }
   }
@@ -444,6 +452,7 @@ private:
   bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
+  uint64_t m_tstamp_last_sent_ns = 0;
 };
 
 namespace {
