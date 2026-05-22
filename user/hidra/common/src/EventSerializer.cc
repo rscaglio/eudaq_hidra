@@ -97,7 +97,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 7;
+  const uint8_t DataFormatVersion = 8;
   
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;

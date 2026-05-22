@@ -236,6 +236,9 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_e
 }
 
 bool FERSBoard::SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event) {
+  
+  // TODO: is the correct board id written in the out FERSEvent ?
+  
   if (out_event == nullptr || event_ptr == nullptr) {
     status_.last_return_code = FERSLIB_ERR_INVALID_PARAM;
     status_.last_error = "SerializeEvent received null pointer.";
@@ -243,6 +246,8 @@ bool FERSBoard::SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* o
   }
 
   const int base_dq = (data_qualifier & 0x0F);
+
+  out_event->data_qualifier = data_qualifier;
 
   if (data_qualifier == DTQ_SERVICE) {
     const auto* ev = reinterpret_cast<const ServEvent_t*>(event_ptr);

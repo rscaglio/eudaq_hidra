@@ -410,14 +410,25 @@ private:
         // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID
         // AND THE BLOCK SIZE
         uint16_t BOARD_BLOCK_MARKER = 0xAAAA;
-        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 5u);
+        uint32_t dataqualifier = std::numeric_limits<uint32_t>::max();
+        if (event.data_qualifier > 0){
+          dataqualifier = static_cast<uint32_t>(event.data_qualifier);
+        }
+        else{
+          HIDRA_ERROR("Assigning dummy qualifier to FERS trig ID {}. Qualifier was {}", trigger_n, event.data_qualifier);
+        } 
+        const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 9u);
         std::vector<uint8_t> ext_block(ext_block_size);
         ext_block[0] = static_cast<uint8_t>(BOARD_BLOCK_MARKER);
         ext_block[1] = static_cast<uint8_t>(BOARD_BLOCK_MARKER >> 8);
         ext_block[2] = static_cast<uint8_t>(ext_block_size);
         ext_block[3] = static_cast<uint8_t>(ext_block_size >> 8);
-        ext_block[4] = static_cast<uint8_t>(board_id);
-        std::memcpy(ext_block.data() + 5u, event.payload.data(), event.payload.size());
+        ext_block[4] = static_cast<uint8_t>(dataqualifier);
+        ext_block[5] = static_cast<uint8_t>(dataqualifier >> 8);
+        ext_block[6] = static_cast<uint8_t>(dataqualifier >> 16);
+        ext_block[7] = static_cast<uint8_t>(dataqualifier >> 24);
+        ext_block[8] = static_cast<uint8_t>(board_id);
+        std::memcpy(ext_block.data() + 9u, event.payload.data(), event.payload.size());
         ev->AddBlock(static_cast<uint32_t>(ev->GetNumBlock()), ext_block); // block ID is in progressive order. Board ID is encoded in the payload
         total_payload_bytes += ext_block.size();
 

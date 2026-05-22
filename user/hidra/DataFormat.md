@@ -1,4 +1,4 @@
-# HIDRA Binary Event Format (v7)
+# HIDRA Binary Event Format (v8)
 
 The binary event format is produced by the `EventSerializer` utility.
 
@@ -30,7 +30,7 @@ The event may contain up to 8 detector subevents.
 | Offset | Type      | Field            | Description            |
 | ------ | --------- | ---------------- | ---------------------- |
 | 0      | uint16    | `marker`         | `0xB0BF`               |
-| 2      | uint8     | `dataVersion`    | Format version `0x07`	 |
+| 2      | uint8     | `dataVersion`    | Format version `0x08`	 |
 | 3      | uint32    | `headerSize`     | Header size in bytes   |
 | 7      | uint32    | `trailerSize`    | Trailer size in bytes  |
 | 11     | uint32    | `eventSize`      | Total event size, bytes|
@@ -141,5 +141,6 @@ See [fers2/README.md](fers2/README.md)
 
 ## Data version change log
 
-- `v6`
+- `v8` (2026, May 22): adding data qualifier as `uint32` inside each FERS payload block
 - `v7` (2026, May 20): adding two more bytes as marker (`0xAAAA`) at the beginning of each FERS Board payload
+- `v6`
