@@ -1,8 +1,10 @@
 #!/usr/bin/env sh
 
-BINPATH=../../../bin
+BINPATH=$EUDAQHIDRA/../../bin
 TMUX_SESSION="hidra_run_monitoring"
 DASHBOARD_DIR="$EUDAQHIDRA/misc/dashboard/rc_mon"
+
+export PATH="$BINPATH:$PATH"
 
 mkdir -p out_data logs
 
@@ -25,15 +27,16 @@ fi
 tmux new-session -d -s "$TMUX_SESSION" \
     "cd \"$DASHBOARD_DIR\" && php -S localhost:8080"
 
-$BINPATH/euRun -n HidraRunControl &
+euRun -n HidraRunControl &
 sleep 1
 
-$BINPATH/hidraLog &
+euLog > "$HOME/temp.eudaq.log" &
 sleep 1
 
-$BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &
+euCliMonitor  -n HidraMonitor -t DryHidraMonitor &
+euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
 
-$BINPATH/euCliProducer -n HidraDryFERSProducer -t DryFERSProducer &
+euCliProducer -n HidraDryFERSProducer -t DryFERSProducer &
+euCliProducer -n HidraDryXDCProducer -t DryXDCProducer &
 
-$BINPATH/euCliProducer -n HidraDryXDCProducer -t DryXDCProducer

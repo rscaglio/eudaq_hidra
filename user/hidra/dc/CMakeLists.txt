@@ -3,6 +3,7 @@ option(USER_HIDRA_DC_ROOT_OUTPUT "Build HiDRa DataCollector ROOT ntuple writer" 
 include_directories(include /usr/include)
 link_directories(/usr/lib)
 aux_source_directory(src DC_SRC)
+list(APPEND DC_SRC src/HidraNullFileWriter.cc)
 
 if(USER_HIDRA_DC_ROOT_OUTPUT)
   find_package(ROOT QUIET COMPONENTS Core Tree RIO)

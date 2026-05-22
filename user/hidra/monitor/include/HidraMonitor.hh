@@ -1,7 +1,6 @@
 #pragma once
 
 #include <eudaq/Monitor.hh>
-
 #include <TH1I.h>
 
 class HidraMonitor : public eudaq::Monitor {
