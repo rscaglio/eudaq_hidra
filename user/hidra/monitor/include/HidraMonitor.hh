@@ -20,4 +20,6 @@ public:
 
 private:
   TH1I* m_histo_counter;
+
+  void fillHistos(eudaq::EventSP ev);
 };

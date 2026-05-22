@@ -40,4 +40,9 @@ void HidraMonitor::DoStatus() {}
 void HidraMonitor::DoReceive(eudaq::EventSP ev) {
   HIDRA_INFO("HidraMonitor received event: {}", hidra::utils::GetEventInfo(ev.get()));
   m_histo_counter->Fill(0);
+  fillHistos(ev);
+}
+
+void HidraMonitor::fillHistos(eudaq::EventSP ev) {
+  // just a skeleton. Fill histograms here
 }
