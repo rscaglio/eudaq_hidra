@@ -222,7 +222,6 @@ private:
   void DoStartRun() override {
     m_exit_of_run = false;
     m_evt_f = 0;
-    m_tstamp_last_sent_ns = 0;
     m_run_number = GetRunNumber();
     m_event_queues.clear();
     for (const auto& board : m_board_manager.boards()) {
@@ -307,7 +306,13 @@ private:
   void RunLoop() override {
     while (!m_exit_of_run) {
       std::string error;
+      
+      uint64_t ts = hidra::utils::getTimeus();
       const auto events = m_board_manager.ReadAvailableEvents(m_max_events_per_board, &error);
+      if (events.size() > 0) {
+        HIDRA_DEBUG("ReadAvailableEvents took {} us to read {} FERSEvents", hidra::utils::getTimeus() - ts, events.size());
+      }
+      
       if (!error.empty()) {
         EUDAQ_THROW(error);
       }
@@ -436,14 +441,8 @@ private:
       }
 
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
-
-      uint64_t now_ns = hidra::utils::getTimens();
-      if (m_tstamp_last_sent_ns > 0){
-        long long cycle_duration_ns = now_ns - m_tstamp_last_sent_ns;
-        HIDRA_DEBUG("FERS producer: {} ns elapsed since last sent event", cycle_duration_ns);
-      }
-      SendEvent(std::move(ev));
-      m_tstamp_last_sent_ns = now_ns;
+      SendEvent(std::move(ev)); 
+      HIDRA_DEBUG("FERS producers sent event for trg {}",trigger_n);     
       ++m_evt_f;
     }
   }
@@ -463,7 +462,6 @@ private:
   bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
-  uint64_t m_tstamp_last_sent_ns = 0;
 };
 
 namespace {
