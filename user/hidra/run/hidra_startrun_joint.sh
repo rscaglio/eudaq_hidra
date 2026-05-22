@@ -27,7 +27,7 @@ tmux new-session -d -s "$TMUX_SESSION" \
 
 $BINPATH/euRun -n HidraRunControl &
 sleep 1
-$BINPATH/euLog &
+$BINPATH/hidraLog &
 sleep 1
 $BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
