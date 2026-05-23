@@ -29,6 +29,7 @@ void HidraDryFERSProducer::DoInitialise() {
 
 void HidraDryFERSProducer::DoConfigure() {
   auto conf = GetConfiguration();
+  EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
   m_data_in_path = conf->Get("DATA_IN_PATH", "infile.dat");
   EUDAQ_INFO("Using FERS raw data file " + m_data_in_path);
   m_event_spacing_us = 1000 * (int)conf->Get("REPLAY_EVENT_SPACING_MS", -1);

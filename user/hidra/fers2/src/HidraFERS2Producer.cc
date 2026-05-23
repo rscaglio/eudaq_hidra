@@ -157,6 +157,7 @@ private:
       EUDAQ_THROW("Run configuration is missing");
     }
 
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
     m_config_file = conf->Get("FERS_CONF_FILE", std::string(""));
     if (m_config_file.empty()) {
       EUDAQ_THROW("FERS_CONF_FILE is missing from the run configuration");
