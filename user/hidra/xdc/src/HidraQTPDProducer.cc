@@ -549,6 +549,8 @@ private:
     }
     event->AddBlock(0, raw);
 
+    event->SetTag("spillNumber", std::to_string(m_spillCount));
+    event->SetTag("triggerMask", std::to_string(m_TriggerMask));
     event->SetTag("endianness", "BE32");
     event->SetTimestamp(m_evtTimeNs, m_evtTimeNs + 100ULL);
     event->SetTag("detectorDataSize", std::to_string(raw.size()));
@@ -639,9 +641,10 @@ private:
 
   uint32_t m_runNumber;
   uint64_t m_evt;
-  uint64_t m_spillCount;
+  uint32_t m_spillCount;
   int m_iped;
   uint64_t m_evtTimeNs = 0;
+  uint8_t m_TriggerMask = 0xFF; // TODO: already forwarded as tag. To be implemented!
 
   int m_spillWaitLogCounter = 0;
   int m_triggerWaitLogCounter = 0;

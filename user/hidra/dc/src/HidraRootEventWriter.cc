@@ -94,7 +94,6 @@ struct HidraRootEventWriter::Impl {
   std::uint8_t detector_mask = 0;
   std::uint8_t trigger_mask = 0;
   std::uint32_t event_flags = 0;
-  std::uint32_t event_size = 0;
   int n_detectors = 0;
   
 
@@ -126,7 +125,6 @@ struct HidraRootEventWriter::Impl {
     detector_mask = hidra::utils::getTagOr<std::uint8_t>(event, "detectorMask", 0xFF);
     trigger_mask = hidra::utils::getTagOr<std::uint8_t>(event, "triggerMask", 0xFF);
     event_flags = hidra::utils::getTagOr<std::uint32_t>(event, "eventFlags", 0);
-    event_size = hidra::utils::getTagOr<std::uint32_t>(event, "eventSize", 0);
     n_detectors = event.GetNumSubEvent();
   }
 
@@ -226,7 +224,6 @@ struct HidraRootEventWriter::Impl {
       tree->Branch("spill_number", &spill_number, "spill_number/i");
       tree->Branch("detector_mask", &detector_mask, "detector_mask/b");
       tree->Branch("trigger_mask", &trigger_mask, "trigger_mask/b");
-      tree->Branch("event_size", &event_size, "event_size/i");
       tree->Branch("event_flags", &event_flags, "event_flags/i");
       tree->Branch("n_detectors", &n_detectors, "n_detectors/I");
       /* 

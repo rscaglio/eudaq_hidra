@@ -144,7 +144,6 @@ public:
   static const uint32_t m_id_factory = eudaq::cstr2hash("HidraFERS2Producer");
 
 private:
-
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
     (void)ini;
@@ -204,11 +203,10 @@ private:
       EUDAQ_THROW(error);
     }
 
-    
-    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-    //  m_board_manager.DisconnectAll(nullptr);
-    //  EUDAQ_THROW(error);
-    //}
+    // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //   m_board_manager.DisconnectAll(nullptr);
+    //   EUDAQ_THROW(error);
+    // }
 
     m_board_ids.clear();
     m_board_ids.reserve(m_board_manager.boards().size());
@@ -238,10 +236,10 @@ private:
     SendEvent(std::move(bore));
 
     std::string error;
-    
-    //if (!m_board_manager.SetHighVoltageAll(true, &error)) {
-    //  EUDAQ_THROW(error);
-    //}
+
+    // if (!m_board_manager.SetHighVoltageAll(true, &error)) {
+    //   EUDAQ_THROW(error);
+    // }
 
     if (!m_board_manager.StartAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_THROW(error);
@@ -257,9 +255,9 @@ private:
       EUDAQ_WARN(error);
     }
 
-    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-    //  EUDAQ_WARN(error);
-    //}
+    // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //   EUDAQ_WARN(error);
+    // }
 
     auto eore = eudaq::Event::MakeUnique("FERSProducer");
     eore->SetEORE();
@@ -277,9 +275,9 @@ private:
       EUDAQ_WARN(error);
     }
 
-    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-    //  EUDAQ_WARN(error);
-    //}
+    // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //   EUDAQ_WARN(error);
+    // }
 
     if (!m_board_manager.DisconnectAll(&error)) {
       EUDAQ_WARN(error);
@@ -295,11 +293,10 @@ private:
       EUDAQ_WARN(error);
     }
 
+    // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
+    //   EUDAQ_WARN(error);
+    // }
 
-    //if (!m_board_manager.SetHighVoltageAll(false, &error)) {
-    //  EUDAQ_WARN(error);
-    //}
-    
     if (!m_board_manager.DisconnectAll(&error)) {
       EUDAQ_WARN(error);
     }
@@ -308,13 +305,14 @@ private:
   void RunLoop() override {
     while (!m_exit_of_run) {
       std::string error;
-      
+
       uint64_t ts = hidra::utils::getTimens();
       const auto events = m_board_manager.ReadAvailableEvents(m_max_events_per_board, &error);
       if (events.size() > 0) {
-        HIDRA_DEBUG("ReadAvailableEvents took {} ns to read {} FERSEvents", hidra::utils::getTimens() - ts, events.size());
+        HIDRA_DEBUG(
+            "ReadAvailableEvents took {} ns to read {} FERSEvents", hidra::utils::getTimens() - ts, events.size());
       }
-      
+
       if (!error.empty()) {
         EUDAQ_THROW(error);
       }
@@ -418,12 +416,12 @@ private:
         // AND THE BLOCK SIZE
         uint16_t BOARD_BLOCK_MARKER = 0xAAAA;
         uint32_t dataqualifier = std::numeric_limits<uint32_t>::max();
-        if (event.data_qualifier > 0){
+        if (event.data_qualifier > 0) {
           dataqualifier = static_cast<uint32_t>(event.data_qualifier);
+        } else {
+          HIDRA_ERROR(
+              "Assigning dummy qualifier to FERS trig ID {}. Qualifier was {}", trigger_n, event.data_qualifier);
         }
-        else{
-          HIDRA_ERROR("Assigning dummy qualifier to FERS trig ID {}. Qualifier was {}", trigger_n, event.data_qualifier);
-        } 
         const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 9u);
         std::vector<uint8_t> ext_block(ext_block_size);
         ext_block[0] = static_cast<uint8_t>(BOARD_BLOCK_MARKER);
@@ -436,19 +434,22 @@ private:
         ext_block[7] = static_cast<uint8_t>(dataqualifier >> 24);
         ext_block[8] = static_cast<uint8_t>(board_id);
         std::memcpy(ext_block.data() + 9u, event.payload.data(), event.payload.size());
-        ev->AddBlock(static_cast<uint32_t>(ev->GetNumBlock()), ext_block); // block ID is in progressive order. Board ID is encoded in the payload
+        ev->AddBlock(static_cast<uint32_t>(ev->GetNumBlock()),
+                     ext_block); // block ID is in progressive order. Board ID is encoded in the payload
         total_payload_bytes += ext_block.size();
 
         queue.pop_front();
       }
       int64_t ts_now = hidra::utils::getTimens();
-      if (m_stamp_last_sent_ns > 0){
-	HIDRA_DEBUG("Trig {}, time elapsed since last sent: {} ns", trigger_n, ts_now - m_stamp_last_sent_ns);
+      if (m_stamp_last_sent_ns > 0) {
+        HIDRA_DEBUG("Trig {}, time elapsed since last sent: {} ns", trigger_n, ts_now - m_stamp_last_sent_ns);
       }
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
+      ev->SetTag("spillNumber", std::to_string(m_dummy_spill_number));
+      ev->SetTag("endianness", m_machine_endianness); // TODO review this tag
       SendEvent(std::move(ev));
       m_stamp_last_sent_ns = ts_now;
-      HIDRA_DEBUG("FERS producers sent event for trg {}",trigger_n);     
+      HIDRA_DEBUG("FERS producers sent event for trg {}", trigger_n);
       ++m_evt_f;
     }
   }
@@ -469,6 +470,8 @@ private:
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
   uint64_t m_stamp_last_sent_ns = 0;
+  uint32_t m_dummy_spill_number = std::numeric_limits<uint32_t>::max();
+  std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };
 
 namespace {

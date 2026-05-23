@@ -98,7 +98,7 @@ marker (16 bit)
   */
 
   const uint8_t DataFormatVersion = 8;
-  
+
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
   const std::uint16_t EVENT_TRAILER = 0xD04E;
@@ -115,7 +115,7 @@ marker (16 bit)
 
   // specific for data format
   const int MAX_N_DETECTORS = 8;
-  
+
   const uint32_t TrailerSize = 2;
 
   // TODO: implement missing tags
@@ -180,7 +180,6 @@ marker (16 bit)
 
     detMask |= (1 << detID);
 
-  
     appendLE(buffer, DETECTOR_EVENT_MARKER);
     appendLE(buffer, static_cast<std::uint8_t>(detID));
     appendLE(buffer, static_cast<std::uint32_t>(sub_ev->GetTriggerN()));
@@ -205,7 +204,7 @@ marker (16 bit)
       auto block = sub_ev->GetBlock(ib);
       buffer.insert(buffer.end(), block.begin(), block.end());
     }
-    
+
     appendLE(buffer, DETECTOR_EVENT_ENDMARKER);
 
     int anchorpoint_subdetector_payload_2 = buffer.size();
@@ -224,6 +223,12 @@ marker (16 bit)
   }
 
   // updating detector mask
+  if (detMask != getTagOr<std::uint8_t>(event, "detectorMask", 0xD5)) { // 0xD5 just an improbable vale
+    HIDRA_ERROR("Event trig {}: writing detector mask {} but at source was {}",
+                event.GetTriggerN(),
+                detMask,
+                getTagOr<std::uint8_t>(event, "detectorMask", 0xD5));
+  }
   writeLE(buffer, anchorpoint_detmask, detMask);
 
   // Event trailer
