@@ -175,6 +175,7 @@ private:
       EUDAQ_THROW("Run configuration is missing");
     }
 
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
     ResetRunState();
     LoadRunConfiguration(*conf);
     ConfigureBoards();

@@ -83,7 +83,12 @@ template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag,
 
 } // namespace hidra::utils
 
-#define HIDRA_DEBUG(fmt, ...) EUDAQ_DEBUG(hidra::utils::format(fmt, ##__VA_ARGS__))
+#define HIDRA_DEBUG(fmt, ...) \
+  do { \
+    if (EUDAQ_IS_LOGGED("DEBUG")) { \
+      EUDAQ_DEBUG(hidra::utils::format(fmt, ##__VA_ARGS__)); \
+    } \
+  } while (0)
 #define HIDRA_INFO(fmt, ...) EUDAQ_INFO(hidra::utils::format(fmt, ##__VA_ARGS__))
 #define HIDRA_WARN(fmt, ...) EUDAQ_WARN(hidra::utils::format(fmt, ##__VA_ARGS__))
 #define HIDRA_ERROR(fmt, ...) EUDAQ_ERROR(hidra::utils::format(fmt, ##__VA_ARGS__))

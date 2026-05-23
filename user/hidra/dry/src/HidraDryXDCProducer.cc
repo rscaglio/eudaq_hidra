@@ -30,6 +30,7 @@ void HidraDryXDCProducer::DoInitialise() {
 
 void HidraDryXDCProducer::DoConfigure() {
   auto conf = GetConfiguration();
+  EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
   m_event_spacing_ns = 1000000 * (long long)conf->Get("REPLAY_EVENT_SPACING_MS", -1);
   std::string inforeplay = m_event_spacing_ns < 0 ? "automatic" : std::to_string(m_event_spacing_ns) + " ns";
   EUDAQ_INFO("Replay rate set to " + inforeplay);

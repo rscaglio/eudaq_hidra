@@ -226,6 +226,8 @@ void HidraDataCollector::DoInitialise() {
 void HidraDataCollector::DoConfigure() {
   auto conf = GetConfiguration();
 
+  EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
+
   m_event_count = 0;
   m_stop_sent = false;
   m_pending_events.clear();
