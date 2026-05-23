@@ -90,6 +90,8 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   fullEvt->SetTimestamp(pending.first_seen_ns, pending.first_seen_ns + 100UL);
   fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
 
+  uint8_t detectormask = 0x0;
+
   for (const auto& is : m_expected_sources_map) {
     // will be overwritten if source is in the event
     fullEvt->SetTag(is.first + "_id",
@@ -104,7 +106,10 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
     it->second.event->SetTag("Producer", it->second.ConnectionName);
     it->second.event->SetTag("detID", it->first);
     fullEvt->AddSubEvent(std::move(it->second.event));
+    detectormask |= (1 << (it->first));
   }
+
+  fullEvt->SetTag("detectorMask", std::to_string(detectormask));
 
   HIDRA_DEBUG("MERGED EVENT BUILT: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
 

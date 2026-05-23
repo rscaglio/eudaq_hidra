@@ -79,6 +79,11 @@ template <typename T> T getTagOr(const eudaq::Event& ev, const std::string& tag,
   }
 }
 
+inline bool is_little_endian(){
+  std::uint16_t x = 0x0001;
+  return *reinterpret_cast<unsigned char*>(&x) == 0x01;
+}
+
   
 
 } // namespace hidra::utils
