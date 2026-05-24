@@ -64,6 +64,32 @@ The producer also prints a short debug summary for each decoded board event so
 you can confirm trigger flow and payload contents in the log window during
 hardware tests.
 
+Slow-Control Status Polling
+---------------------------
+
+The FERS2 producer can independently poll slow-control monitor values from each
+configured board without changing the raw event payload. Enable it in the
+producer `.conf` section with:
+
+```ini
+FERS_STATUS_POLL_INTERVAL_S = 2
+```
+
+Set the value to `0` to disable polling. When enabled, the producer reads:
+
+- HV monitor voltage/current: `Vmon`, `Imon`
+- temperatures: FPGA, board, TDC0/TDC1 when available, HV module, detector
+- HV status bits: on/off, ramping, over-current, over-voltage
+
+The latest values are logged and attached to outgoing EuDAQ events as tags such
+as `FERS_STATUS_B0_VMON_V`, `FERS_STATUS_B0_IMON_MA`,
+`FERS_STATUS_B0_TEMP_FPGA_C`, and `FERS_STATUS_B0_TEMP_DETECTOR_C`. To keep the
+polling logs but avoid adding event tags, set:
+
+```ini
+FERS_STATUS_ATTACH_TAGS = 0
+```
+
 Raw board payloads
 ------------------
 

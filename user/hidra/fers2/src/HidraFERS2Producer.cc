@@ -24,6 +24,7 @@ namespace {
 
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
+using hidra::fers2::BoardMonitorStatus;
 using hidra::fers2::FERSEvent;
 
 std::string FormatSummary(const FERSEvent& event) {
@@ -105,6 +106,40 @@ std::string FormatSummary(const FERSEvent& event) {
   return oss.str();
 }
 
+std::string FormatMonitorStatus(const BoardMonitorStatus& status) {
+  std::ostringstream oss;
+  oss << "board=" << status.board_id;
+  if (status.hv_vmon_valid) {
+    oss << " Vmon=" << status.hv_vmon << "V";
+  }
+  if (status.hv_imon_valid) {
+    oss << " Imon=" << status.hv_imon << "mA";
+  }
+  if (status.detector_temp_valid) {
+    oss << " Tdet=" << status.temp_detector << "C";
+  }
+  if (status.fpga_temp_valid) {
+    oss << " Tfpga=" << status.temp_fpga << "C";
+  }
+  if (status.board_temp_valid) {
+    oss << " Tboard=" << status.temp_board << "C";
+  }
+  if (status.hv_temp_valid) {
+    oss << " Thv=" << status.temp_hv << "C";
+  }
+  if (status.tdc0_temp_valid) {
+    oss << " Ttdc0=" << status.temp_tdc0 << "C";
+  }
+  if (status.tdc1_temp_valid) {
+    oss << " Ttdc1=" << status.temp_tdc1 << "C";
+  }
+  if (status.hv_status_valid) {
+    oss << " HV(on=" << status.hv_on << ",ramp=" << status.hv_ramping << ",ovc=" << status.hv_over_current
+        << ",ovv=" << status.hv_over_voltage << ")";
+  }
+  return oss.str();
+}
+
 int ParseIntegerOrKeyword(const std::string& value, const std::map<std::string, int>& keywords, int fallback) {
   try {
     size_t consumed = 0;
@@ -182,6 +217,12 @@ private:
         conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
     m_send_trigger_number = conf->Get("FERS_SEND_TRIGGER_NUMBER", 1) != 0;
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
+    m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
+    m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
+    if (m_status_poll_interval_s < 0) {
+      EUDAQ_WARN("FERS_STATUS_POLL_INTERVAL_S is negative; disabling FERS2 status polling");
+      m_status_poll_interval_s = 0;
+    }
 
     std::string error;
     if (!FERSConfiguration::FromFile(m_config_file, &m_config, &error)) {
@@ -216,6 +257,9 @@ private:
     }
 
     EUDAQ_INFO("Configured FERS2 boards: " + JoinBoardIds(m_board_ids));
+    if (m_status_poll_interval_s > 0) {
+      EUDAQ_INFO("FERS2 status polling enabled every " + std::to_string(m_status_poll_interval_s) + " s");
+    }
   }
 
   void DoStartRun() override {
@@ -224,6 +268,8 @@ private:
     m_stamp_last_sent_ns = 0;
     m_run_number = GetRunNumber();
     m_event_queues.clear();
+    m_monitor_status.clear();
+    m_next_status_poll = std::chrono::steady_clock::time_point::min();
     for (const auto& board : m_board_manager.boards()) {
       m_event_queues[board.board_id()] = {};
     }
@@ -284,6 +330,7 @@ private:
     }
     m_board_ids.clear();
     m_event_queues.clear();
+    m_monitor_status.clear();
   }
 
   void DoTerminate() override {
@@ -305,6 +352,8 @@ private:
   void RunLoop() override {
     while (!m_exit_of_run) {
       std::string error;
+
+      PollMonitorStatusIfDue();
 
       uint64_t ts = hidra::utils::getTimens();
       const auto events = m_board_manager.ReadAvailableEvents(m_max_events_per_board, &error);
@@ -330,6 +379,74 @@ private:
     }
 
     FlushAlignedEvents();
+  }
+
+  void PollMonitorStatusIfDue() {
+    if (m_status_poll_interval_s <= 0) {
+      return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (m_next_status_poll != std::chrono::steady_clock::time_point::min() && now < m_next_status_poll) {
+      return;
+    }
+
+    std::string error;
+    auto statuses = m_board_manager.ReadMonitorStatuses(&error);
+    if (!error.empty()) {
+      EUDAQ_WARN(error);
+    }
+
+    const uint64_t read_time_ns = hidra::utils::getTimens();
+    for (auto& status : statuses) {
+      status.read_time_ns = read_time_ns;
+      EUDAQ_INFO("FERS2 monitor " + FormatMonitorStatus(status));
+      m_monitor_status[status.board_id] = status;
+    }
+
+    m_next_status_poll = now + std::chrono::seconds(m_status_poll_interval_s);
+  }
+
+  void AddMonitorStatusTags(eudaq::Event& event) const {
+    if (!m_attach_status_tags) {
+      return;
+    }
+
+    for (const auto& entry : m_monitor_status) {
+      const auto& status = entry.second;
+      const std::string prefix = "FERS_STATUS_B" + std::to_string(status.board_id) + "_";
+      event.SetTag(prefix + "READ_TIME_NS", std::to_string(status.read_time_ns));
+      if (status.hv_vmon_valid) {
+        event.SetTag(prefix + "VMON_V", std::to_string(status.hv_vmon));
+      }
+      if (status.hv_imon_valid) {
+        event.SetTag(prefix + "IMON_MA", std::to_string(status.hv_imon));
+      }
+      if (status.detector_temp_valid) {
+        event.SetTag(prefix + "TEMP_DETECTOR_C", std::to_string(status.temp_detector));
+      }
+      if (status.fpga_temp_valid) {
+        event.SetTag(prefix + "TEMP_FPGA_C", std::to_string(status.temp_fpga));
+      }
+      if (status.board_temp_valid) {
+        event.SetTag(prefix + "TEMP_BOARD_C", std::to_string(status.temp_board));
+      }
+      if (status.hv_temp_valid) {
+        event.SetTag(prefix + "TEMP_HV_C", std::to_string(status.temp_hv));
+      }
+      if (status.tdc0_temp_valid) {
+        event.SetTag(prefix + "TEMP_TDC0_C", std::to_string(status.temp_tdc0));
+      }
+      if (status.tdc1_temp_valid) {
+        event.SetTag(prefix + "TEMP_TDC1_C", std::to_string(status.temp_tdc1));
+      }
+      if (status.hv_status_valid) {
+        event.SetTag(prefix + "HV_ON", std::to_string(status.hv_on));
+        event.SetTag(prefix + "HV_RAMPING", std::to_string(status.hv_ramping));
+        event.SetTag(prefix + "HV_OVERCURRENT", std::to_string(status.hv_over_current));
+        event.SetTag(prefix + "HV_OVERVOLTAGE", std::to_string(status.hv_over_voltage));
+      }
+    }
   }
 
   void FlushAlignedEvents() {
@@ -447,6 +564,7 @@ private:
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
       ev->SetTag("spillNumber", std::to_string(m_dummy_spill_number));
       ev->SetTag("endianness", m_machine_endianness); // TODO review this tag
+      AddMonitorStatusTags(*ev);
       SendEvent(std::move(ev));
       m_stamp_last_sent_ns = ts_now;
       HIDRA_DEBUG("FERS producers sent event for trg {}", trigger_n);
@@ -457,6 +575,7 @@ private:
   FERSConfiguration m_config;
   FERSBoardManager m_board_manager;
   std::map<int, std::deque<FERSEvent>> m_event_queues;
+  std::map<int, BoardMonitorStatus> m_monitor_status;
   std::vector<int> m_board_ids;
   std::string m_config_file;
   int m_run_number = 0;
@@ -466,9 +585,12 @@ private:
   uint64_t m_evt_f;
   uint64_t m_max_events_per_board;
   int m_poll_sleep_us = 1000;
+  int m_status_poll_interval_s = 0;
+  bool m_attach_status_tags = true;
   bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
+  std::chrono::steady_clock::time_point m_next_status_poll = std::chrono::steady_clock::time_point::min();
   uint64_t m_stamp_last_sent_ns = 0;
   uint32_t m_dummy_spill_number = std::numeric_limits<uint32_t>::max();
   std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
