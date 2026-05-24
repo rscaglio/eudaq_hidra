@@ -1,6 +1,7 @@
 #include "FERSBoard.h"
 
 #include <cstring>
+#include <sstream>
 #include <vector>
 
 #include "FERSlib.h"
@@ -233,6 +234,110 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_e
 
   status_.last_error.clear();
   return true;
+}
+
+bool FERSBoard::ReadMonitorStatus(BoardMonitorStatus* monitor_status) const {
+  if (monitor_status == nullptr) {
+    return false;
+  }
+
+  *monitor_status = BoardMonitorStatus{};
+  monitor_status->board_id = board_id_;
+
+  if (handle_ < 0) {
+    monitor_status->last_return_code = FERSLIB_ERR_INVALID_HANDLE;
+    monitor_status->last_error = "Cannot read monitor status: board is not connected.";
+    return false;
+  }
+
+  bool ok = true;
+  std::ostringstream errors;
+
+  auto append_error = [&](const char* name, int ret) {
+    if (ret == 0 || ret == FERSLIB_ERR_NOT_APPLICABLE) {
+      return;
+    }
+    ok = false;
+    monitor_status->last_return_code = ret;
+    if (errors.tellp() > 0) {
+      errors << "; ";
+    }
+    errors << name << " failed (ret=" << ret << ")";
+  };
+
+  float value = 0.0f;
+  int ret = FERS_Get_FPGA_Temp(handle_, &value);
+  if (ret == 0) {
+    monitor_status->temp_fpga = value;
+    monitor_status->fpga_temp_valid = true;
+  }
+  append_error("FERS_Get_FPGA_Temp", ret);
+
+  ret = FERS_Get_Board_Temp(handle_, &value);
+  if (ret == 0) {
+    monitor_status->temp_board = value;
+    monitor_status->board_temp_valid = true;
+  }
+  append_error("FERS_Get_Board_Temp", ret);
+
+  ret = FERS_Get_TDC0_Temp(handle_, &value);
+  if (ret == 0) {
+    monitor_status->temp_tdc0 = value;
+    monitor_status->tdc0_temp_valid = true;
+  }
+  append_error("FERS_Get_TDC0_Temp", ret);
+
+  ret = FERS_Get_TDC1_Temp(handle_, &value);
+  if (ret == 0) {
+    monitor_status->temp_tdc1 = value;
+    monitor_status->tdc1_temp_valid = true;
+  }
+  append_error("FERS_Get_TDC1_Temp", ret);
+
+  ret = FERS_HV_Get_Vmon(handle_, &value);
+  if (ret == 0) {
+    monitor_status->hv_vmon = value;
+    monitor_status->hv_vmon_valid = true;
+  }
+  append_error("FERS_HV_Get_Vmon", ret);
+
+  ret = FERS_HV_Get_Imon(handle_, &value);
+  if (ret == 0) {
+    monitor_status->hv_imon = value;
+    monitor_status->hv_imon_valid = true;
+  }
+  append_error("FERS_HV_Get_Imon", ret);
+
+  ret = FERS_HV_Get_DetectorTemp(handle_, &value);
+  if (ret == 0) {
+    monitor_status->temp_detector = value;
+    monitor_status->detector_temp_valid = true;
+  }
+  append_error("FERS_HV_Get_DetectorTemp", ret);
+
+  ret = FERS_HV_Get_IntTemp(handle_, &value);
+  if (ret == 0) {
+    monitor_status->temp_hv = value;
+    monitor_status->hv_temp_valid = true;
+  }
+  append_error("FERS_HV_Get_IntTemp", ret);
+
+  int on = 0;
+  int ramping = 0;
+  int over_current = 0;
+  int over_voltage = 0;
+  ret = FERS_HV_Get_Status(handle_, &on, &ramping, &over_current, &over_voltage);
+  if (ret == 0) {
+    monitor_status->hv_on = on;
+    monitor_status->hv_ramping = ramping;
+    monitor_status->hv_over_current = over_current;
+    monitor_status->hv_over_voltage = over_voltage;
+    monitor_status->hv_status_valid = true;
+  }
+  append_error("FERS_HV_Get_Status", ret);
+
+  monitor_status->last_error = errors.str();
+  return ok;
 }
 
 bool FERSBoard::SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event) {

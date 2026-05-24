@@ -36,6 +36,43 @@ struct BoardStatus {
 };
 
 /**
+ * @brief Latest slow-control monitor values read directly from one board.
+ *
+ * Each `*_valid` flag is independent because some FERS models or firmware
+ * versions do not expose every monitor value.
+ */
+struct BoardMonitorStatus {
+  int board_id = -1;
+  uint64_t read_time_ns = 0;
+  int last_return_code = 0;
+  std::string last_error;
+
+  bool fpga_temp_valid = false;
+  bool board_temp_valid = false;
+  bool tdc0_temp_valid = false;
+  bool tdc1_temp_valid = false;
+  bool hv_temp_valid = false;
+  bool detector_temp_valid = false;
+  bool hv_vmon_valid = false;
+  bool hv_imon_valid = false;
+  bool hv_status_valid = false;
+
+  float temp_fpga = 0.0f;
+  float temp_board = 0.0f;
+  float temp_tdc0 = 0.0f;
+  float temp_tdc1 = 0.0f;
+  float temp_hv = 0.0f;
+  float temp_detector = 0.0f;
+  float hv_vmon = 0.0f;
+  float hv_imon = 0.0f;
+
+  int hv_on = 0;
+  int hv_ramping = 0;
+  int hv_over_current = 0;
+  int hv_over_voltage = 0;
+};
+
+/**
  * @brief In-memory representation of a single event read from a FERS board.
  *
  * The structure is deliberately generic: the `payload` contains the raw

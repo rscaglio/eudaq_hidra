@@ -68,6 +68,11 @@ namespace fers2 {
     */
    std::vector<FERSEvent> ReadAvailableEvents(size_t max_events_per_board = 0, std::string* error = nullptr);
 
+   /**
+    * Poll slow-control monitor values from every connected board.
+    */
+   std::vector<BoardMonitorStatus> ReadMonitorStatuses(std::string* error = nullptr) const;
+
    FERSBoard* FindBoard(int board_id);
    const std::vector<FERSBoard>& boards() const { return boards_; }
 

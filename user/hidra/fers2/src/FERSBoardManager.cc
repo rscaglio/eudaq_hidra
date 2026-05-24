@@ -155,6 +155,26 @@ std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_p
   return out;
 }
 
+std::vector<BoardMonitorStatus> FERSBoardManager::ReadMonitorStatuses(std::string* error) const {
+  std::vector<BoardMonitorStatus> out;
+  out.reserve(boards_.size());
+
+  for (const auto& board : boards_) {
+    BoardMonitorStatus status;
+    if (!board.ReadMonitorStatus(&status)) {
+      if (error != nullptr) {
+        *error = "Monitor status read failed for board id " + std::to_string(board.board_id()) + ": " +
+                 status.last_error;
+      }
+      return {};
+    }
+
+    out.push_back(std::move(status));
+  }
+
+  return out;
+}
+
 FERSBoard* FERSBoardManager::FindBoard(int board_id) {
   for (auto& board : boards_) {
     if (board.board_id() == board_id) {

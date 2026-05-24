@@ -78,6 +78,14 @@ public:
    */
   bool ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_events = 0);
 
+  /**
+   * Read slow-control monitor values from the board.
+   *
+   * This does not consume data events. Unsupported monitor channels leave the
+   * corresponding validity flag false and are otherwise ignored.
+   */
+  bool ReadMonitorStatus(BoardMonitorStatus* monitor_status) const;
+
   int board_id() const { return board_id_; }
   int handle() const { return handle_; }
   const std::string& connection_path() const { return connection_path_; }
