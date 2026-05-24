@@ -1,6 +1,9 @@
 #include "HidraUtils.hh"
 #include "HidraXdcDecoder.hh"
 
+
+#include <cstring>
+
 namespace hidra {
 
 struct ADCHeaderWord {
@@ -91,6 +94,10 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       expected_word_mask = 0b000;
       for (int ichan = 0; ichan < nchan; ++ichan) {
         ++it;
+        if (it == words.end()){
+          HIDRA_ERROR("No more words in the XDC data block, while payload data word is expected. Aborting");
+          return;
+        }
         word = *it;
         if (module_type == "unknown" || module_type == "V792" ||
             module_type == "V862") { // Like this, V792 is the default
@@ -126,6 +133,10 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       } // loop over channels
 
       ++it;
+      if (it == words.end()){
+          HIDRA_ERROR("No more words in the XDC data block, while trailer is expected. Aborting");
+          return;
+        }
       word = *it;
 
       expected_word_mask = 0b100;
