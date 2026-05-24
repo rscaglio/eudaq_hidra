@@ -58,6 +58,7 @@ constexpr uint16_t V792_EVENT_COUNTER_RESET_REG = 0x1040;
 constexpr uint16_t V792_MCST_CBLT_ADDRESS_REG = 0x101A;
 constexpr uint16_t V792_MODEL_HIGH_REG = 0x803A;
 constexpr uint16_t V792_MODEL_LOW_REG = 0x803E;
+constexpr uint16_t V792_STATUS_1_REG = 0x100E;
 
 constexpr uint16_t V792_MCST_FIRST = 0x02;
 constexpr uint16_t V792_MCST_MIDDLE = 0x03;
@@ -279,7 +280,7 @@ private:
     if (index == 0) {
       return V792_MCST_FIRST;
     }
-    if (index == 4) {
+    if (index == 4) {  // TODO: do not hard code number 4. If fewer than 5  boards are enabled, no board becomes LAST
       return V792_MCST_LAST;
     }
     return V792_MCST_MIDDLE;
@@ -309,6 +310,47 @@ private:
   void ReleaseTriggerVeto() {
     // Kept equivalent to the previous producer behavior.
     WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977Base);
+  }
+
+  bool CheckBoardsReady(int timeout_us, int sleep_cycle_time_us, int sleep_begin_time_ns = 0){
+
+    if (sleep_begin_time_ns > 0){
+      std::this_thread::sleep_for(std::chrono::microseconds(sleep_begin_time_ns));
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(timeout_us);
+    while (std::chrono::steady_clock::now() < deadline){
+
+      // ----- Option 1 ----
+      // TODO: this would try BLT address, but V792 manual says that 0x100E doesn't work like this for V792N
+      const uint16_t statusAll = ReadReg(V792_STATUS_1_REG, BLT_READ_ADDRESS);
+      bool atLeastOneReady = (statusAll & (1 << 1)) != 0; // Accessing GLOBAL READY
+      bool atLeastOneBusy = (statusAll & (1 << 3)) != 0; // Accessing GLOBAL BUSY
+      if (atLeastOneReady && !atLeastOneBusy) {
+        return true;
+      }
+      // ------------------
+
+      // ----- Option 2 -----
+      bool allReady = true;
+      bool anyBusy = false;
+      for (const auto& board : m_boards){
+        const uint16_t statusb = ReadReg(V792_STATUS_1_REG, board.baseAddr);
+        bool thisReady = (statusAll & 1) != 0;  // Accessing READY
+        bool thisBusy = (statusAll & (1 << 2)) != 0;  // Accessing BUSY
+        allReady &= thisReady;
+        anyBusy |= thisBusy;
+      }
+      if (allReady && !anyBusy){
+        return true;
+      }
+      // --------------------
+
+      std::this_thread::sleep_for(std::chrono::microseconds(sleep_cycle_time_us));
+
+      
+    }
+    return false;
   }
 
   void MainLoop() {
@@ -503,6 +545,16 @@ private:
   }
 
   void ReadOneBlockAndSendEvent() {
+
+    int ready_timeout_us = 100; // TODO: test then move to config
+    int ready_cycle_us = 10;
+
+    if (!CheckBoardsReady(ready_timeout_us, ready_cycle_us)){
+      HIDRA_ERROR("QDC data not ready after {} us", ready_timeout_us);
+      RequestV977FlipFlopClear();
+      return;
+    }
+
     int byteCount = 0;
     const CVErrorCodes ret = CAENVME_FIFOMBLTReadCycle(m_handle,
                                                        BLT_READ_ADDRESS,
