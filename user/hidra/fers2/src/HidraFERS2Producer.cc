@@ -215,7 +215,6 @@ private:
     m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
     m_max_events_per_board =
         conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
-    m_send_trigger_number = conf->Get("FERS_SEND_TRIGGER_NUMBER", 1) != 0;
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
     m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
     m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
@@ -506,9 +505,7 @@ private:
 
       auto ev = eudaq::Event::MakeUnique("FERSProducer");
       ev->SetTag("Producer", "HidraFERS2Producer");
-      if (m_send_trigger_number) {
-        ev->SetTriggerN(trigger_n);
-      }
+      ev->SetTriggerN(trigger_n); // TODO: do we want to differentiate the two?
       ev->SetEventN(trigger_n);
 
       std::size_t total_payload_bytes = 0;
@@ -587,7 +584,6 @@ private:
   int m_poll_sleep_us = 1000;
   int m_status_poll_interval_s = 0;
   bool m_attach_status_tags = true;
-  bool m_send_trigger_number = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
   std::chrono::steady_clock::time_point m_next_status_poll = std::chrono::steady_clock::time_point::min();
