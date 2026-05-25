@@ -328,7 +328,7 @@ bool FERSBoardManager::DisconnectAll(std::string* error) {
   return ok;
 }
 
-std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_per_board, std::string* error) {
+std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_total_events, std::string* error) {
   std::vector<FERSEvent> out;
   if (m_boards.empty()) {
     if (error != nullptr) {
@@ -351,7 +351,7 @@ std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_p
   }
 
   size_t read_count = 0;
-  while (max_events_per_board == 0 || read_count < max_events_per_board) {
+  while (max_total_events == 0 || read_count < max_total_events) {
     int board_index = -1;
     int data_qualifier = 0;
     double timestamp_us = 0.0;
@@ -382,7 +382,10 @@ std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_p
 
     FERSEvent event;
     event.timestamp_us = timestamp_us;
-    if (!SerializeFersEventPayload(event_ptr, data_qualifier, m_boards[board_index].board_id(), &event, error)) {
+    // `board_index` is the vendor-provided index returned by FERS_GetEvent.
+    const int vendor_index = board_index;
+    const int logical_board_id = m_boards[board_index].board_id();
+    if (!SerializeFersEventPayload(event_ptr, data_qualifier, vendor_index, logical_board_id, &event, error)) {
       return {};
     }
 

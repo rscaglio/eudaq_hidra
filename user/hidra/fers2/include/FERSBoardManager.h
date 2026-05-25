@@ -98,7 +98,9 @@ namespace fers2 {
     * ordered by trigger id across boards — alignment should be performed
     * by the caller if required.
     */
-   std::vector<FERSEvent> ReadAvailableEvents(size_t max_events_per_board = 0, std::string* error = nullptr);
+  // Poll every board and return up to `max_total_events` aggregated from all
+  // boards. A value of 0 means "no limit" (run forever until no data).
+  std::vector<FERSEvent> ReadAvailableEvents(size_t max_total_events = 0, std::string* error = nullptr);
 
    /**
     * Poll slow-control monitor values from every connected board.

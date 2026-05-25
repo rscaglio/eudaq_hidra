@@ -215,8 +215,11 @@ private:
                                          STARTRUN_ASYNC);
 
     m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
-    m_max_events_per_board =
-        conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
+    // `FERS_MAX_EVENTS_PER_BOARD` historically limited events per board. With
+    // concentrator/TDL batch reads this parameter now acts as a global cap on
+    // the total number of FERSEvents returned by `ReadAvailableEvents` in a
+    // single call. A value of 0 means "no limit" (run until no data).
+    m_max_total_events = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0);
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
     m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
     m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
@@ -344,7 +347,7 @@ private:
       PollMonitorStatusIfDue();
 
       uint64_t ts = hidra::utils::getTimens();
-      const auto events = m_board_manager->ReadAvailableEvents(m_max_events_per_board, &error);
+      const auto events = m_board_manager->ReadAvailableEvents(m_max_total_events, &error);
       if (events.size() > 0) {
         HIDRA_DEBUG(
             "ReadAvailableEvents took {} ns to read {} FERSEvents", hidra::utils::getTimens() - ts, events.size());
@@ -569,7 +572,7 @@ private:
   int m_configure_mode = CFG_HARD;
   int m_start_mode = STARTRUN_ASYNC;
   uint64_t m_evt_f;
-  uint64_t m_max_events_per_board;
+  uint64_t m_max_total_events;
   int m_poll_sleep_us = 1000;
   int m_status_poll_interval_s = 0;
   bool m_attach_status_tags = true;

@@ -304,7 +304,8 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_e
 
     FERSEvent event;
     event.board_id = m_board_id;
-    event.board_index = m_board_id;
+    // Use vendor-provided board index for per-board reads as well.
+    event.board_index = FERS_INDEX(m_handle.get());
     event.data_qualifier = data_qualifier;
     event.timestamp_us = tstamp_us;
 
@@ -426,7 +427,8 @@ bool FERSBoard::ReadMonitorStatus(BoardMonitorStatus* monitor_status) const {
 
 bool FERSBoard::SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event) {
   std::string error;
-  if (!SerializeFersEventPayload(event_ptr, data_qualifier, m_board_id, out_event, &error)) {
+  const int vendor_index = m_handle ? FERS_INDEX(m_handle.get()) : m_board_id;
+  if (!SerializeFersEventPayload(event_ptr, data_qualifier, vendor_index, m_board_id, out_event, &error)) {
     m_status.last_return_code = FERSLIB_ERR_NOT_APPLICABLE;
     m_status.last_error = std::move(error);
     return false;

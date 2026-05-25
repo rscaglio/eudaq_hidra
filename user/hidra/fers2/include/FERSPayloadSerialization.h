@@ -19,7 +19,8 @@ namespace fers2 {
 
 inline bool SerializeFersEventPayload(void* event_ptr,
                                       int data_qualifier,
-                                      int board_id,
+                                      int vendor_board_index,
+                                      int logical_board_id,
                                       FERSEvent* out_event,
                                       std::string* error) {
   if (out_event == nullptr || event_ptr == nullptr) {
@@ -32,8 +33,12 @@ inline bool SerializeFersEventPayload(void* event_ptr,
   const int base_dq = (data_qualifier & 0x0F);
 
   out_event->data_qualifier = data_qualifier;
-  out_event->board_id = board_id;
-  out_event->board_index = board_id;
+  // `board_id` is the logical board identifier assigned by the manager.
+  // `board_index` is the vendor-provided index (from FERS_GetEvent) and
+  // may differ when using concentrator/TDL reads. Populate both so callers
+  // can access either mapping.
+  out_event->board_id = logical_board_id;
+  out_event->board_index = vendor_board_index;
 
   if (data_qualifier == DTQ_SERVICE) {
     const auto* ev = reinterpret_cast<const ServEvent_t*>(event_ptr);
