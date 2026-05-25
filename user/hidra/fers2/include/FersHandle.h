@@ -3,8 +3,20 @@
 #define HIDRA_FERS2_FERSHANDLE_H_
 
 #include <string>
-#include "FERSlib.h"
+
 #include "FersException.h"
+#include "FERSlib.h"
+
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+ 
+#include <chrono>
+#include <thread>
+#include <cstdio>
 
 namespace hidra {
 namespace fers2 {
@@ -45,7 +57,18 @@ class FersHandle {
 
   void reset() noexcept {
     if (handle_ >= 0) {
-      FERS_CloseDevice(handle_);
+      const int max_attempts = 3;
+      for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        int ret = FERS_CloseDevice(handle_);
+        if (ret == 0) {
+          break;
+        }
+        FERS_LibMsg(const_cast<char*>("[WARNING][CNC %02d] FERS_CloseDevice attempt %d failed (ret=%d)\n"),
+                   FERS_INDEX(handle_), attempt, ret);
+        if (attempt < max_attempts) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+      }
       handle_ = -1;
     }
   }

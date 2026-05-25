@@ -21,19 +21,24 @@ std::string BuildConcentratorSummary(const FERS_CncInfo_t& info) {
   return oss.str();
 }
 
-void FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration& config, int first_board_id) {
+void FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration& config,
+                                                   int first_board_id,
+                                                   int readout_mode,
+                                                   int configure_mode) {
   boards_.clear();
   board_routes_.clear();
   concentrators_.clear();
 
   int board_id = first_board_id;
   for (const auto& path : config.open_paths()) {
-    std::string error;
-    if (!AddBoard(board_id, path, &error)) {
+    try {
+      // Construct and fully initialise the board. Throws on failure.
+      boards_.emplace_back(board_id, path, &config, configure_mode, readout_mode);
+    } catch (const FersError& e) {
       FERS_LibMsg(const_cast<char*>("[WARNING][BRD %02d] Ignoring board path '%s': %s\n"),
                  board_id,
                  path.c_str(),
-                 error.c_str());
+                 e.what());
     }
     ++board_id;
   }
@@ -41,6 +46,18 @@ void FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration& con
   if (boards_.empty()) {
     throw FersError(std::string("No FERS boards configured from provided configuration"));
   }
+}
+
+FERSBoardManager::FERSBoardManager(const FERSConfiguration& config,
+                                   int first_board_id,
+                                   int readout_mode,
+                                   int configure_mode) {
+  BuildBoardsFromConfiguration(config, first_board_id, readout_mode, configure_mode);
+}
+
+FERSBoardManager::~FERSBoardManager() noexcept {
+  std::string error;
+  DisconnectAll(&error);
 }
 
 bool FERSBoardManager::AddBoard(int board_id, const std::string& connection_path, std::string* error) {
@@ -292,16 +309,22 @@ bool FERSBoardManager::StopAll(int start_mode, int run_number, std::string* erro
 }
 
 bool FERSBoardManager::DisconnectAll(std::string* error) {
+  bool ok = true;
+  std::string combined_error;
   for (auto& board : boards_) {
     if (!board.Disconnect()) {
-      if (error != nullptr) {
-        *error =
-            "Disconnect failed for board id " + std::to_string(board.board_id()) + ": " + board.status().last_error;
+      ok = false;
+      if (!combined_error.empty()) {
+        combined_error += "; ";
       }
-      return false;
+      combined_error += "Disconnect failed for board id " + std::to_string(board.board_id()) + ": " +
+                        board.status().last_error;
     }
   }
-  return true;
+  if (!ok && error != nullptr) {
+    *error = combined_error;
+  }
+  return ok;
 }
 
 std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_per_board, std::string* error) {

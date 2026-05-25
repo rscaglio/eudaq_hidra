@@ -10,14 +10,6 @@
 #include "FERSBoard.h"
 #include "FERSConfiguration.h"
 #include "FERSlib.h"
-#ifdef __cplusplus
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
-#endif
 #include "FERSTypes.h"
 #include "FersHandle.h"
 
@@ -38,12 +30,38 @@ namespace fers2 {
  */
  class FERSBoardManager {
  public:
+  // Default constructor: empty manager. Use the constructor below or
+  // `BuildBoardsFromConfiguration` to initialize.
+  FERSBoardManager() = default;
+
+  // Destructor performs best-effort cleanup of boards (disconnect) and
+  // concentrator handles. Never throws.
+  ~FERSBoardManager() noexcept;
+
+  // Manager owns move-only board/handle state.
+  FERSBoardManager(const FERSBoardManager&) = delete;
+  FERSBoardManager& operator=(const FERSBoardManager&) = delete;
+  FERSBoardManager(FERSBoardManager&&) noexcept = default;
+  FERSBoardManager& operator=(FERSBoardManager&&) noexcept = default;
+
+  // Construct and fully initialise the manager from `config`.
+  // Throws `FersError` on failure.
+  explicit FERSBoardManager(const FERSConfiguration& config,
+                            int first_board_id = 0,
+                            int readout_mode = 0,
+                            int configure_mode = CFG_HARD);
    /**
     * Create board objects for each Open[n] entry in `config`.
     * @param first_board_id Logical starting id assigned to the first board.
     */
   // Build board objects from configuration. Throws `FersError` on fatal errors.
-  void BuildBoardsFromConfiguration(const FERSConfiguration& config, int first_board_id = 0);
+  // Build and initialise boards from configuration. This will open and
+  // configure each board using provided `readout_mode` and `configure_mode`.
+  // Throws `FersError` on fatal failures.
+  void BuildBoardsFromConfiguration(const FERSConfiguration& config,
+                                   int first_board_id = 0,
+                                   int readout_mode = 0,
+                                   int configure_mode = CFG_HARD);
 
    /**
     * Add a single board manually.
