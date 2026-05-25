@@ -21,10 +21,16 @@ add_executable(hidra_dry_xdc_producer_test
   HidraDryXDCProducerTest.cc
 )
 
+# Require C++17 for filesystem support used by tests
+target_compile_features(hidra_dry_xdc_producer_test PRIVATE cxx_std_17)
+
 # Create advanced test executable
 add_executable(hidra_dry_xdc_producer_advanced_test
   HidraDryXDCProducerAdvancedTest.cc
 )
+
+# Require C++17 for filesystem support used by tests
+target_compile_features(hidra_dry_xdc_producer_advanced_test PRIVATE cxx_std_17)
 
 # Link libraries for basic test
 target_link_libraries(hidra_dry_xdc_producer_test
@@ -48,13 +54,13 @@ target_link_libraries(hidra_dry_xdc_producer_advanced_test
 add_test(
   NAME HidraDryXDCProducerTest
   COMMAND hidra_dry_xdc_producer_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 add_test(
   NAME HidraDryXDCProducerAdvancedTest
   COMMAND hidra_dry_xdc_producer_advanced_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 # Set test properties

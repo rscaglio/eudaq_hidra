@@ -159,9 +159,7 @@ public:
 
   ~TemporaryXDCFile() noexcept {
     std::error_code ec;
-    if (fs::exists(m_filepath, ec) && !ec) {
-      fs::remove(m_filepath, ec);
-    }
+    fs::remove(m_filepath, ec);
   }
 
   const fs::path& GetPath() const { return m_filepath; }

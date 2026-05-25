@@ -20,4 +20,6 @@ install(TARGETS
   ARCHIVE DESTINATION lib)
 
 # Add tests subdirectory
-add_subdirectory(test)
+if(BUILD_TESTING)
+  add_subdirectory(test)
+endif()

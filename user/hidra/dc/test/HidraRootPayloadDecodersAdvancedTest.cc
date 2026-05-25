@@ -200,7 +200,7 @@ TEST_F(AdvancedPayloadDecoderTest, XDCDecoderWithComplexGeoMap) {
 
 // Verifies malformed XDC payload size is handled gracefully without exceptions.
 TEST_F(AdvancedPayloadDecoderTest, XDCDecoderMalformedPayloadSize) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   
   // Payload with size not multiple of 4
   auto payload = CreatePayload(1, "test", 100, 200, CreateMalformedXDCPayload());
@@ -214,7 +214,7 @@ TEST_F(AdvancedPayloadDecoderTest, XDCDecoderMalformedPayloadSize) {
 
 // Verifies XDC branch names are deterministic and independent of geo map content.
 TEST_F(AdvancedPayloadDecoderTest, XDCDecoderBranchNamesConsistency) {
-  HidraXdcPayloadDecoder decoder1({});
+  HidraXdcPayloadDecoder decoder1(std::map<int,std::string>{});
   
   std::map<int, std::string> vme_map;
   vme_map[1] = "V792";
@@ -391,7 +391,7 @@ TEST_F(AdvancedPayloadDecoderTest, FERSDecoderDecodesExactValuesForOneBoardChann
 TEST_F(AdvancedPayloadDecoderTest, PolymorphicDecoderSelection) {
   // Test that different detector IDs can be handled with appropriate decoders
   HidraGenericPayloadDecoder generic_decoder;
-  HidraXdcPayloadDecoder xdc_decoder({});
+  HidraXdcPayloadDecoder xdc_decoder(std::map<int,std::string>{});
   HidraFersPayloadDecoder fers_decoder;
   
   // XDC payload
@@ -415,7 +415,7 @@ TEST_F(AdvancedPayloadDecoderTest, PolymorphicDecoderSelection) {
 // Verifies running generic then XDC decoding produces non-regressing output containers.
 TEST_F(AdvancedPayloadDecoderTest, DecoderChainedDecoding) {
   HidraGenericPayloadDecoder generic;
-  HidraXdcPayloadDecoder xdc({});
+  HidraXdcPayloadDecoder xdc(std::map<int,std::string>{});
   
   auto payload = CreatePayload(1, "test", 100, 200, {0x01, 0x02, 0x03, 0x04});
   
@@ -477,7 +477,7 @@ TEST_F(AdvancedPayloadDecoderTest, GenericDecoderLargeTimestampSpan) {
 
 // Verifies XDC matching rules over a sweep of detector ids.
 TEST_F(AdvancedPayloadDecoderTest, XDCDecoderAllDetIDs) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   
   for (int det_id = 0; det_id <= 10; ++det_id) {
     auto payload = CreatePayload(det_id, "test", 100, 200);

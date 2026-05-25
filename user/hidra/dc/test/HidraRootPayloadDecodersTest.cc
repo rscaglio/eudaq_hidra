@@ -140,7 +140,7 @@ TEST_F(PayloadDecoderTest, GenericDecoderDecodeInvalidTimestampSpan) {
 // Verifies that the XDC decoder can be constructed with default settings.
 TEST_F(PayloadDecoderTest, XDCDecoderConstructor) {
   EXPECT_NO_THROW({
-    HidraXdcPayloadDecoder decoder({});
+    HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   });
 }
 
@@ -157,7 +157,7 @@ TEST_F(PayloadDecoderTest, XDCDecoderWithGeoMap) {
 
 // Verifies that XDC decoder matches detector id 1.
 TEST_F(PayloadDecoderTest, XDCDecoderMatchesDet1) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   
   auto payload = CreatePayload(1, "test", 100, 200);
   EXPECT_TRUE(decoder.Matches(payload));
@@ -165,7 +165,7 @@ TEST_F(PayloadDecoderTest, XDCDecoderMatchesDet1) {
 
 // Verifies that XDC decoder matches detector id 6.
 TEST_F(PayloadDecoderTest, XDCDecoderMatchesDet6) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   
   auto payload = CreatePayload(6, "test", 100, 200);
   EXPECT_TRUE(decoder.Matches(payload));
@@ -173,7 +173,7 @@ TEST_F(PayloadDecoderTest, XDCDecoderMatchesDet6) {
 
 // Verifies that XDC decoder rejects detector ids outside the supported set.
 TEST_F(PayloadDecoderTest, XDCDecoderDoesNotMatchOtherDet) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   
   auto payload1 = CreatePayload(2, "test", 100, 200);
   EXPECT_FALSE(decoder.Matches(payload1));
@@ -184,7 +184,7 @@ TEST_F(PayloadDecoderTest, XDCDecoderDoesNotMatchOtherDet) {
 
 // Verifies that XDC branch list includes ADC/TDC values and flags.
 TEST_F(PayloadDecoderTest, XDCDecoderBranchNames) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   auto names = decoder.BranchNames();
   
   // Should have generic names plus XDC-specific ones
@@ -197,7 +197,7 @@ TEST_F(PayloadDecoderTest, XDCDecoderBranchNames) {
 
 // Verifies that XDC decoder handles an empty payload without throwing.
 TEST_F(PayloadDecoderTest, XDCDecoderDecodeEmptyPayload) {
-  HidraXdcPayloadDecoder decoder({});
+  HidraXdcPayloadDecoder decoder(std::map<int,std::string>{});
   
   auto payload = CreatePayload(1, "test", 100, 200, {});
   std::vector<RootQuantity> quantities;

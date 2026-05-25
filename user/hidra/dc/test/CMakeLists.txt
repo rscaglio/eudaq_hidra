@@ -21,10 +21,16 @@ add_executable(hidra_dc_payload_decoder_test
   HidraRootPayloadDecodersTest.cc
 )
 
+# Require C++17 for filesystem support used by tests
+target_compile_features(hidra_dc_payload_decoder_test PRIVATE cxx_std_17)
+
 # Create advanced decoder test executable
 add_executable(hidra_dc_payload_decoder_advanced_test
   HidraRootPayloadDecodersAdvancedTest.cc
 )
+
+# Require C++17 for filesystem support used by tests
+target_compile_features(hidra_dc_payload_decoder_advanced_test PRIVATE cxx_std_17)
 
 # Link libraries for basic test
 target_link_libraries(hidra_dc_payload_decoder_test
@@ -50,13 +56,13 @@ target_link_libraries(hidra_dc_payload_decoder_advanced_test
 add_test(
   NAME HidraRootPayloadDecodersTest
   COMMAND hidra_dc_payload_decoder_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 add_test(
   NAME HidraRootPayloadDecodersAdvancedTest
   COMMAND hidra_dc_payload_decoder_advanced_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 # Set test properties
