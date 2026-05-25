@@ -47,13 +47,13 @@ public:
   bool LoadIntoLibrary(std::string* error = nullptr) const;
 
   /// Path of the source configuration file as parsed.
-  const std::string& source_file() const { return source_file_; }
+  const std::string& source_file() const { return m_source_file; }
 
   /// List of connection strings extracted from the file (Open[0], Open[1], ...)
-  const std::vector<std::string>& open_paths() const { return open_paths_; }
+  const std::vector<std::string>& open_paths() const { return m_open_paths; }
 
   /// Map of default parameter names to their string values.
-  const std::map<std::string, std::string>& default_params() const { return default_params_; }
+  const std::map<std::string, std::string>& default_params() const { return m_dafault_params; }
 
   /**
    * @brief Set a per-board override parameter.
@@ -72,10 +72,10 @@ public:
   std::map<std::string, std::string> EffectiveParamsForBoard(int board_id) const;
 
 private:
-  std::string source_file_;
-  std::vector<std::string> open_paths_;
-  std::map<std::string, std::string> default_params_;
-  std::map<int, std::map<std::string, std::string>> board_overrides_;
+  std::string m_source_file;
+  std::vector<std::string> m_open_paths;
+  std::map<std::string, std::string> m_dafault_params;
+  std::map<int, std::map<std::string, std::string>> m_board_overrides;
 };
 
 } // namespace fers2

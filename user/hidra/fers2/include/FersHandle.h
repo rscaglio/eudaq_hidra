@@ -23,8 +23,8 @@ namespace fers2 {
 
 class FersHandle {
  public:
-  FersHandle() noexcept : handle_(-1) {}
-  explicit FersHandle(int h) noexcept : handle_(h) {}
+  FersHandle() noexcept : m_handle(-1) {}
+  explicit FersHandle(int h) noexcept : m_handle(h) {}
 
   // Open device by path; throws FersError on failure.
   explicit FersHandle(const std::string& path) {
@@ -33,18 +33,18 @@ class FersHandle {
     if (ret != 0) {
       throw FersError("FERS_OpenDevice failed for '" + path + "'", ret);
     }
-    handle_ = h;
+    m_handle = h;
   }
 
   // Non-copyable, movable
   FersHandle(const FersHandle&) = delete;
   FersHandle& operator=(const FersHandle&) = delete;
 
-  FersHandle(FersHandle&& other) noexcept : handle_(other.handle_) { other.handle_ = -1; }
+  FersHandle(FersHandle&& other) noexcept : m_handle(other.m_handle) { other.m_handle = -1; }
   FersHandle& operator=(FersHandle&& other) noexcept {
     reset();
-    handle_ = other.handle_;
-    other.handle_ = -1;
+    m_handle = other.m_handle;
+    other.m_handle = -1;
     return *this;
   }
 
@@ -52,29 +52,29 @@ class FersHandle {
     reset();
   }
 
-  int get() const noexcept { return handle_; }
-  explicit operator bool() const noexcept { return handle_ >= 0; }
+  int get() const noexcept { return m_handle; }
+  explicit operator bool() const noexcept { return m_handle >= 0; }
 
   void reset() noexcept {
-    if (handle_ >= 0) {
+    if (m_handle >= 0) {
       const int max_attempts = 3;
       for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        int ret = FERS_CloseDevice(handle_);
+        int ret = FERS_CloseDevice(m_handle);
         if (ret == 0) {
           break;
         }
         FERS_LibMsg(const_cast<char*>("[WARNING][CNC %02d] FERS_CloseDevice attempt %d failed (ret=%d)\n"),
-                   FERS_INDEX(handle_), attempt, ret);
+                   FERS_INDEX(m_handle), attempt, ret);
         if (attempt < max_attempts) {
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       }
-      handle_ = -1;
+      m_handle = -1;
     }
   }
 
  private:
-  int handle_ = -1;
+  int m_handle = -1;
 };
 
 }  // namespace fers2

@@ -101,19 +101,19 @@ public:
    */
   bool ReadMonitorStatus(BoardMonitorStatus* monitor_status) const;
 
-  int board_id() const { return board_id_; }
-  int handle() const { return handle_.get(); }
-  const std::string& connection_path() const { return connection_path_; }
-  const BoardStatus& status() const { return status_; }
+  int board_id() const { return m_board_id; }
+  int handle() const { return m_handle.get(); }
+  const std::string& connection_path() const { return m_connection_path; }
+  const BoardStatus& status() const { return m_status; }
 
 private:
   /// Helper: convert the vendor event blob into a `FERSEvent` instance.
   bool SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event);
 
-  int board_id_ = -1;
-  FersHandle handle_{};
-  std::string connection_path_;
-  BoardStatus status_;
+  int m_board_id = -1;
+  FersHandle m_handle{};
+  std::string m_connection_path;
+  BoardStatus m_status;
 };
 
 } // namespace fers2

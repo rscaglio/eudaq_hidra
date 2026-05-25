@@ -106,7 +106,7 @@ namespace fers2 {
    std::vector<BoardMonitorStatus> ReadMonitorStatuses(std::string* error = nullptr) const;
 
    FERSBoard* FindBoard(int board_id);
-   const std::vector<FERSBoard>& boards() const { return boards_; }
+   const std::vector<FERSBoard>& boards() const { return m_boards; }
 
  private:
    struct TDLBoardRoute {
@@ -130,9 +130,9 @@ namespace fers2 {
    ConcentratorRecord* GetOrCreateConcentrator(const std::string& cnc_path);
   void OpenAndLogConcentrator(ConcentratorRecord* concentrator);
 
-   std::vector<FERSBoard> boards_;
-   std::vector<TDLBoardRoute> board_routes_;
-   std::map<std::string, ConcentratorRecord> concentrators_;
+   std::vector<FERSBoard> m_boards;
+   std::vector<TDLBoardRoute> m_board_routes;
+   std::map<std::string, ConcentratorRecord> m_concentrators;
  };
 
 } // namespace fers2

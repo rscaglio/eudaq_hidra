@@ -10,11 +10,11 @@ namespace fers2 {
 
 class FersError : public std::runtime_error {
  public:
-  explicit FersError(const std::string& msg, int code = 0) : std::runtime_error(msg), code_(code) {}
-  int code() const noexcept { return code_; }
+  explicit FersError(const std::string& msg, int code = 0) : std::runtime_error(msg), m_error_code(code) {}
+  int code() const noexcept { return m_error_code; }
 
  private:
-  int code_;
+  int m_error_code;
 };
 
 inline void ThrowOnRet(int ret, const std::string& context) {
