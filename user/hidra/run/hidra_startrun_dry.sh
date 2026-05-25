@@ -30,7 +30,7 @@ tmux new-session -d -s "$TMUX_SESSION" \
 euRun -n HidraRunControl &
 sleep 1
 
-euLog > "$HOME/temp.eudaq.log" &
+hidraLog &
 sleep 1
 
 euCliMonitor  -n HidraMonitor -t DryHidraMonitor &
