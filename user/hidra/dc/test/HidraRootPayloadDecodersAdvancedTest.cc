@@ -88,9 +88,10 @@ protected:
   }
 
   std::vector<std::uint8_t> CreateFERSPayloadFromBlock(const FERS_spect_64& block) {
-    // Decoder expects 699-byte board blocks; keep this exact size for deterministic indexing.
-    std::vector<std::uint8_t> payload(699, 0);
-    std::memcpy(payload.data(), &block, std::min(payload.size(), sizeof(FERS_spect_64)));
+    // Decoder expects sizeof(FERS_spect_64) bytes per block; allocate exactly that
+    // to avoid out-of-bounds read when decoder does memcpy(&boardblock, block_ptr, sizeof(FERS_spect_64))
+    std::vector<std::uint8_t> payload(sizeof(FERS_spect_64), 0);
+    std::memcpy(payload.data(), &block, sizeof(FERS_spect_64));
     return payload;
   }
 };
