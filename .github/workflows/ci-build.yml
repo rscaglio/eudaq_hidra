@@ -41,7 +41,7 @@ jobs:
             -DUSER_HIDRA_FERS2_BUILD=OFF \
             -DUSER_HIDRA_XDC_BUILD=OFF \
             -DUSER_HIDRA_DRY_BUILD=ON \
-            -DUSER_HIDRA_DAQ_BUILD=OFF
+            -DUSER_HIDRA_DAQ_BUILD=ON
 
       - name: Build
         run: cmake --build build-ci --parallel
