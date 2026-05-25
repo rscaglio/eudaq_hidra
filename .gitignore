@@ -23,6 +23,7 @@ test.ini
 *.bz
 *.bz2
 
+.*
 \#*#
 *~
 *.pyc
