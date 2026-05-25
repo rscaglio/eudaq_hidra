@@ -2,12 +2,24 @@
 #define HIDRA_FERS2_BOARD_MANAGER_H
 
 #include <cstddef>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "FERSBoard.h"
 #include "FERSConfiguration.h"
+#include "FERSlib.h"
+#ifdef __cplusplus
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#endif
 #include "FERSTypes.h"
+#include "FersHandle.h"
 
 namespace hidra {
 namespace fers2 {
@@ -30,7 +42,8 @@ namespace fers2 {
     * Create board objects for each Open[n] entry in `config`.
     * @param first_board_id Logical starting id assigned to the first board.
     */
-   bool BuildBoardsFromConfiguration(const FERSConfiguration& config, int first_board_id = 0);
+  // Build board objects from configuration. Throws `FersError` on fatal errors.
+  void BuildBoardsFromConfiguration(const FERSConfiguration& config, int first_board_id = 0);
 
    /**
     * Add a single board manually.
@@ -43,7 +56,8 @@ namespace fers2 {
    /**
     * Connect all configured boards (open devices and prepare readout).
     */
-   bool ConnectAll(int readout_mode = 0, std::string* error = nullptr);
+  // Connect all configured boards. Throws `FersError` on failure.
+  void ConnectAll(int readout_mode = 0);
 
    /**
     * Configure all boards using `config`. When `load_config_file_first` is
@@ -77,7 +91,30 @@ namespace fers2 {
    const std::vector<FERSBoard>& boards() const { return boards_; }
 
  private:
+   struct TDLBoardRoute {
+     bool is_tdl = false;
+     std::string cnc_path;
+     int chain = -1;
+     int node = -1;
+   };
+
+   struct ConcentratorRecord {
+     std::string cnc_path;
+     FersHandle handle{};
+     bool discovered = false;
+     bool info_logged = false;
+     FERS_CncInfo_t info{};
+     std::vector<int> board_ids;
+     std::set<std::pair<int, int>> occupied_nodes;
+   };
+
+  void RegisterBoardRoute(int board_id, const std::string& connection_path);
+   ConcentratorRecord* GetOrCreateConcentrator(const std::string& cnc_path);
+  void OpenAndLogConcentrator(ConcentratorRecord* concentrator);
+
    std::vector<FERSBoard> boards_;
+   std::vector<TDLBoardRoute> board_routes_;
+   std::map<std::string, ConcentratorRecord> concentrators_;
  };
 
 } // namespace fers2

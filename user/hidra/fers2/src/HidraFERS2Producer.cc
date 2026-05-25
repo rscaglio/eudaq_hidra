@@ -19,6 +19,7 @@
 #include "FERSlib.h"
 #undef max
 #undef min
+#include "FersException.h"
 
 namespace {
 
@@ -229,13 +230,17 @@ private:
     }
 
     m_board_manager = FERSBoardManager{};
-    if (!m_board_manager.BuildBoardsFromConfiguration(m_config, 0)) {
-      EUDAQ_THROW("No FERS boards found in configuration file: " + m_config_file);
+    try {
+      m_board_manager.BuildBoardsFromConfiguration(m_config, 0);
+    } catch (const hidra::fers2::FersError& e) {
+      EUDAQ_THROW(std::string("No FERS boards found in configuration file: ") + e.what());
     }
 
-    if (!m_board_manager.ConnectAll(m_readout_mode, &error)) {
+    try {
+      m_board_manager.ConnectAll(m_readout_mode);
+    } catch (const hidra::fers2::FersError& e) {
       m_board_manager.DisconnectAll(nullptr);
-      EUDAQ_THROW(error);
+      EUDAQ_THROW(std::string("Failed to connect FERS boards: ") + e.what());
     }
 
     if (!m_board_manager.ConfigureAll(m_config, m_configure_mode, true, &error)) {
