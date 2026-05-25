@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "FERSlib.h"
+#include "FERSPayloadSerialization.h"
 
 namespace hidra {
 namespace fers2 {
@@ -424,70 +425,14 @@ bool FERSBoard::ReadMonitorStatus(BoardMonitorStatus* monitor_status) const {
 }
 
 bool FERSBoard::SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event) {
-  
-  // TODO: is the correct board id written in the out FERSEvent ?
-  
-  if (out_event == nullptr || event_ptr == nullptr) {
-    status_.last_return_code = FERSLIB_ERR_INVALID_PARAM;
-    status_.last_error = "SerializeEvent received null pointer.";
-    return false;
-  }
-
-  const int base_dq = (data_qualifier & 0x0F);
-
-  out_event->data_qualifier = data_qualifier;
-
-  if (data_qualifier == DTQ_SERVICE) {
-    const auto* ev = reinterpret_cast<const ServEvent_t*>(event_ptr);
-    out_event->trigger_id = ev->TotTrg_cnt;
-    out_event->payload.resize(sizeof(ServEvent_t));
-    std::memcpy(out_event->payload.data(), ev, sizeof(ServEvent_t));
-    return true;
-  }
-
-  if (base_dq == DTQ_SPECT || data_qualifier == DTQ_TSPECT) {
-    const auto* ev = reinterpret_cast<const SpectEvent_t*>(event_ptr);
-    out_event->trigger_id = ev->trigger_id;
-    out_event->payload.resize(sizeof(SpectEvent_t));
-    std::memcpy(out_event->payload.data(), ev, sizeof(SpectEvent_t));
-    return true;
-  }
-
-  if (base_dq == DTQ_TIMING) {
-    const auto* ev = reinterpret_cast<const ListEvent_t*>(event_ptr);
-    out_event->trigger_id = ev->trigger_id;
-    out_event->payload.resize(sizeof(ListEvent_t));
-    std::memcpy(out_event->payload.data(), ev, sizeof(ListEvent_t));
-    return true;
-  }
-
-  if (base_dq == DTQ_COUNT) {
-    const auto* ev = reinterpret_cast<const CountingEvent_t*>(event_ptr);
-    out_event->trigger_id = ev->trigger_id;
-    out_event->payload.resize(sizeof(CountingEvent_t));
-    std::memcpy(out_event->payload.data(), ev, sizeof(CountingEvent_t));
-    return true;
-  }
-
-  if (base_dq == DTQ_TEST || data_qualifier == DTQ_TEST) {
-    const auto* ev = reinterpret_cast<const TestEvent_t*>(event_ptr);
-    out_event->trigger_id = ev->trigger_id;
-    out_event->payload.resize(sizeof(TestEvent_t));
-    std::memcpy(out_event->payload.data(), ev, sizeof(TestEvent_t));
-    return true;
-  }
-
-  if (base_dq == DTQ_WAVE) {
-    // Waveform events include pointer members. Keep this explicit until a
-    // dedicated serialization format is implemented for waveform samples.
+  std::string error;
+  if (!SerializeFersEventPayload(event_ptr, data_qualifier, board_id_, out_event, &error)) {
     status_.last_return_code = FERSLIB_ERR_NOT_APPLICABLE;
-    status_.last_error = "Waveform event serialization is not implemented yet.";
+    status_.last_error = std::move(error);
     return false;
   }
 
-  status_.last_return_code = FERSLIB_ERR_NOT_APPLICABLE;
-  status_.last_error = "Unsupported data qualifier: " + std::to_string(data_qualifier);
-  return false;
+  return true;
 }
 
 } // namespace fers2

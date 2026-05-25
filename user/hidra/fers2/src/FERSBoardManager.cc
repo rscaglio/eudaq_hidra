@@ -10,6 +10,7 @@
 
 #include "FERSlib.h"
 #include "FersException.h"
+#include "FERSPayloadSerialization.h"
 
 namespace hidra {
 namespace fers2 {
@@ -329,16 +330,64 @@ bool FERSBoardManager::DisconnectAll(std::string* error) {
 
 std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_events_per_board, std::string* error) {
   std::vector<FERSEvent> out;
-  for (auto& board : boards_) {
-    std::vector<FERSEvent> board_events;
-    if (!board.ReadAvailableEvents(&board_events, max_events_per_board)) {
+  if (boards_.empty()) {
+    if (error != nullptr) {
+      *error = "No FERS boards configured.";
+    }
+    return {};
+  }
+
+  std::vector<int> handles;
+  handles.reserve(boards_.size());
+  for (const auto& board : boards_) {
+    const int handle = board.handle();
+    if (handle < 0) {
       if (error != nullptr) {
-        *error = "Read failed for board id " + std::to_string(board.board_id()) + ": " + board.status().last_error;
+        *error = "Cannot read events: board id " + std::to_string(board.board_id()) + " is not connected.";
+      }
+      return {};
+    }
+    handles.push_back(handle);
+  }
+
+  size_t read_count = 0;
+  while (max_events_per_board == 0 || read_count < max_events_per_board) {
+    int board_index = -1;
+    int data_qualifier = 0;
+    double timestamp_us = 0.0;
+    void* event_ptr = nullptr;
+    int nb = 0;
+
+    const int ret = FERS_GetEvent(handles.data(), &board_index, &data_qualifier, &timestamp_us, &event_ptr, &nb);
+    if (ret == 0 || ret == 2) {
+      break;
+    }
+    if (ret < 0) {
+      if (error != nullptr) {
+        *error = "FERS_GetEvent failed with code " + std::to_string(ret);
       }
       return {};
     }
 
-    out.insert(out.end(), board_events.begin(), board_events.end());
+    if (board_index < 0 || static_cast<size_t>(board_index) >= boards_.size()) {
+      if (error != nullptr) {
+        *error = "FERS_GetEvent returned out-of-range board index " + std::to_string(board_index);
+      }
+      return {};
+    }
+
+    if (nb <= 0 || event_ptr == nullptr) {
+      break;
+    }
+
+    FERSEvent event;
+    event.timestamp_us = timestamp_us;
+    if (!SerializeFersEventPayload(event_ptr, data_qualifier, boards_[board_index].board_id(), &event, error)) {
+      return {};
+    }
+
+    out.push_back(std::move(event));
+    ++read_count;
   }
 
   return out;
