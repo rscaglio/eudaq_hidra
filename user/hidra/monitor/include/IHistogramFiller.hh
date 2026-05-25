@@ -1,6 +1,6 @@
 #pragma once
 
-#include <eudaq/Event.hh>
+#include "HidraEvent.hh"
 
 /**
  * @brief Interface for histogram fillers.
@@ -15,7 +15,7 @@
  */
 class IHistogramFiller {
 public:
-    virtual void Fill(eudaq::EventSPC ev) = 0;
+    virtual void Fill(const HidraEvent& ev) = 0;
 
     virtual ~IHistogramFiller() = default;
 };
