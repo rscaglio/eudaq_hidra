@@ -21,28 +21,35 @@
 
 namespace {
 
-constexpr std::size_t MAX_BLT_SIZE = 1024 * 4;
+
+// SET THESE ACCORDING TO HARDWARE SIGNALS
+enum V977IN {
+  cFastGate = 0,
+  cPhy = 1,
+  cPed = 2,
+  cSpill = 3
+};
+enum V977OUT {
+  cVeto = static_cast<int>(V977IN::cFastGate),
+  cPhyVeto = 4,
+  cPedVeto = 5
+};
+////////////////////
+
+constexpr std::size_t MAX_BLT_SIZE = 1024 * 4; // TODO check this
 constexpr int32_t INVALID_HANDLE = -1;
-constexpr int NCHAN = 250;
-constexpr uint16_t INVALID_ADC = 4444;
 constexpr uint32_t DATATYPE_FILLER = 0x06000000;
 constexpr uint32_t BLT_READ_ADDRESS = 0xAA000000;
 
 // V977 registers.
 constexpr uint16_t V977_INPUT_SET_REG = 0x0000;
 constexpr uint16_t V977_INPUT_MASK_REG = 0x0002;
+constexpr uint16_t V977_INPUT_READ_REG = 0x0004;
 constexpr uint16_t V977_OUTPUT_MASK_REG = 0x000C;
 constexpr uint16_t V977_OUTPUT_SET_REG = 0x000A;
-constexpr uint16_t V977_OUTPUT_CLEAR_REG = 0x0010;
+constexpr uint16_t V977_OUTPUT_CLEAR_REG = 0x0010; // A dummy write access to this register clears all the channels FLIP-FLOP.
 constexpr uint16_t V977_SINGLE_READ_REG = 0x0006;
 
-// INFO: V977. Change according to which channel receives the signals
-constexpr uint16_t V977_TRIGGER_BIT = 1 << 0;
-constexpr uint16_t V977_SPILL_START_BIT = 1 << 1;
-constexpr uint16_t V977_SPILL_END_BIT = 1 << 2;
-
-constexpr uint16_t V977_FLIP_FLOP_CLEAR_MASK = 0xF000;
-constexpr uint16_t V977_TRIGGER_VETO_MASK = 0x0001;
 
 // CAEN V792/QDC registers used by this producer.
 constexpr uint16_t V792_GEO_ADDRESS_REG = 0x1002;
@@ -63,9 +70,6 @@ constexpr uint16_t V792_STATUS_1_REG = 0x100E;
 constexpr uint16_t V792_MCST_FIRST = 0x02;
 constexpr uint16_t V792_MCST_MIDDLE = 0x03;
 constexpr uint16_t V792_MCST_LAST = 0x01;
-
-constexpr int SPILL_WAIT_LOG_INTERVAL = 1000000;
-constexpr int TRIGGER_WAIT_LOG_INTERVAL = 10000000;
 
 struct BoardConfig {
   uint32_t baseAddr;
@@ -90,8 +94,8 @@ const std::array<BoardDefaults, 5> DEFAULT_BOARDS = {{
 struct V977Pattern {
   uint16_t raw = 0;
   bool trigger = false;
-  bool spillStart = false;
-  bool spillEnd = false;
+  bool physics = false;
+  bool pedestal = false;
 };
 
 std::string hex32(uint32_t value) {
@@ -141,6 +145,8 @@ public:
         m_running(false),
         m_runNumber(0),
         m_evt(0),
+        m_evt_ped(0),
+        m_evt_phy(0),
         m_spillCount(0),
         m_iped(100),
         m_controllerType(cvV2718),
@@ -266,7 +272,7 @@ private:
 
   void ConfigureBlockTransfer() {
     for (const auto& board : m_boards) {
-      WriteReg(V792_BLT_EVENT_NUMBER_REG, 0xAA, board.baseAddr);
+      WriteReg(V792_BLT_EVENT_NUMBER_REG, 0xAA, board.baseAddr); // TODO ??
     }
   }
 
@@ -288,33 +294,54 @@ private:
   }
 
   /// V977 handlers
-
-  void UpdateV977OutputChannel(unsigned int channel, bool setHigh) {
-    // setHigh = true   -> force this channel output active
-    // setHigh = false  -> stop forcing this channel output active
-    if (channel >= 16) {
-      EUDAQ_THROW("V977 output channel out of range: " + std::to_string(channel));
-    }
-
-    const uint16_t channelBit = static_cast<uint16_t>(1u << channel);
+   void SetVetoTriPedPhy(int setTriHigh, int setPedHigh, int setPhyHigh) { // use 1 to set high, 0 to set low, -1 to keep
     std::lock_guard<std::mutex> lock(m_v977OutputSetMutex);
     uint16_t outputSet = ReadReg(V977_OUTPUT_SET_REG, m_v977Base);
-    ThrowIfVmeError("V977 output-set read failed");
+    ThrowIfVmeError("V977 output set read failed");
 
-    if (setHigh) {
-      outputSet = static_cast<uint16_t>(outputSet | channelBit);
-    } else {
-      outputSet = static_cast<uint16_t>(outputSet & ~channelBit);
+    uint16_t pedchannelBit = static_cast<uint16_t>(1u << V977OUT::cPedVeto);
+    uint16_t phychannelBit = static_cast<uint16_t>(1u << V977OUT::cPhyVeto);
+    uint16_t trichannelBit = static_cast<uint16_t>(1u << V977OUT::cVeto);
+
+    if (setPedHigh > 0) {
+      outputSet = outputSet | pedchannelBit;
+    } else if (setPedHigh == 0) {
+      outputSet = outputSet & ~pedchannelBit;
+    }
+
+    if (setPhyHigh > 0) {
+      outputSet = outputSet | phychannelBit;
+    } else if (setPhyHigh == 0) {
+      outputSet = outputSet & ~phychannelBit;
+    }
+
+    if (setTriHigh > 0) {
+      outputSet = outputSet | trichannelBit;
+    } else if (setTriHigh == 0) {
+      outputSet = outputSet & ~trichannelBit;
     }
 
     WriteReg(V977_OUTPUT_SET_REG, outputSet, m_v977Base);
-    ThrowIfVmeError("V977 output-set write failed");
+    ThrowIfVmeError("V977 output set write failed");
   }
 
   void ConfigureV977andVeto() {
+
+    uint16_t output_mask = 0xFFFF;
+    output_mask &= ~(1u << V977OUT::cVeto);
+
+    uint16_t input_mask = 0xFFFF;
+    input_mask &= ~(1u << V977IN::cFastGate);
+    input_mask &= ~(1u << V977IN::cPed);
+    input_mask &= ~(1u << V977IN::cPhy);
+
     WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977Base);
-    WriteReg(V977_INPUT_MASK_REG, 0xFFF8, m_v977Base);
-    WriteReg(V977_OUTPUT_MASK_REG, 0xFFFE, m_v977Base);
+    WriteReg(V977_INPUT_MASK_REG, input_mask, m_v977Base);
+    WriteReg(
+        V977_OUTPUT_MASK_REG,
+        output_mask,
+        m_v977Base); // the relevant output is “masked” and no output signal is produced regardless the FLIP FLOPs
+                     // status. The output signal can be produced anyway via the relevant bit in the OUTPUT SET register
     WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);
     VetoTrigger();
     ThrowIfVmeError("V977 configuration failed");
@@ -323,18 +350,26 @@ private:
   }
 
   void ResetV977ForRun() {
-    WriteReg(V977_OUTPUT_CLEAR_REG, V977_FLIP_FLOP_CLEAR_MASK, m_v977Base); // clear registers
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977Base); // clear registers
     WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);                       // all inputs set to 0
   }
 
   void VetoTrigger() {
-    WriteReg(V977_OUTPUT_SET_REG, V977_TRIGGER_VETO_MASK, m_v977Base);
+    SetVetoTriPedPhy(1, -1, -1);
     HIDRA_INFO("trigger vetoed");
   }
 
   void ReleaseTriggerVeto() {
-    // Kept equivalent to the previous producer behavior.
-    WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977Base);
+    SetVetoTriPedPhy(0, -1, -1);
+  }
+
+  bool getSpillSignal() {  // returning true if high. Assuming that high = in spill
+    uint16_t regbits = ReadReg(V977_INPUT_READ_REG, m_v977Base);
+    return (regbits & (1u << V977IN::cSpill)) != 0;
+  }
+
+  bool requestPedestalNext(){
+    return ((double)m_evt_phy / (double)m_evt_ped) > 10;
   }
 
   bool CheckBoardsReady(int timeout_us, int sleep_cycle_time_us, int sleep_begin_time_ns = 0) {
@@ -385,13 +420,42 @@ private:
       }
 
       const V977Pattern pattern = ReadV977FlipFlopPattern();
-      if (m_onspill) {
-        HandleOnSpill(pattern);
-      } else {
-        HandleOffSpill(pattern);
+
+      if (pattern.trigger){
+        m_evtTimeNs = hidra::utils::getTimens();
+        m_TriggerMask = 0x0;
+        if (pattern.physics) m_TriggerMask |= 0b01;
+        if (pattern.pedestal) m_TriggerMask |= 0b10;
+        if (m_TriggerMask == 0b11) {
+          HIDRA_ERROR("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
+        }
+        if (!getSpillSignal()) { // TODO: cross check with hardware. Here it is assumed input = in spill
+          HIDRA_ERROR("This trigger evt {} with trig mask {} is received out of spill", m_evt, m_TriggerMask);
+        }
+        ReadOneBlockAndSendEvent();
+        m_evt++;
+        if (m_TriggerMask == 0b01) m_evt_phy++;
+        if (m_TriggerMask == 0b10) m_evt_ped++;
       }
 
-      ClearV977FlipFlopsIfRequested();
+      // TODO: veto is still active and we can do what we want.. but slowing down. Remove and create a dedicated thread
+      SetStatusTag("PhyTrigN", std::to_string(m_evt_phy));
+      SetStatusTag("PedTrigN", std::to_string(m_evt_ped));
+      SetStatusTag("SpillN", std::to_string(m_spillCount));
+      SendStatus();
+      HIDRA_DEBUG("Evt {} mask {}. Phy {} Ped {} Spill {}", m_evt, m_TriggerMask, m_evt_phy, m_evt_ped, m_spillCount);
+      /////////////////
+      
+      if (requestPedestalNext()){
+        SetVetoTriPedPhy(-1, 0, 1);
+        ReleaseTriggerVeto();
+      }
+      else{
+        SetVetoTriPedPhy(-1, 1, 0);
+        ReleaseTriggerVeto();
+      }
+
+      // TODO: shall one clear FlipFlops?
     }
   }
 
@@ -407,12 +471,13 @@ private:
   V977Pattern ReadV977FlipFlopPattern() {
     V977Pattern pattern;
     pattern.raw = ReadReg(V977_SINGLE_READ_REG, m_v977Base);
-    pattern.trigger = (pattern.raw & V977_TRIGGER_BIT) != 0;
-    pattern.spillStart = (pattern.raw & V977_SPILL_START_BIT) != 0;
-    pattern.spillEnd = (pattern.raw & V977_SPILL_END_BIT) != 0;
+    pattern.trigger = (pattern.raw & (1u << V977IN::cFastGate)) != 0;
+    pattern.physics = (pattern.raw & (1u << V977IN::cPhy)) != 0;
+    pattern.pedestal = (pattern.raw & (1u << V977IN::cPed)) != 0;
     return pattern;
   }
 
+  /*
   void HandleOffSpill(const V977Pattern& pattern) {
     if (pattern.spillEnd) {
       EUDAQ_ERROR("END OF SPILL while already OFFSPILL (missed START?)");
@@ -460,6 +525,7 @@ private:
     RequestV977FlipFlopClear();
   }
 
+  */
   void RequestV977FlipFlopClear() { m_clearRequested = true; }
 
   void ClearV977FlipFlopsIfRequested() {
@@ -467,24 +533,11 @@ private:
       return;
     }
 
-    WriteReg(V977_OUTPUT_CLEAR_REG, V977_FLIP_FLOP_CLEAR_MASK, m_v977Base);
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977Base);
     m_clearRequested = false;
   }
 
-  void LogWaitingForSpill() {
-    ++m_spillWaitLogCounter;
-    if (m_spillWaitLogCounter % SPILL_WAIT_LOG_INTERVAL == 0) {
-      EUDAQ_INFO("Waiting for the spill to start...");
-    }
-  }
-
-  void LogWaitingForTrigger() {
-    ++m_triggerWaitLogCounter;
-    if (m_triggerWaitLogCounter > TRIGGER_WAIT_LOG_INTERVAL) {
-      EUDAQ_INFO("Still waiting for the trigger...");
-      m_triggerWaitLogCounter = 0;
-    }
-  }
+  
 
   void OpenController() {
     if (m_handle >= 0) {
@@ -605,7 +658,6 @@ private:
     HIDRA_INFO("Event Triggered, m_evt = {}", m_evt);
 
     SendDataEvent(byteCount);
-    ++m_evt;
     RequestV977FlipFlopClear();
   }
 
@@ -687,16 +739,14 @@ private:
     m_running = false;
     m_onspill = false;
     m_clearRequested = false;
-    m_evt = 0;
+    m_evt = m_evt_ped = m_evt_phy = 0;
     m_spillCount = 0;
     m_evtTimeNs = 0;
     m_spillWaitLogCounter = 0;
     m_triggerWaitLogCounter = 0;
-    m_adcval.fill(INVALID_ADC);
   }
 
   void ResetReadoutBuffers() {
-    m_adcval.fill(INVALID_ADC);
     m_buffer.fill(0);
     m_buffer[0] = DATATYPE_FILLER;
   }
@@ -714,7 +764,9 @@ private:
 
   uint32_t m_runNumber;
   uint64_t m_evt;
-  uint32_t m_spillCount;
+  uint64_t m_evt_phy;
+  uint64_t m_evt_ped;
+  uint32_t m_spillCount; // TODO to be implemented
   int m_iped;
   uint64_t m_evtTimeNs = 0;
   uint8_t m_TriggerMask = 0xFF; // TODO: already forwarded as tag. To be implemented!
@@ -729,7 +781,6 @@ private:
 
   std::vector<BoardConfig> m_boards;
   std::array<uint32_t, 256 * 1024 / 4> m_buffer;
-  std::array<uint16_t, NCHAN> m_adcval;
 
   std::thread m_thread;
   std::mutex m_v977OutputSetMutex; // Without the mutex, two threads could both read the same old OUTPUT SET value,
