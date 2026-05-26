@@ -346,6 +346,7 @@ private:
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(timeout_us);
     while (std::chrono::steady_clock::now() < deadline) {
 
+      /*
       // ----- Option 1 ----
       // TODO: this would try BLT address, but V792 manual says that 0x100E doesn't work like this for V792N
       const uint16_t statusAll = ReadReg(V792_STATUS_1_REG, BLT_READ_ADDRESS);
@@ -355,14 +356,15 @@ private:
         return true;
       }
       // ------------------
+      */
 
       // ----- Option 2 -----
       bool allReady = true;
       bool anyBusy = false;
       for (const auto& board : m_boards) {
         const uint16_t statusb = ReadReg(V792_STATUS_1_REG, board.baseAddr);
-        bool thisReady = (statusAll & 1) != 0;       // Accessing READY
-        bool thisBusy = (statusAll & (1 << 2)) != 0; // Accessing BUSY
+        bool thisReady = (statusb & 1) != 0;       // Accessing READY
+        bool thisBusy = (statusb & (1 << 2)) != 0; // Accessing BUSY
         allReady &= thisReady;
         anyBusy |= thisBusy;
       }
