@@ -180,9 +180,8 @@ private:
     ResetRunState();
     LoadRunConfiguration(*conf);
 
-    
     ConfigureBoards();
-    ConfigureV977andVeto(); 
+    ConfigureV977andVeto();
 
     EUDAQ_INFO("Producer configured");
   }
@@ -278,14 +277,38 @@ private:
   }
 
   uint16_t MulticastRole(std::size_t index) const {
-    // TODO: move to config 
+    // TODO: move to config
     if (index == 0) {
       return V792_MCST_FIRST;
     }
-    if (index == 4) {  // TODO: do not hard code number 4. If fewer than 5  boards are enabled, no board becomes LAST
+    if (index == 4) { // TODO: do not hard code number 4. If fewer than 5  boards are enabled, no board becomes LAST
       return V792_MCST_LAST;
     }
     return V792_MCST_MIDDLE;
+  }
+
+  /// V977 handlers
+
+  void UpdateV977OutputChannel(unsigned int channel, bool setHigh) {
+    // setHigh = true   -> force this channel output active
+    // setHigh = false  -> stop forcing this channel output active
+    if (channel >= 16) {
+      EUDAQ_THROW("V977 output channel out of range: " + std::to_string(channel));
+    }
+
+    const uint16_t channelBit = static_cast<uint16_t>(1u << channel);
+    std::lock_guard<std::mutex> lock(m_v977OutputSetMutex);
+    uint16_t outputSet = ReadReg(V977_OUTPUT_SET_REG, m_v977Base);
+    ThrowIfVmeError("V977 output-set read failed");
+
+    if (setHigh) {
+      outputSet = static_cast<uint16_t>(outputSet | channelBit);
+    } else {
+      outputSet = static_cast<uint16_t>(outputSet & ~channelBit);
+    }
+
+    WriteReg(V977_OUTPUT_SET_REG, outputSet, m_v977Base);
+    ThrowIfVmeError("V977 output-set write failed");
   }
 
   void ConfigureV977andVeto() {
@@ -301,7 +324,7 @@ private:
 
   void ResetV977ForRun() {
     WriteReg(V977_OUTPUT_CLEAR_REG, V977_FLIP_FLOP_CLEAR_MASK, m_v977Base); // clear registers
-    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base); // all inputs set to 0
+    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);                       // all inputs set to 0
   }
 
   void VetoTrigger() {
@@ -314,20 +337,20 @@ private:
     WriteReg(V977_OUTPUT_SET_REG, 0x0000, m_v977Base);
   }
 
-  bool CheckBoardsReady(int timeout_us, int sleep_cycle_time_us, int sleep_begin_time_ns = 0){
+  bool CheckBoardsReady(int timeout_us, int sleep_cycle_time_us, int sleep_begin_time_ns = 0) {
 
-    if (sleep_begin_time_ns > 0){
+    if (sleep_begin_time_ns > 0) {
       std::this_thread::sleep_for(std::chrono::microseconds(sleep_begin_time_ns));
     }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(timeout_us);
-    while (std::chrono::steady_clock::now() < deadline){
+    while (std::chrono::steady_clock::now() < deadline) {
 
       // ----- Option 1 ----
       // TODO: this would try BLT address, but V792 manual says that 0x100E doesn't work like this for V792N
       const uint16_t statusAll = ReadReg(V792_STATUS_1_REG, BLT_READ_ADDRESS);
       bool atLeastOneReady = (statusAll & (1 << 1)) != 0; // Accessing GLOBAL READY
-      bool atLeastOneBusy = (statusAll & (1 << 3)) != 0; // Accessing GLOBAL BUSY
+      bool atLeastOneBusy = (statusAll & (1 << 3)) != 0;  // Accessing GLOBAL BUSY
       if (atLeastOneReady && !atLeastOneBusy) {
         return true;
       }
@@ -336,21 +359,19 @@ private:
       // ----- Option 2 -----
       bool allReady = true;
       bool anyBusy = false;
-      for (const auto& board : m_boards){
+      for (const auto& board : m_boards) {
         const uint16_t statusb = ReadReg(V792_STATUS_1_REG, board.baseAddr);
-        bool thisReady = (statusAll & 1) != 0;  // Accessing READY
-        bool thisBusy = (statusAll & (1 << 2)) != 0;  // Accessing BUSY
+        bool thisReady = (statusAll & 1) != 0;       // Accessing READY
+        bool thisBusy = (statusAll & (1 << 2)) != 0; // Accessing BUSY
         allReady &= thisReady;
         anyBusy |= thisBusy;
       }
-      if (allReady && !anyBusy){
+      if (allReady && !anyBusy) {
         return true;
       }
       // --------------------
 
       std::this_thread::sleep_for(std::chrono::microseconds(sleep_cycle_time_us));
-
-      
     }
     return false;
   }
@@ -437,9 +458,7 @@ private:
     RequestV977FlipFlopClear();
   }
 
-  void RequestV977FlipFlopClear() {
-    m_clearRequested = true;
-  }
+  void RequestV977FlipFlopClear() { m_clearRequested = true; }
 
   void ClearV977FlipFlopsIfRequested() {
     if (!m_clearRequested) {
@@ -518,7 +537,6 @@ private:
     }
   }
 
-
   void InitBoard(const BoardConfig& board) {
     EUDAQ_INFO("Initializing board at " + hex32(board.baseAddr));
 
@@ -551,7 +569,7 @@ private:
     int ready_timeout_us = 100; // TODO: test then move to config
     int ready_cycle_us = 10;
 
-    if (!CheckBoardsReady(ready_timeout_us, ready_cycle_us)){
+    if (!CheckBoardsReady(ready_timeout_us, ready_cycle_us)) {
       HIDRA_ERROR("QDC data not ready after {} us", ready_timeout_us);
       RequestV977FlipFlopClear();
       return;
@@ -589,7 +607,6 @@ private:
     RequestV977FlipFlopClear();
   }
 
-  
   void SendDataEvent(int byteCount) {
     auto event = eudaq::Event::MakeUnique("CAENQTPDRaw");
     event->SetTriggerN(static_cast<uint32_t>(m_evt));
@@ -598,7 +615,7 @@ private:
 
     const uint8_t* rawBegin = reinterpret_cast<const uint8_t*>(m_buffer.data());
     const std::vector<uint8_t> raw(rawBegin, rawBegin + byteCount);
-    if (byteCount != raw.size()){
+    if (byteCount != raw.size()) {
       HIDRA_ERROR("Event supposed to have {} bytes. Block with {} bytes", byteCount, raw.size());
     }
     event->AddBlock(0, raw);
@@ -713,6 +730,9 @@ private:
   std::array<uint16_t, NCHAN> m_adcval;
 
   std::thread m_thread;
+  std::mutex m_v977OutputSetMutex; // Without the mutex, two threads could both read the same old OUTPUT SET value,
+                                   // modify different bits, and whichever writes last would accidentally erase the
+                                   // other thread’s change.
 };
 
 namespace {
