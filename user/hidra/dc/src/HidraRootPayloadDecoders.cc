@@ -100,7 +100,7 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
   HidraXdcEvent xdc_event;
   m_xdc_decoder.decode(detector.payload, xdc_event);
 
-  if (xdc_event.TDCvalues.empty()) {
+  if (xdc_event.ADCvalues.empty()) {
     return;
   }
 
