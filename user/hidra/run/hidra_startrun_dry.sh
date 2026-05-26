@@ -1,17 +1,12 @@
 #!/usr/bin/env sh
 
-BINPATH=$EUDAQHIDRA/../../bin
+BINPATH=$REPO_ROOT/bin
 TMUX_SESSION="hidra_run_monitoring"
-DASHBOARD_DIR="$EUDAQHIDRA/misc/dashboard/rc_mon"
+DASHBOARD_DIR="$REPO_ROOT/user/hidra/misc/dashboard/rc_mon"
 
 export PATH="$BINPATH:$PATH"
 
 mkdir -p out_data logs
-
-if [ -z "$EUDAQHIDRA" ]; then
-    echo "Error: EUDAQHIDRA is not set."
-    exit 1
-fi
 
 if [ ! -d "$DASHBOARD_DIR" ]; then
     echo "Error: dashboard directory does not exist: $DASHBOARD_DIR"
@@ -33,7 +28,7 @@ sleep 1
 hidraLog &
 sleep 1
 
-euCliMonitor  -n HidraMonitor -t DryHidraMonitor &
+euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
 euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
 
