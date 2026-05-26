@@ -436,26 +436,28 @@ private:
         m_evt++;
         if (m_TriggerMask == 0b01) m_evt_phy++;
         if (m_TriggerMask == 0b10) m_evt_ped++;
-      }
-
-      // TODO: veto is still active and we can do what we want.. but slowing down. Remove and create a dedicated thread
-      SetStatusTag("PhyTrigN", std::to_string(m_evt_phy));
-      SetStatusTag("PedTrigN", std::to_string(m_evt_ped));
-      SetStatusTag("SpillN", std::to_string(m_spillCount));
-      SendStatus();
-      HIDRA_DEBUG("Evt {} mask {}. Phy {} Ped {} Spill {}", m_evt, m_TriggerMask, m_evt_phy, m_evt_ped, m_spillCount);
-      /////////////////
       
-      if (requestPedestalNext()){
-        SetVetoTriPedPhy(-1, 0, 1);
-        ReleaseTriggerVeto();
-      }
-      else{
-        SetVetoTriPedPhy(-1, 1, 0);
+
+        // TODO: veto is still active and we can do what we want.. but slowing down. Remove and create a dedicated thread
+        SetStatusTag("PhyTrigN", std::to_string(m_evt_phy));
+        SetStatusTag("PedTrigN", std::to_string(m_evt_ped));
+        SetStatusTag("SpillN", std::to_string(m_spillCount));
+        SendStatus();
+        HIDRA_DEBUG("Evt {} mask {}. Phy {} Ped {} Spill {}", m_evt, m_TriggerMask, m_evt_phy, m_evt_ped, m_spillCount);
+        /////////////////
+      
+        if (requestPedestalNext()){
+          SetVetoTriPedPhy(-1, 0, 1);
+        }
+        else {
+          SetVetoTriPedPhy(-1, 1, 0);
+        }
+        WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977Base); // Clearing flip-flops. Will this reset the outputs?
         ReleaseTriggerVeto();
       }
 
-      // TODO: shall one clear FlipFlops?
+      // std::this_thread::sleep_for(std::chrono::microseconds(5)); // TODO: add a sleep here?
+      
     }
   }
 
