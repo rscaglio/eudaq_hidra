@@ -23,6 +23,10 @@ HidraDryXDCProducer::HidraDryXDCProducer(const std::string& name, const std::str
     : eudaq::Producer(name, runcontrol),
       m_exit_of_run(false) {}
 
+void HidraDryXDCProducer::SetDataPath(const std::string& path) {
+  m_data_in_path = path;
+}
+
 void HidraDryXDCProducer::DoInitialise() {
   auto ini = GetInitConfiguration();
   (void)ini;
@@ -34,7 +38,7 @@ void HidraDryXDCProducer::DoConfigure() {
   m_event_spacing_ns = 1000000 * (long long)conf->Get("REPLAY_EVENT_SPACING_MS", -1);
   std::string inforeplay = m_event_spacing_ns < 0 ? "automatic" : std::to_string(m_event_spacing_ns) + " ns";
   EUDAQ_INFO("Replay rate set to " + inforeplay);
-  m_data_in_path = conf->Get("DATA_IN_PATH", "infile.txt");
+  SetDataPath(conf->Get("DATA_IN_PATH", "infile.txt"));
   EUDAQ_INFO("Using XDC raw data file " + m_data_in_path);
   ReadFileSize();
 }

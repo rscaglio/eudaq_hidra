@@ -70,6 +70,32 @@ cd user/hidra/run
 
 For more details about the available helpers see `user/hidra/misc/setup.sh`.
 
+## Running tests
+
+After configuring and building HiDRA, you can run tests from the repository
+root.
+
+Run only HiDRA-related tests
+
+```sh
+cd build
+ctest --output-on-failure -R Hidra
+```
+
+Run specific test executables directly (example):
+
+Note: direct execution requires the runtime linker to find EUDAQ shared
+libraries. If `ctest` works but direct binaries fail with
+`cannot open shared object file`, set `LD_LIBRARY_PATH` first.
+
+```sh
+# bash/zsh
+export LD_LIBRARY_PATH="$PWD/lib:${LD_LIBRARY_PATH}"
+./bin/tests/hidra_dry_xdc_producer_test
+./bin/tests/hidra_dry_xdc_producer_advanced_test
+```
+
+
 ## Git workflow procedure
 
 - Everyone works on its own branch

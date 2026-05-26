@@ -37,3 +37,8 @@ install(TARGETS
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
 
+# Add tests subdirectory
+if(BUILD_TESTING)
+  add_subdirectory(test)
+endif()
+
