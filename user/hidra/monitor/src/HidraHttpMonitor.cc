@@ -5,6 +5,7 @@
 #include "SummaryFiller.hh"
 #include "XDCFiller.hh"
 #include "HidraUtils.hh"
+#include "ScopedTimer.hh"
 
 #include <eudaq/Event.hh>
 #include <eudaq/Factory.hh>
@@ -32,8 +33,31 @@ HidraHttpMonitor::RunContext::RunContext(int port, hidra::HidraXdcDecoder xdc_de
   publisher.Start();
 }
 
-HidraHttpMonitor::RunContext::~RunContext() {
+HidraHttpMonitor::RunContext::~RunContext() noexcept {
   publisher.Stop();
+  try {
+    LogTelemetry();
+  } catch (...) {
+    // Best-effort telemetry: swallow exceptions to keep destructor safe.
+  }
+}
+
+void HidraHttpMonitor::RunContext::LogTelemetry() {
+  HIDRA_INFO("=== Monitor Telemetry ===");
+
+  HIDRA_INFO("  " + duration_xdc_decode.Summary());
+  HIDRA_INFO("  " + duration_fers_decode.Summary());
+
+  // Lock wait — this is the time spent waiting for the histogram lock in FillerChain::Fill(). If this is high, it means
+  // the pump thread is contending with DoReceive for the lock, which may indicate that the pump frequency is too high
+  // or that the fillers are doing too much work inside the critical section.
+  HIDRA_INFO("  " + chain.LockWaitTimer().Summary());
+
+  for (const auto& filler : chain.Fillers()) {
+    HIDRA_INFO("  " + filler->Timer().Summary());
+  }
+
+  HIDRA_INFO("  " + publisher.ProcessRequestsTimer().Summary());
 }
 
 // ── HttpMonitor ───────────────────────────────────────────────────────────
@@ -120,15 +144,13 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
 
   HidraEvent decoded;
 
-  HIDRA_DEBUG("Received event {} with {} subevents", ev->GetEventID(), ev->GetNumSubEvent());
   for (size_t index = 0; index < ev->GetNumSubEvent(); ++index) {
-    eudaq::EventSPC subevent = ev->GetSubEvent(index);  // no copy, just a shared pointer copy of the subevent handle
+    eudaq::EventSPC subevent = ev->GetSubEvent(index); // no copy, just a shared pointer copy of the subevent handle
     if (!subevent) {
       continue;
     }
 
     const int det_id = hidra::utils::getTagOr<int>(*subevent, "detID", index);
-    HIDRA_DEBUG("Decoding subevent {} with detID {}", index, det_id);
     std::vector<std::uint8_t> detector_payload;
     for (const auto block_id : subevent->GetBlockNumList()) {
       const auto block = subevent->GetBlock(block_id);
@@ -136,13 +158,13 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
     }
 
     if (det_id == 1 || det_id == 6) {
+      ScopedTimer t(m_ctx->duration_xdc_decode);
       m_ctx->xdc_decoder.decode(detector_payload, decoded.xdc);
-    }
-    else if (det_id == 2) {
-        m_ctx->fers_decoder.decode(detector_payload, decoded.fers);
+    } else if (det_id == 2) {
+      ScopedTimer t(m_ctx->duration_fers_decode);
+      m_ctx->fers_decoder.decode(detector_payload, decoded.fers);
     }
   }
-
 
   // --- Dispatch — inside the histogram lock --------------------------
   // FillerChain acquires publisher.Mutex() before calling the fillers.

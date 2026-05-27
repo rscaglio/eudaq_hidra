@@ -1,4 +1,6 @@
+#include "ScopedTimer.hh"
 #include "HistogramPublisher.hh"
+
 
 HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port)
     : m_registry(registry),
@@ -42,6 +44,7 @@ void HistogramPublisher::PumpLoop() {
       // Prevents TBufferJSON (inside ProcessRequests) from reading
       // a histogram while a filler is writing to it.
       std::lock_guard<std::mutex> lock(m_mutex);
+      ScopedTimer t(m_process_requests);
       m_server->ProcessRequests();
     }
     // Release the lock between iterations to avoid starving fillers.

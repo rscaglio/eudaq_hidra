@@ -1,11 +1,16 @@
 #include "FillerChain.hh"
+#include "ScopedTimer.hh"
 
 void FillerChain::Fill(const HidraEvent& ev) {
     // A single lock for the whole chain. From the pump thread's perspective,
     // either all Fill() of this event have happened, or none.
-    std::lock_guard<std::mutex> lock(m_mutex);
-    for (auto& filler : m_fillers)
+    { ScopedTimer t(m_lock_wait); m_mutex.lock(); }
+    std::lock_guard<std::mutex> lock(m_mutex, std::adopt_lock);
+
+    for (auto& filler : m_fillers) {
+        ScopedTimer t(filler->Timer());
         filler->Fill(ev);
+    }
 }
 
 void FillerChain::Reset() {

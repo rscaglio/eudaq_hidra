@@ -1,7 +1,7 @@
 #include "XDCFiller.hh"
 
 XDCFiller::XDCFiller(HistogramRegistry& reg)
-    : IHistogramFiller() {
+    : IHistogramFiller("XDCFiller") {
   m_profile_adc = reg.Add(std::make_unique<TProfile>("ADC_mean", "Mean of ADC values", 100, 0, 100));
   m_hist_adc_inclusive = reg.Add(std::make_unique<TH1D>("ADC_inclusive", "Inclusive ADC values", 4096, 0, 4096));
   m_profile_tdc = reg.Add(std::make_unique<TProfile>("TDC_mean", "Mean of TDC values", 100, 0, 100));

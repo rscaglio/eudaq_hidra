@@ -19,6 +19,7 @@
  */
 
 #include "HistogramRegistry.hh"
+#include "DurationAccumulator.hh"
 
 #include <THttpServer.h>
 
@@ -29,41 +30,44 @@
 
 class HistogramPublisher {
 public:
-    explicit HistogramPublisher(HistogramRegistry& registry, int port);
+  explicit HistogramPublisher(HistogramRegistry& registry, int port);
 
-    ~HistogramPublisher() { Stop(); }
+  ~HistogramPublisher() { Stop(); }
 
-    HistogramPublisher(const HistogramPublisher&)            = delete;
-    HistogramPublisher& operator=(const HistogramPublisher&) = delete;
+  HistogramPublisher(const HistogramPublisher&) = delete;
+  HistogramPublisher& operator=(const HistogramPublisher&) = delete;
 
-    /**
-     * Start THttpServer and the pump thread.
-     *
-     * This must be called after all fillers are constructed so the full set of
-     * histograms is visible from the beginning.
-     */
-    void Start();
+  /**
+   * Start THttpServer and the pump thread.
+   *
+   * This must be called after all fillers are constructed so the full set of
+   * histograms is visible from the beginning.
+   */
+  void Start();
 
-    /** Stop the pump thread and close THttpServer. Safe to call multiple times. */
-    void Stop();
+  /** Stop the pump thread and close THttpServer. Safe to call multiple times. */
+  void Stop();
 
-    /**
-     * Mutex protecting histogram content.
-     *
-     * It must be held by all readers and writers of histogram bin data.
-     */
-    std::mutex& Mutex() { return m_mutex; }
+  /**
+   * Mutex protecting histogram content.
+   *
+   * It must be held by all readers and writers of histogram bin data.
+   */
+  std::mutex& Mutex() { return m_mutex; }
+
+  DurationAccumulator& ProcessRequestsTimer() { return m_process_requests; }
 
 private:
-    static constexpr const char* kFolder        = "/Histograms";
-    static constexpr int         kPumpIntervalMs = 20; /**< Pump period in milliseconds (~50 Hz). */
+  static constexpr const char* kFolder = "/Histograms";
+  static constexpr int kPumpIntervalMs = 20; /**< Pump period in milliseconds (~50 Hz). */
 
-    void PumpLoop();
+  void PumpLoop();
 
-    HistogramRegistry&           m_registry;
-    int                          m_port;
-    std::unique_ptr<THttpServer> m_server;
-    std::mutex                   m_mutex;
-    std::thread                  m_pump_thread;
-    std::atomic<bool>            m_pump_running{false};
+  HistogramRegistry& m_registry;
+  int m_port;
+  std::unique_ptr<THttpServer> m_server;
+  std::mutex m_mutex;
+  std::thread m_pump_thread;
+  std::atomic<bool> m_pump_running{false};
+  DurationAccumulator m_process_requests{"process_requests"};
 };

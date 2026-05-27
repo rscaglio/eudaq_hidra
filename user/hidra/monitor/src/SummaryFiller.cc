@@ -1,7 +1,7 @@
 #include "SummaryFiller.hh"
 
 SummaryFiller::SummaryFiller(HistogramRegistry& reg)
-    : IHistogramFiller(),
+    : IHistogramFiller("SummaryFiller"),
       m_run_start(std::chrono::steady_clock::now()) {
   m_h_event_count = reg.Add(std::make_unique<TH1I>("event_count", "Event count", 1, 0, 1));
   m_h_events_vs_time =

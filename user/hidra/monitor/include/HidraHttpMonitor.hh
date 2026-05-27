@@ -78,9 +78,13 @@ private:
     hidra::HidraXdcDecoder xdc_decoder;
     hidra::HidraFersDecoder fers_decoder;
 
+    DurationAccumulator duration_xdc_decode{"decode_xdc"};
+    DurationAccumulator duration_fers_decode{"decode_fers"};
+
     /** Build a run context with configured decoders and HTTP port. */
     RunContext(int port, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec);
     ~RunContext();
+    void LogTelemetry();
   };
 
   int m_port{9090};
