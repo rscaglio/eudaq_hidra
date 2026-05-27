@@ -129,7 +129,6 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
 
     const int det_id = hidra::utils::getTagOr<int>(*subevent, "detID", index);
     HIDRA_DEBUG("Decoding subevent {} with detID {}", index, det_id);
-    const std::string producer = subevent->HasTag("Producer") ? subevent->GetTag("Producer") : "";
     std::vector<std::uint8_t> detector_payload;
     for (const auto block_id : subevent->GetBlockNumList()) {
       const auto block = subevent->GetBlock(block_id);
