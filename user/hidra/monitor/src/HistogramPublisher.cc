@@ -1,10 +1,13 @@
 #include "ScopedTimer.hh"
 #include "HistogramPublisher.hh"
 
+#include <algorithm>
 
-HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port)
+
+HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms)
     : m_registry(registry),
-      m_port(port) {}
+      m_port(port),
+  m_pump_interval_ms(std::max(pump_interval_ms, 5)) {}
 
 void HistogramPublisher::Start() {
   if (m_server) {
@@ -48,7 +51,6 @@ void HistogramPublisher::PumpLoop() {
       m_server->ProcessRequests();
     }
     // Release the lock between iterations to avoid starving fillers.
-    // 20 ms -> about 50 cycles/s, which is more than enough for monitoring.
-    std::this_thread::sleep_for(std::chrono::milliseconds(kPumpIntervalMs));
+    std::this_thread::sleep_for(std::chrono::milliseconds(m_pump_interval_ms));
   }
 }

@@ -30,7 +30,7 @@
 
 class HistogramPublisher {
 public:
-  explicit HistogramPublisher(HistogramRegistry& registry, int port);
+  explicit HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms = 20);
 
   ~HistogramPublisher() { Stop(); }
 
@@ -59,12 +59,12 @@ public:
 
 private:
   static constexpr const char* kFolder = "/Histograms";
-  static constexpr int kPumpIntervalMs = 20; /**< Pump period in milliseconds (~50 Hz). */
 
   void PumpLoop();
 
   HistogramRegistry& m_registry;
   int m_port;
+  int m_pump_interval_ms;
   std::unique_ptr<THttpServer> m_server;
   std::mutex m_mutex;
   std::thread m_pump_thread;

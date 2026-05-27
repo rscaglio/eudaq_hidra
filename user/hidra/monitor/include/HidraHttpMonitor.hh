@@ -44,6 +44,7 @@
 #include <shared_mutex>
 #include <string>
 #include <optional>
+#include <atomic>
 
 class HidraHttpMonitor : public eudaq::Monitor {
 public:
@@ -81,13 +82,18 @@ private:
     DurationAccumulator duration_xdc_decode{"decode_xdc"};
     DurationAccumulator duration_fers_decode{"decode_fers"};
 
-    /** Build a run context with configured decoders and HTTP port. */
-    RunContext(int port, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec);
-    ~RunContext();
+    int event_prescale{1};
+    std::atomic<uint64_t> event_counter{0};
+
+    /** Build a run context with configured decoders, HTTP port, pump interval, and event prescale. */
+    RunContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec);
+    ~RunContext() noexcept;
     void LogTelemetry();
   };
 
   int m_port{9090};
+  int m_pump_interval_ms{20}; /**< Pump interval in milliseconds (~50 Hz default). */
+  int m_event_prescale{1}; /**< Process 1 event every N events (N>=1). */
   /** Decoder templates loaded in DoConfigure() and copied to RunContext. */
   std::optional<hidra::HidraXdcDecoder>  m_xdc_decoder;
   std::optional<hidra::HidraFersDecoder> m_fers_decoder;

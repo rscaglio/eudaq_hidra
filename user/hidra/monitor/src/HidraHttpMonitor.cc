@@ -19,11 +19,17 @@ auto _reg = eudaq::Factory<eudaq::Monitor>::Register<HidraHttpMonitor, const std
 
 // ── RunContext ────────────────────────────────────────────────────────────
 
-HidraHttpMonitor::RunContext::RunContext(int port, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec)
-    : publisher(registry, port),
+HidraHttpMonitor::RunContext::RunContext(
+    int port,
+    int pump_interval_ms,
+  int prescale,
+    hidra::HidraXdcDecoder xdc_dec,
+    hidra::HidraFersDecoder fers_dec)
+    : publisher(registry, port, pump_interval_ms),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
-      fers_decoder(std::move(fers_dec)) {
+      fers_decoder(std::move(fers_dec)),
+      event_prescale(prescale) {
 
   chain.Add(std::make_unique<SummaryFiller>(registry));
   chain.Add(std::make_unique<XDCFiller>(registry));
@@ -69,6 +75,12 @@ void HidraHttpMonitor::DoInitialise() {
   HIDRA_INFO("Initializing HidraHttpMonitor");
   if (auto ini = GetInitConfiguration()) {
     m_port = ini->Get("HTTP_PORT", 9090);
+    m_pump_interval_ms = ini->Get("PUMP_INTERVAL_MS", 20);
+    m_event_prescale = ini->Get("EVENT_PRESCALE", 1);
+    if (m_event_prescale == 0) {
+      HIDRA_WARN("EVENT_PRESCALE=0 is invalid, forcing EVENT_PRESCALE=1");
+      m_event_prescale = 1;
+    }
   }
 }
 
@@ -99,7 +111,7 @@ void HidraHttpMonitor::DoStartRun() {
     EUDAQ_THROW("Decoders not configured");
   }
 
-  auto ctx = std::make_unique<RunContext>(m_port, *m_xdc_decoder, *m_fers_decoder);
+  auto ctx = std::make_unique<RunContext>(m_port, m_pump_interval_ms, m_event_prescale, *m_xdc_decoder, *m_fers_decoder);
 
   std::unique_lock<std::shared_mutex> lock(m_ctx_mutex);
   m_ctx = std::move(ctx);
@@ -134,6 +146,11 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
   // Shared lock: keeps m_ctx alive for the whole call.
   std::shared_lock<std::shared_mutex> lock(m_ctx_mutex);
   if (!m_ctx) {
+    return;
+  }
+
+  const uint64_t event_index = m_ctx->event_counter.fetch_add(1, std::memory_order_relaxed);
+  if ((event_index % m_ctx->event_prescale) != 0) {
     return;
   }
 
