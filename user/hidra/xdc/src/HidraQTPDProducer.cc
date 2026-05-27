@@ -16,6 +16,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -72,24 +73,14 @@ constexpr uint16_t V792_MCST_MIDDLE = 0x03;
 constexpr uint16_t V792_MCST_LAST = 0x01;
 
 struct BoardConfig {
+  std::size_t configIndex;
   uint32_t baseAddr;
   uint16_t geoAddr;
   uint16_t crateNr;
+  std::string type;
+  uint16_t multicastRole;
+  std::string multicastRoleName;
 };
-
-struct BoardDefaults {
-  const char* baseAddr;
-  const char* geoAddr;
-  const char* crateNr;
-};
-
-const std::array<BoardDefaults, 5> DEFAULT_BOARDS = {{
-    {"0x06000000", "1", "1"},
-    {"0x05000000", "2", "2"},
-    {"0x09000000", "3", "3"},
-    {"0x88880000", "4", "4"},
-    {"0x0B000000", "5", "5"},
-}};
 
 struct V977Pattern {
   uint16_t raw = 0;
@@ -132,6 +123,52 @@ uint16_t parse_u16(const std::string& value) {
 
 bool is_disabled(const std::string& value) {
   return value == "0" || value == "false" || value == "False";
+}
+
+std::string board_prefix(std::size_t index) {
+  return "Board" + std::to_string(index) + ".";
+}
+
+std::string uppercase_ascii(std::string value) {
+  for (auto& ch : value) {
+    if (ch >= 'a' && ch <= 'z') {
+      ch = static_cast<char>(ch - 'a' + 'A');
+    }
+  }
+  return value;
+}
+
+bool board_enable_key_index(const std::string& key, std::size_t* index) {
+  // looks at a config key string and answers: “Is this key shaped like BoardN.Enable, and if yes, what is N?”
+
+  const std::string prefix = "Board";
+  const std::string suffix = ".Enable";
+
+  if (key.compare(0, prefix.size(), prefix) != 0 ||
+      key.size() <= prefix.size() + suffix.size() ||
+      key.compare(key.size() - suffix.size(), suffix.size(), suffix) != 0) {
+    return false;
+  }
+
+  const std::string indexString = key.substr(prefix.size(), key.size() - prefix.size() - suffix.size());
+  if (indexString.empty()) {
+    return false;
+  }
+
+  for (const auto ch : indexString) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+  }
+
+  std::size_t parsed = 0;
+  const unsigned long result = std::stoul(indexString, &parsed, 10);
+  if (parsed != indexString.size()) {
+    return false;
+  }
+
+  *index = static_cast<std::size_t>(result);
+  return true;
 }
 
 } // namespace
@@ -250,15 +287,16 @@ private:
     m_iped = static_cast<int>(parse_u16(conf.Get("Iped", std::string("100"))));
     m_v977Base = parse_u32(conf.Get("V977_BASE", std::string("0x01000000")));
 
-    // TODO: do not hard code the number of boards. Read the number of enabled ones from hidra.conf
     m_boards.clear();
-    for (std::size_t index = 0; index < DEFAULT_BOARDS.size(); ++index) {
-      AddBoardFromConf(conf, index, DEFAULT_BOARDS[index]);
+    for (const auto index : ConfiguredBoardIndices(conf)) {
+      AddBoardFromConf(conf, index);
     }
 
     if (m_boards.empty()) {
       EUDAQ_THROW("No boards configured");
     }
+
+    AssignMulticastRoles(conf);
   }
 
   void ConfigureBoards() {
@@ -280,20 +318,10 @@ private:
   }
 
   void ConfigureMulticastChain() {
-    for (std::size_t index = 0; index < m_boards.size(); ++index) {
-      WriteReg(V792_MCST_CBLT_ADDRESS_REG, MulticastRole(index), m_boards[index].baseAddr);
+    for (const auto& board : m_boards) {
+      WriteReg(V792_MCST_CBLT_ADDRESS_REG, board.multicastRole, board.baseAddr);
+      HIDRA_INFO("Board{} multicast role: {}", board.configIndex, board.multicastRoleName);
     }
-  }
-
-  uint16_t MulticastRole(std::size_t index) const {
-    // TODO: move to config
-    if (index == 0) {
-      return V792_MCST_FIRST;
-    }
-    if (index == 4) { // TODO: do not hard code number 4. If fewer than 5  boards are enabled, no board becomes LAST
-      return V792_MCST_LAST;
-    }
-    return V792_MCST_MIDDLE;
   }
 
   /// V977 handlers
@@ -552,7 +580,8 @@ private:
   }
 
   void InitBoard(const BoardConfig& board) {
-    EUDAQ_INFO("Initializing board at " + hex32(board.baseAddr));
+    EUDAQ_INFO("Initializing Board" + std::to_string(board.configIndex) + " (" + board.type +
+               ") at " + hex32(board.baseAddr));
 
     WriteReg(V792_GEO_ADDRESS_REG, board.geoAddr, board.baseAddr);
     WriteReg(V792_BIT_SET_1_REG, 0x80, board.baseAddr);
@@ -641,17 +670,20 @@ private:
   }
 
   void SendBORE() {
-    auto bore = eudaq::Event::MakeUnique("CAENQTPRaw");
+    auto bore = eudaq::Event::MakeUnique("CAENQTPDRaw");
     bore->SetBORE();
     bore->SetRunN(static_cast<uint32_t>(m_runNumber));
     bore->SetTag("Producer", "HidraQTPDProducer");
-    bore->SetTag("Iped", std::to_string(m_iped));
+    //bore->SetTag("Iped", std::to_string(m_iped));
     bore->SetTag("NumBoards", std::to_string(m_boards.size()));
 
     for (std::size_t i = 0; i < m_boards.size(); ++i) {
-      bore->SetTag("Board" + std::to_string(i) + "_Base", hex32(m_boards[i].baseAddr));
+      bore->SetTag("Board" + std::to_string(i) + "_ConfigIndex", std::to_string(m_boards[i].configIndex));
+      //bore->SetTag("Board" + std::to_string(i) + "_Base", hex32(m_boards[i].baseAddr));
       bore->SetTag("Board" + std::to_string(i) + "_Geo", std::to_string(m_boards[i].geoAddr));
-      bore->SetTag("Board" + std::to_string(i) + "_Crate", std::to_string(m_boards[i].crateNr));
+      //bore->SetTag("Board" + std::to_string(i) + "_Crate", std::to_string(m_boards[i].crateNr));
+      bore->SetTag("Board" + std::to_string(i) + "_Type", m_boards[i].type);
+      //bore->SetTag("Board" + std::to_string(i) + "_MulticastRoleName", m_boards[i].multicastRoleName);
     }
 
     m_runStart = std::chrono::steady_clock::now();
@@ -679,18 +711,86 @@ private:
     }
   }
 
-  void AddBoardFromConf(const eudaq::Configuration& conf, std::size_t index, const BoardDefaults& defaults) {
-    const std::string prefix = "Board" + std::to_string(index) + ".";
+  std::set<std::size_t> ConfiguredBoardIndices(const eudaq::Configuration& conf) const {
+    std::set<std::size_t> indices;
+    for (const auto& key : conf.Keylist()) {
+      std::size_t index = 0;
+      if (board_enable_key_index(key, &index)) {
+        indices.insert(index);
+      }
+    }
+    return indices;
+  }
+
+  std::string RequiredConfigValue(const eudaq::Configuration& conf, const std::string& key) const {
+    if (!conf.Has(key)) {
+      EUDAQ_THROW("Missing required board configuration key: " + key);
+    }
+    return conf.Get(key, std::string(""));
+  }
+
+  void AddBoardFromConf(const eudaq::Configuration& conf, std::size_t index) {
+    const std::string prefix = board_prefix(index);
     const std::string enable = conf.Get(prefix + "Enable", std::string("0"));
     if (is_disabled(enable)) {
       return;
     }
 
     BoardConfig board;
-    board.baseAddr = parse_u32(conf.Get(prefix + "BaseAddress", std::string(defaults.baseAddr)));
-    board.geoAddr = parse_u16(conf.Get(prefix + "GeoAddress", std::string(defaults.geoAddr)));
-    board.crateNr = parse_u16(conf.Get(prefix + "CrateNumber", std::string(defaults.crateNr)));
+    board.configIndex = index;
+    board.baseAddr = parse_u32(RequiredConfigValue(conf, prefix + "BaseAddress"));
+    board.geoAddr = parse_u16(RequiredConfigValue(conf, prefix + "GeoAddress"));
+    board.crateNr = parse_u16(RequiredConfigValue(conf, prefix + "CrateNumber"));
+    board.type = uppercase_ascii(RequiredConfigValue(conf, prefix + "Type"));
+    /* TODO: protect from typos
+    if (board.type != "V792" && board.type != ....) {
+      EUDAQ_THROW("Unsupported " + prefix + "Type: " + board.type);
+    }
+    */
     m_boards.push_back(board);
+  }
+
+  void AssignMulticastRoles(const eudaq::Configuration& conf) {
+    for (std::size_t index = 0; index < m_boards.size(); ++index) {
+      BoardConfig& board = m_boards[index];
+      const std::string roleKey = board_prefix(board.configIndex) + "MulticastRole";
+      if (conf.Has(roleKey)) {
+        SetMulticastRole(board, conf.Get(roleKey, std::string("")));
+      } else {
+        SetMulticastRole(board, DefaultMulticastRoleName(index));
+      }
+    }
+  }
+
+  std::string DefaultMulticastRoleName(std::size_t enabledIndex) const {
+    if (enabledIndex == 0) {
+      return "FIRST";
+    }
+    if (enabledIndex + 1 == m_boards.size()) {
+      return "LAST";
+    }
+    return "MIDDLE";
+  }
+
+  void SetMulticastRole(BoardConfig& board, const std::string& role) const {
+    const std::string normalizedRole = uppercase_ascii(role);
+    if (normalizedRole == "FIRST" || normalizedRole == "0X02" || normalizedRole == "2") {
+      board.multicastRole = V792_MCST_FIRST;
+      board.multicastRoleName = "FIRST";
+      return;
+    }
+    if (normalizedRole == "MIDDLE" || normalizedRole == "0X03" || normalizedRole == "3") {
+      board.multicastRole = V792_MCST_MIDDLE;
+      board.multicastRoleName = "MIDDLE";
+      return;
+    }
+    if (normalizedRole == "LAST" || normalizedRole == "0X01" || normalizedRole == "1") {
+      board.multicastRole = V792_MCST_LAST;
+      board.multicastRoleName = "LAST";
+      return;
+    }
+
+    EUDAQ_THROW("Unsupported " + board_prefix(board.configIndex) + "MulticastRole: " + role);
   }
 
   void ResetRunState() {

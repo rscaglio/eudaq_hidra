@@ -4,9 +4,10 @@ This document describes the current implementation in
 `user/hidra/xdc/src/HidraQTPDProducer.cc`.
 
 `HidraQTPDProducer` is an EUDAQ producer for the HIDRA CAEN V792 QDC chain. It
-opens a CAEN V2718 VME controller, configures up to five V792 boards for
-multicast/block-transfer readout, uses a CAEN V977 I/O module for trigger and
-spill latches, and sends raw QDC payloads as EUDAQ events.
+opens a CAEN V2718 VME controller, configures the enabled V792 boards described
+in the run configuration for multicast/block-transfer readout, uses a CAEN V977
+I/O module for trigger and spill latches, and sends raw QDC payloads as EUDAQ
+events.
 
 ## Startup Names
 
@@ -54,21 +55,16 @@ the V792 boards, clears/configures the V977, and leaves the trigger veto active.
 | `HIDRA_MUTE_DEBUG` | `0` | Passed to `EUDAQ_LOG_LEVEL`. |
 | `Iped` | `100` | Written to each V792 `V792_IPED_REG`. |
 | `V977_BASE` | `0x01000000` | VME base address of the V977 I/O module. |
-| `BoardN.Enable` | `0` | Enables board slot `N`; disabled if `0`, `false`, or `False`. |
-| `BoardN.BaseAddress` | built-in default | VME base address for board `N`. |
-| `BoardN.GeoAddress` | built-in default | V792 GEO address for board `N`. |
-| `BoardN.CrateNumber` | built-in default | V792 crate number for board `N`. |
+| `BoardN.Enable` | disabled | Enables board `N`; disabled if `0`, `false`, or `False`. |
+| `BoardN.BaseAddress` | required when enabled | VME base address for board `N`. |
+| `BoardN.GeoAddress` | required when enabled | V792 GEO address for board `N`. |
+| `BoardN.CrateNumber` | required when enabled | V792 crate number for board `N`. |
+| `BoardN.Type` | required when enabled | Board type. Currently only `V792` is supported. |
+| `BoardN.MulticastRole` | derived | Optional override: `FIRST`, `MIDDLE`, `LAST`, or the corresponding numeric values `2`, `3`, `1`. |
 
-The code scans `Board0` through `Board4`. At least one board must be enabled.
-The built-in defaults are:
-
-| Board | Base address | GEO | Crate |
-| --- | --- | --- | --- |
-| `Board0` | `0x06000000` | `1` | `1` |
-| `Board1` | `0x05000000` | `2` | `2` |
-| `Board2` | `0x09000000` | `3` | `3` |
-| `Board3` | `0x88880000` | `4` | `4` |
-| `Board4` | `0x0B000000` | `5` | `5` |
+The code discovers board indices from the configured `BoardN.Enable` keys, so
+the number of configured board slots is no longer hard-coded. At least one board
+must be enabled. Enabled boards are read in ascending `N` order.
 
 ## V977 Signal Mapping
 
@@ -110,16 +106,16 @@ After board initialization, the producer writes `0xAA` to each board's
 `V792_BLT_EVENT_NUMBER_REG`, then programs the multicast chain through
 `V792_MCST_CBLT_ADDRESS_REG`.
 
-Current multicast roles are hard-coded by index:
+By default, multicast roles are derived from the enabled-board order:
 
-| Index | Role |
+| Enabled-board position | Role |
 | --- | --- |
-| `0` | first |
-| `4` | last |
-| all others | middle |
+| first enabled board | `FIRST` |
+| last enabled board | `LAST` |
+| all boards between them | `MIDDLE` |
 
-This means that if fewer than five boards are enabled, no enabled board may be
-marked as `last`; this is a known limitation in the source comments.
+`BoardN.MulticastRole` can override the derived role for a board when the
+hardware chain needs an explicit assignment.
 
 ## Run Start And Stop
 
@@ -221,7 +217,13 @@ byte count is treated as an error and no event is sent.
 
 ## EUDAQ Events
 
-The BORE and EORE events use type:
+The BORE event uses type:
+
+```text
+CAENQTPDRaw
+```
+
+The EORE event uses type:
 
 ```text
 CAENQTPRaw
@@ -249,6 +251,10 @@ the VME block transfer. They carry:
 | timestamp end | timestamp begin + `100 ns` |
 | `detectorDataSize` | raw payload size in bytes |
 
+The BORE event includes `NumBoards` and, for each enabled-board position,
+`BoardX_ConfigIndex`, `BoardX_Base`, `BoardX_Geo`, `BoardX_Crate`,
+`BoardX_Type`, and `BoardX_MulticastRole`.
+
 After `ReadOneBlockAndSendEvent()` returns, `m_evt` is incremented even if no
 data event was sent. `m_evt_phy` is incremented only for mask `1`; `m_evt_ped`
 is incremented only for mask `2`.
@@ -267,8 +273,6 @@ sent.
 
 ## Current Caveats
 
-- The multicast-chain role selection assumes five board slots and marks only
-  index `4` as `last`.
 - `requestPedestalNext()` divides by `m_evt_ped`, which is zero at the start of
   a run.
 - `ReadOneBlockAndSendEvent()` returns a success flag, but `MainLoop()` does not
