@@ -1,254 +1,281 @@
-# HidraQTPDProducer Trigger Workflow
+# Hidra QTPD Producer
 
-This document describes the trigger-handling logic currently implemented in
+This document describes the current implementation in
 `user/hidra/xdc/src/HidraQTPDProducer.cc`.
 
-## V977 Channel Mapping
+`HidraQTPDProducer` is an EUDAQ producer for the HIDRA CAEN V792 QDC chain. It
+opens a CAEN V2718 VME controller, configures up to five V792 boards for
+multicast/block-transfer readout, uses a CAEN V977 I/O module for trigger and
+spill latches, and sends raw QDC payloads as EUDAQ events.
 
-The producer treats the V977 inputs as:
+## Startup Names
 
-| Signal | Input enum | Channel |
+The producer class registered with EUDAQ is:
+
+```text
+HidraQTPDProducer
+```
+
+The HIDRA run scripts currently start it with the EUDAQ producer instance name
+`QTPDProducer`, for example:
+
+```text
+euCliProducer -n HidraQTPDProducer -t QTPDProducer
+```
+
+The corresponding configuration sections are therefore
+`[Producer.QTPDProducer]` in the `.ini` and `.conf` files.
+
+## Init Configuration
+
+`DoInitialise()` reads the EUDAQ init configuration and opens the VME
+controller. The current code supports only:
+
+| Key | Default | Meaning |
 | --- | --- | --- |
-| Fast trigger gate | `V977IN::cFastGate` | 0 |
-| Physics trigger flag | `V977IN::cPhy` | 1 |
-| Pedestal trigger flag | `V977IN::cPed` | 2 |
-| Spill level | `V977IN::cSpill` | 3 |
+| `ControllerType` | `V2718` | CAEN controller type. Any other value throws. |
+| `LinkOrPid` | `0` | Value passed to `CAENVME_Init2`; older USB setups may use `49086`. |
 
-The V977 outputs controlled by the producer are:
+Example:
 
-| Output | Output enum | Channel |
+```ini
+[Producer.QTPDProducer]
+ControllerType = V2718
+LinkOrPid = 0
+```
+
+## Run Configuration
+
+`DoConfigure()` reads the run configuration, resets the run counters, programs
+the V792 boards, clears/configures the V977, and leaves the trigger veto active.
+
+| Key | Default | Meaning |
 | --- | --- | --- |
-| Global trigger veto | `V977OUT::cVeto` | same as `V977IN::cFastGate`, currently 0 |
-| Physics veto | `V977OUT::cPhyVeto` | 4 |
-| Pedestal veto | `V977OUT::cPedVeto` | 5 |
+| `HIDRA_MUTE_DEBUG` | `0` | Passed to `EUDAQ_LOG_LEVEL`. |
+| `Iped` | `100` | Written to each V792 `V792_IPED_REG`. |
+| `V977_BASE` | `0x01000000` | VME base address of the V977 I/O module. |
+| `BoardN.Enable` | `0` | Enables board slot `N`; disabled if `0`, `false`, or `False`. |
+| `BoardN.BaseAddress` | built-in default | VME base address for board `N`. |
+| `BoardN.GeoAddress` | built-in default | V792 GEO address for board `N`. |
+| `BoardN.CrateNumber` | built-in default | V792 crate number for board `N`. |
 
-`SetVetoTriPedPhy(setTriHigh, setPedHigh, setPhyHigh)` is the central helper
-for these outputs. Each argument uses this convention:
+The code scans `Board0` through `Board4`. At least one board must be enabled.
+The built-in defaults are:
 
-| Value | Meaning |
+| Board | Base address | GEO | Crate |
+| --- | --- | --- | --- |
+| `Board0` | `0x06000000` | `1` | `1` |
+| `Board1` | `0x05000000` | `2` | `2` |
+| `Board2` | `0x09000000` | `3` | `3` |
+| `Board3` | `0x88880000` | `4` | `4` |
+| `Board4` | `0x0B000000` | `5` | `5` |
+
+## V977 Signal Mapping
+
+The producer decodes the V977 single-hit register with this input mapping:
+
+| Signal | Enum | Channel |
+| --- | --- | --- |
+| Fast trigger gate | `V977IN::cFastGate` | `0` |
+| Physics trigger flag | `V977IN::cPhy` | `1` |
+| Pedestal trigger flag | `V977IN::cPed` | `2` |
+| Spill start latch | `V977IN::cSpillStart` | `3` |
+| Spill end latch | `V977IN::cSpillEnd` | `4` |
+
+The active output mapping is:
+
+| Output | Enum | Channel |
+| --- | --- | --- |
+| Global trigger veto | `V977OUT::cVeto` | `0` |
+| Pedestal veto | `V977OUT::cPedVeto` | `5` |
+
+There is no active physics-veto output in the current code.
+
+`ClearV977FlipFlops()` writes `0xFFFF` to `V977_OUTPUT_CLEAR_REG`. The producer
+uses this during configuration, at run start, after a trigger is processed, and
+when it detects a spill with no trigger.
+
+## V792 Board Setup
+
+Each enabled board is initialized by `InitBoard()`:
+
+1. Set GEO address.
+2. Reset via `V792_BIT_SET_1_REG` / `V792_BIT_CLEAR_1_REG`.
+3. Read and log the model number.
+4. Set crate number and `Iped`.
+5. Program the control and bit-set registers used by this readout mode.
+6. Reset the V792 event counter.
+
+After board initialization, the producer writes `0xAA` to each board's
+`V792_BLT_EVENT_NUMBER_REG`, then programs the multicast chain through
+`V792_MCST_CBLT_ADDRESS_REG`.
+
+Current multicast roles are hard-coded by index:
+
+| Index | Role |
 | --- | --- |
-| `1` | force that output high |
-| `0` | force that output low |
-| `-1` | leave that output unchanged |
+| `0` | first |
+| `4` | last |
+| all others | middle |
 
-## Run Start
+This means that if fewer than five boards are enabled, no enabled board may be
+marked as `last`; this is a known limitation in the source comments.
 
-When `DoStartRun()` is called:
+## Run Start And Stop
 
-1. Any previous acquisition thread is stopped.
-2. The run number is copied from EUDAQ.
-3. Runtime counters are reset:
-   - `m_evt`
-   - `m_evt_phy`
-   - `m_evt_ped`
-   - `m_spillCount`
-   - `m_evtTimeNs`
-4. `m_running` is set to `true`.
-5. A BORE event is sent.
-6. The V977 is reset for the run:
-   - `V977_OUTPUT_CLEAR_REG` is written with `0xF000`.
-   - `V977_INPUT_SET_REG` is written with `0x0000`.
-7. The global trigger is vetoed with `VetoTrigger()`.
-8. The acquisition thread starts and runs `MainLoop()`.
+At `DoStartRun()` the producer:
 
-At this point the loop owns trigger handling until stop/reset/terminate.
+1. Stops any previous acquisition thread.
+2. Stores the EUDAQ run number.
+3. Resets counters and timestamps.
+4. Sends a BORE event.
+5. Clears V977 flip-flops and writes `0x0000` to `V977_INPUT_SET_REG`.
+6. Starts the acquisition thread running `MainLoop()`.
+7. Releases the global trigger veto.
+
+At `DoStopRun()` it:
+
+1. Sets `m_running` and `m_onspill` false.
+2. Joins the acquisition thread.
+3. Sends an EORE event.
+4. Sets the global trigger veto and pedestal veto.
+
+`DoReset()` stops the acquisition thread and resets counters. `DoTerminate()`
+stops the thread and closes the CAEN controller.
 
 ## Main Loop
 
-`MainLoop()` runs while `m_running` is true.
+`MainLoop()` owns acquisition. The EUDAQ `RunLoop()` is intentionally idle.
 
-```text
-while running:
-  if controller is not ready:
-    wait/continue
+Per iteration, the loop:
 
-  read V977 flip-flop pattern
+1. Skips work until the VME controller handle is valid.
+2. Reads the V977 single-hit register.
+3. If spill-start and spill-end are both latched without a trigger, logs a
+   warning, increments the spill counter, and clears V977 flip-flops.
+4. If a fast trigger is latched, timestamps the event, builds the trigger mask,
+   reads one QDC block, updates counters and status tags, adjusts the pedestal
+   veto, updates the spill counter if the event also latched spill-start, clears
+   V977 flip-flops, and releases the global trigger veto.
 
-  if fast trigger gate is latched:
-    classify trigger
-    check spill level
-    read QDC data and send event
-    update counters
+There is currently no sleep in the idle path.
 
-  publish status counters
+## Trigger Mask
 
-  choose whether the next accepted trigger should be pedestal or physics
-  release global trigger veto
-```
-
-## Trigger Detection
-
-Each loop reads the V977 single-hit register:
-
-```cpp
-pattern.raw = ReadReg(V977_SINGLE_READ_REG, m_v977Base);
-```
-
-The pattern is decoded as:
-
-| Pattern field | Code condition |
-| --- | --- |
-| `pattern.trigger` | bit `V977IN::cFastGate` is set |
-| `pattern.physics` | bit `V977IN::cPhy` is set |
-| `pattern.pedestal` | bit `V977IN::cPed` is set |
-
-Only `pattern.trigger` causes event readout. If it is false, the loop still
-updates status and decides the next trigger type, but no event is read.
-
-## Trigger Classification
-
-When `pattern.trigger` is true:
-
-1. The event timestamp is taken from `hidra::utils::getTimens()`.
-2. `m_TriggerMask` is reset to `0`.
-3. If `pattern.physics` is true, bit `0b01` is set.
-4. If `pattern.pedestal` is true, bit `0b10` is set.
-
-The resulting trigger masks are:
+For every fast trigger, the producer sets `m_TriggerMask` from the V977
+classification bits:
 
 | Mask | Meaning |
 | --- | --- |
-| `0b00` | fast trigger without physics or pedestal classification |
-| `0b01` | physics trigger |
-| `0b10` | pedestal trigger |
-| `0b11` | both physics and pedestal bits were latched |
+| `0` | fast gate without physics or pedestal flag |
+| `1` | physics flag latched |
+| `2` | pedestal flag latched |
+| `3` | both physics and pedestal flags latched |
 
-If both physics and pedestal bits are set, the producer logs an error but still
-continues with event readout. The ambiguous `0b11` mask is stored in the event
-tag.
+If both classification bits are latched, the producer logs a warning and still
+sends the event with `triggerMask=3`.
 
-## Spill Check
+## Pedestal Selection
 
-For every accepted fast trigger, the loop checks the current spill input:
-
-```cpp
-getSpillSignal()
-```
-
-This reads `V977_INPUT_READ_REG` and tests bit `V977IN::cSpill`.
-
-If the spill bit is not high, the producer logs an error:
-
-```text
-This trigger evt ... is received out of spill
-```
-
-The event is still read out and sent. The spill check is diagnostic only in the
-current implementation.
-
-## QDC Readout
-
-`ReadOneBlockAndSendEvent()` handles the QDC side.
-
-1. It waits for all configured boards to be ready and not busy.
-   - Timeout: `100 us`
-   - Poll interval: `10 us`
-2. If boards are not ready before the timeout:
-   - an error is logged,
-   - V977 flip-flop clearing is requested,
-   - no event is sent.
-3. If boards are ready, the producer performs a FIFO MBLT read from
-   `BLT_READ_ADDRESS`.
-4. If the byte count is zero or invalid, the error is logged and no event is
-   sent.
-5. Otherwise, `SendDataEvent(byteCount)` is called.
-6. V977 flip-flop clearing is requested.
-
-The data event is created as `CAENQTPDRaw` and carries:
-
-| Event field/tag | Value |
-| --- | --- |
-| trigger number | `m_evt` |
-| event number | `m_evt` |
-| run number | `m_runNumber` |
-| block 0 | raw QDC bytes |
-| `spillNumber` | `m_spillCount` |
-| `triggerMask` | `m_TriggerMask` |
-| `endianness` | `BE32` |
-| timestamp | `m_evtTimeNs` to `m_evtTimeNs + 100` |
-| `detectorDataSize` | raw byte count |
-
-## Counter Update
-
-After `ReadOneBlockAndSendEvent()` returns, `MainLoop()` increments counters:
-
-1. `m_evt` is incremented for every fast trigger path, regardless of whether
-   the QDC read actually sent an event.
-2. `m_evt_phy` is incremented only if `m_TriggerMask == 0b01`.
-3. `m_evt_ped` is incremented only if `m_TriggerMask == 0b10`.
-
-Events with masks `0b00` or `0b11` increment only `m_evt`.
-
-## Status Update
-
-Every loop iteration sends status tags:
-
-| Status tag | Value |
-| --- | --- |
-| `PhyTrigN` | `m_evt_phy` |
-| `PedTrigN` | `m_evt_ped` |
-| `SpillN` | `m_spillCount` |
-
-The loop also logs a debug line with the total event count, trigger mask,
-physics count, pedestal count, and spill count.
-
-## Selecting The Next Trigger Type
-
-At the end of every loop iteration, the producer chooses whether to accept a
-pedestal trigger or a physics trigger next:
-
-```cpp
-requestPedestalNext()
-```
-
-The current rule is:
+After a triggered event, the producer decides whether to request a pedestal next:
 
 ```cpp
 ((double)m_evt_phy / (double)m_evt_ped) > 10
 ```
 
-If the ratio is greater than 10:
+It then writes channel 5 through `SetSingleV977OutputReg()`:
 
-```cpp
-SetVetoTriPedPhy(-1, 0, 1);
-ReleaseTriggerVeto();
+| Condition | Channel 5 value | Intended effect |
+| --- | --- | --- |
+| `requestPedestalNext()` is true | low | allow pedestal trigger |
+| `requestPedestalNext()` is false | high | veto pedestal trigger |
+
+At the beginning of a run `m_evt_ped` is zero, so this decision relies on the
+platform's floating-point division-by-zero behavior.
+
+## QDC Readout
+
+`ReadOneBlockAndSendEvent()` first waits for all enabled boards to be ready and
+for none to be busy.
+
+| Parameter | Value |
+| --- | --- |
+| Timeout | `100 us` |
+| Poll interval | `10 us` |
+| Status register | `V792_STATUS_1_REG` at each board base address |
+| Ready bit | bit `0` |
+| Busy bit | bit `2` |
+
+If the boards are not ready before the timeout, the producer logs an error and
+does not send a data event.
+
+If the boards are ready, it performs:
+
+```text
+CAENVME_FIFOMBLTReadCycle(..., 0xAA000000, ..., cvA32_U_MBLT, ...)
 ```
 
-This leaves the global veto unchanged at first, clears the pedestal veto, sets
-the physics veto, then releases the global trigger veto. In effect, the next
-accepted classified trigger is intended to be pedestal.
+The maximum requested transfer size is `4096` bytes. `cvSuccess` and
+`cvBusError` are both accepted as non-fatal return codes. A zero or negative
+byte count is treated as an error and no event is sent.
 
-Otherwise:
+## EUDAQ Events
 
-```cpp
-SetVetoTriPedPhy(-1, 1, 0);
-ReleaseTriggerVeto();
+The BORE and EORE events use type:
+
+```text
+CAENQTPRaw
 ```
 
-This sets the pedestal veto, clears the physics veto, then releases the global
-trigger veto. In effect, the next accepted classified trigger is intended to be
-physics.
+The data events use type:
 
-## Run Stop
+```text
+CAENQTPDRaw
+```
 
-When `DoStopRun()` is called:
+Data events contain one raw block, block `0`, with the exact bytes returned by
+the VME block transfer. They carry:
 
-1. `m_running` is set to `false`.
-2. `m_onspill` is set to `false`.
-3. The acquisition thread is joined.
-4. An EORE event is sent.
-5. The global trigger is vetoed again with `VetoTrigger()`.
+| Field/tag | Value |
+| --- | --- |
+| trigger number | `m_evt` before it is incremented |
+| event number | `m_evt` before it is incremented |
+| run number | current EUDAQ run number |
+| block `0` | raw QDC bytes |
+| `spillNumber` | current `m_spillCount` |
+| `triggerMask` | current trigger mask |
+| `endianness` | `BE32` |
+| timestamp begin | `hidra::utils::getTimens()` |
+| timestamp end | timestamp begin + `100 ns` |
+| `detectorDataSize` | raw payload size in bytes |
 
-## Important Current Caveats
+After `ReadOneBlockAndSendEvent()` returns, `m_evt` is incremented even if no
+data event was sent. `m_evt_phy` is incremented only for mask `1`; `m_evt_ped`
+is incremented only for mask `2`.
 
-- `m_spillCount` is reset and reported, but it is not incremented by the active
-  trigger path. The previous spill-state handlers are currently commented out.
-- `requestPedestalNext()` divides by `m_evt_ped`. At the beginning of a run this
-  counter is zero, so the first iterations depend on floating-point division by
-  zero behavior.
-- `RequestV977FlipFlopClear()` sets `m_clearRequested`, but
-  `ClearV977FlipFlopsIfRequested()` is not called by the active `MainLoop()`.
-  The active loop has a TODO asking whether the flip-flops should be cleared.
-- `m_evt` is incremented after `ReadOneBlockAndSendEvent()` returns, even when
-  readout failed before sending an event.
-- Out-of-spill triggers are logged but not rejected.
+Status tags sent after each triggered event are:
+
+| Tag | Value |
+| --- | --- |
+| `PhyTrigN` | `m_evt_phy` |
+| `PedTrigN` | `m_evt_ped` |
+| `SpillN` | `m_spillCount` |
+
+The EORE event tags `EventsSent` with `m_evt`; this is the number of fast
+trigger paths handled, not necessarily the number of data events successfully
+sent.
+
+## Current Caveats
+
+- The multicast-chain role selection assumes five board slots and marks only
+  index `4` as `last`.
+- `requestPedestalNext()` divides by `m_evt_ped`, which is zero at the start of
+  a run.
+- `ReadOneBlockAndSendEvent()` returns a success flag, but `MainLoop()` does not
+  use it when updating `m_evt`.
+- The spill counter increments on trigger events that include `spillStart`, and
+  also on the special `spillStart && spillEnd && !trigger` path. There is no
+  separate spill state machine in the active code.
+- `m_onspill`, `m_clearRequested`, `m_spillWaitLogCounter`, and
+  `m_triggerWaitLogCounter` are currently reset/stored but not used by the
+  active trigger path.

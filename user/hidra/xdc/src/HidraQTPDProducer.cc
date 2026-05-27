@@ -27,11 +27,11 @@ enum V977IN {
   cFastGate = 0,
   cPhy = 1,
   cPed = 2,
-  cSpill = 3
+  cSpillStart = 3,
+  cSpillEnd = 4
 };
 enum V977OUT {
   cVeto = static_cast<int>(V977IN::cFastGate),
-  cPhyVeto = 4,
   cPedVeto = 5
 };
 ////////////////////
@@ -96,6 +96,8 @@ struct V977Pattern {
   bool trigger = false;
   bool physics = false;
   bool pedestal = false;
+  bool spillStart = false;
+  bool spillEnd = false;
 };
 
 std::string hex32(uint32_t value) {
@@ -201,10 +203,11 @@ private:
 
     SendBORE();
     ResetV977ForRun();
-    VetoTrigger();
-
+    
     m_thread = std::thread(&HidraQTPDProducer::MainLoop, this);
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
+
+    ReleaseTriggerVeto();
   }
 
   void DoStopRun() override {
@@ -272,7 +275,7 @@ private:
 
   void ConfigureBlockTransfer() {
     for (const auto& board : m_boards) {
-      WriteReg(V792_BLT_EVENT_NUMBER_REG, 0xAA, board.baseAddr); // TODO ??
+      WriteReg(V792_BLT_EVENT_NUMBER_REG, 0xAA, board.baseAddr); 
     }
   }
 
@@ -294,39 +297,38 @@ private:
   }
 
   /// V977 handlers
-   void SetVetoTriPedPhy(int setTriHigh, int setPedHigh, int setPhyHigh) { // use 1 to set high, 0 to set low, -1 to keep
+  void SetSingleV977OutputReg(bool isHigh, int chan) { // chan starts from 0
     std::lock_guard<std::mutex> lock(m_v977OutputSetMutex);
     uint16_t outputSet = ReadReg(V977_OUTPUT_SET_REG, m_v977Base);
     ThrowIfVmeError("V977 output set read failed");
 
-    uint16_t pedchannelBit = static_cast<uint16_t>(1u << V977OUT::cPedVeto);
-    uint16_t phychannelBit = static_cast<uint16_t>(1u << V977OUT::cPhyVeto);
-    uint16_t trichannelBit = static_cast<uint16_t>(1u << V977OUT::cVeto);
+    uint16_t setBitmask = static_cast<uint16_t>(1u << chan);
 
-    if (setPedHigh > 0) {
-      outputSet = outputSet | pedchannelBit;
-    } else if (setPedHigh == 0) {
-      outputSet = outputSet & ~pedchannelBit;
-    }
-
-    if (setPhyHigh > 0) {
-      outputSet = outputSet | phychannelBit;
-    } else if (setPhyHigh == 0) {
-      outputSet = outputSet & ~phychannelBit;
-    }
-
-    if (setTriHigh > 0) {
-      outputSet = outputSet | trichannelBit;
-    } else if (setTriHigh == 0) {
-      outputSet = outputSet & ~trichannelBit;
+    if (isHigh) {
+      outputSet = outputSet | setBitmask;
+    } else {
+      outputSet = outputSet & ~setBitmask;
     }
 
     WriteReg(V977_OUTPUT_SET_REG, outputSet, m_v977Base);
     ThrowIfVmeError("V977 output set write failed");
   }
 
+  void SetAllV977OutputReg(bool isHigh){
+    uint16_t setBitMask = isHigh ? 0xFFFF : 0x0000;
+    WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
+    ThrowIfVmeError("V977 output set write failed");
+  }
+
+
   void ConfigureV977andVeto() {
 
+
+    ClearV977FlipFlops();
+
+    
+    // Why masking the unused channels?
+    /*
     uint16_t output_mask = 0xFFFF;
     output_mask &= ~(1u << V977OUT::cVeto);
 
@@ -334,14 +336,14 @@ private:
     input_mask &= ~(1u << V977IN::cFastGate);
     input_mask &= ~(1u << V977IN::cPed);
     input_mask &= ~(1u << V977IN::cPhy);
-
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977Base);
-    WriteReg(V977_INPUT_MASK_REG, input_mask, m_v977Base);
+    WriteReg(V977_INPUT_MASK_REG, input_mask, m_v977Base); // not needed?
     WriteReg(
         V977_OUTPUT_MASK_REG,
         output_mask,
         m_v977Base); // the relevant output is “masked” and no output signal is produced regardless the FLIP FLOPs
                      // status. The output signal can be produced anyway via the relevant bit in the OUTPUT SET register
+    */
+    
     WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);
     VetoTrigger();
     ThrowIfVmeError("V977 configuration failed");
@@ -350,22 +352,23 @@ private:
   }
 
   void ResetV977ForRun() {
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977Base); // clear registers
+    ClearV977FlipFlops();
     WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);                       // all inputs set to 0
   }
 
   void VetoTrigger() {
-    SetVetoTriPedPhy(1, -1, -1);
+    uint16_t setBitMask = 0x0000 | (1u << V977OUT::cVeto) | (1u << V977OUT::cPedVeto);
+    WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
+    ThrowIfVmeError("V977 output set write failed while calling VetoTrigger");
     HIDRA_INFO("trigger vetoed");
   }
 
-  void ReleaseTriggerVeto() {
-    SetVetoTriPedPhy(0, -1, -1);
-  }
-
-  bool getSpillSignal() {  // returning true if high. Assuming that high = in spill
-    uint16_t regbits = ReadReg(V977_INPUT_READ_REG, m_v977Base);
-    return (regbits & (1u << V977IN::cSpill)) != 0;
+  void ReleaseTriggerVeto(bool releasePedVeto = false) {
+    uint16_t setBitMask = 0x0000 & (1u << V977OUT::cPedVeto);
+    if (releasePedVeto) setBitMask = 0x0000;
+    WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
+    ThrowIfVmeError("V977 output set write failed while calling VetoTrigger");
+    HIDRA_INFO("trigger vetoed");
   }
 
   bool requestPedestalNext(){
@@ -421,18 +424,24 @@ private:
 
       const V977Pattern pattern = ReadV977FlipFlopPattern();
 
+      if (pattern.spillStart && pattern.spillEnd && !pattern.trigger) {
+        // Every events clears the flip flops. So, if here, there was a spill without events
+        HIDRA_WARN("Passed through spill {} with no events", m_spillCount);
+        m_spillCount++;
+        ClearV977FlipFlops();
+      }
+
+
       if (pattern.trigger){
         m_evtTimeNs = hidra::utils::getTimens();
         m_TriggerMask = 0x0;
         if (pattern.physics) m_TriggerMask |= 0b01;
         if (pattern.pedestal) m_TriggerMask |= 0b10;
         if (m_TriggerMask == 0b11) {
-          HIDRA_ERROR("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
+          HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
-        if (!getSpillSignal()) { // TODO: cross check with hardware. Here it is assumed input = in spill
-          HIDRA_ERROR("This trigger evt {} with trig mask {} is received out of spill", m_evt, m_TriggerMask);
-        }
-        ReadOneBlockAndSendEvent();
+        
+        bool eventHandlingOk = ReadOneBlockAndSendEvent();
         m_evt++;
         if (m_TriggerMask == 0b01) m_evt_phy++;
         if (m_TriggerMask == 0b10) m_evt_ped++;
@@ -446,13 +455,13 @@ private:
         HIDRA_DEBUG("Evt {} mask {}. Phy {} Ped {} Spill {}", m_evt, m_TriggerMask, m_evt_phy, m_evt_ped, m_spillCount);
         /////////////////
       
-        if (requestPedestalNext()){
-          SetVetoTriPedPhy(-1, 0, 1);
+        // Set pedestal veto if we want pedestal next;
+        SetSingleV977OutputReg(!requestPedestalNext(), V977OUT::cPedVeto); // TODO r-m-w not needed if this is the only controlled output
+
+        if (pattern.spillStart) {
+          m_spillCount++;
         }
-        else {
-          SetVetoTriPedPhy(-1, 1, 0);
-        }
-        WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977Base); // Clearing flip-flops. Will this reset the outputs?
+        ClearV977FlipFlops(); // this will release the Trigger veto and clear the spill pattern as well
         ReleaseTriggerVeto();
       }
 
@@ -476,67 +485,15 @@ private:
     pattern.trigger = (pattern.raw & (1u << V977IN::cFastGate)) != 0;
     pattern.physics = (pattern.raw & (1u << V977IN::cPhy)) != 0;
     pattern.pedestal = (pattern.raw & (1u << V977IN::cPed)) != 0;
+    pattern.spillStart = (pattern.raw & (1u << V977IN::cSpillStart)) != 0;
+    pattern.spillEnd = (pattern.raw & (1u << V977IN::cSpillEnd)) != 0;
     return pattern;
   }
 
-  /*
-  void HandleOffSpill(const V977Pattern& pattern) {
-    if (pattern.spillEnd) {
-      EUDAQ_ERROR("END OF SPILL while already OFFSPILL (missed START?)");
-      RequestV977FlipFlopClear();
-    }
-
-    if (pattern.spillStart) {
-      StartSpill();
-    } else {
-      LogWaitingForSpill();
-    }
-  }
-
-  void HandleOnSpill(const V977Pattern& pattern) {
-    if (pattern.spillEnd) {
-      VetoTrigger();
-    }
-
-    if (pattern.trigger) {
-      m_evtTimeNs = hidra::utils::getTimens();
-      ReadOneBlockAndSendEvent();
-    } else {
-      LogWaitingForTrigger();
-    }
-
-    if (pattern.spillEnd) {
-      EndSpill();
-    } else if (pattern.spillStart) {
-      EUDAQ_ERROR("START OF SPILL while already ONSPILL (missed END?)");
-      RequestV977FlipFlopClear();
-    }
-  }
-
-  void StartSpill() {
-    WriteReg(V977_OUTPUT_CLEAR_REG, V977_FLIP_FLOP_CLEAR_MASK, m_v977Base);
-    m_clearRequested = false;
-    ReleaseTriggerVeto();
-    m_onspill = true;
-    ++m_spillCount;
-    EUDAQ_INFO("========== START OF SPILL ==========");
-  }
-
-  void EndSpill() {
-    m_onspill = false;
-    RequestV977FlipFlopClear();
-  }
-
-  */
-  void RequestV977FlipFlopClear() { m_clearRequested = true; }
-
-  void ClearV977FlipFlopsIfRequested() {
-    if (!m_clearRequested) {
-      return;
-    }
-
-    WriteReg(V977_OUTPUT_CLEAR_REG, 0xF000, m_v977Base);
-    m_clearRequested = false;
+ 
+  void ClearV977FlipFlops() {
+    WriteReg(V977_OUTPUT_CLEAR_REG, 0xFFFF, m_v977Base);
+    ThrowIfVmeError("V977 OUTPUT CLEAR write failed");
   }
 
   
@@ -621,15 +578,14 @@ private:
     EUDAQ_INFO("Board programmed 0x" + hex16(bitSet2));
   }
 
-  void ReadOneBlockAndSendEvent() {
+  bool ReadOneBlockAndSendEvent() { // return false if errors
 
     int ready_timeout_us = 100; // TODO: test then move to config
     int ready_cycle_us = 10;
 
     if (!CheckBoardsReady(ready_timeout_us, ready_cycle_us)) {
       HIDRA_ERROR("QDC data not ready after {} us", ready_timeout_us);
-      RequestV977FlipFlopClear();
-      return;
+      return false;
     }
 
     int byteCount = 0;
@@ -648,19 +604,19 @@ private:
     if (byteCount <= 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       EUDAQ_ERROR("BCNT = 0, controller replied with 0 bytes");
-      return;
+      return false;
     }
 
     const int wordCount = byteCount / 4;
     if (wordCount <= 0) {
       EUDAQ_ERROR("BCNT = 0, controller replied with less than 4 bytes");
-      return;
+      return false;
     }
 
     HIDRA_INFO("Event Triggered, m_evt = {}", m_evt);
 
     SendDataEvent(byteCount);
-    RequestV977FlipFlopClear();
+    return true;
   }
 
   void SendDataEvent(int byteCount) {
