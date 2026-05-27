@@ -7,3 +7,9 @@ void FillerChain::Fill(const HidraEvent& ev) {
     for (auto& filler : m_fillers)
         filler->Fill(ev);
 }
+
+void FillerChain::Reset() {
+    // Caller (DoReset) already holds the histogram mutex — do not lock here.
+    for (auto& filler : m_fillers)
+        filler->Reset();
+}

@@ -31,6 +31,10 @@ public:
     // Called by HttpMonitor::DoReceive after decoding.
     void Fill(const HidraEvent& ev);
 
+    // Calls Reset() on every filler. Does NOT acquire the mutex — the caller
+    // (DoReset) must already hold it, consistent with how registry.Reset() is called.
+    void Reset();
+
 private:
     std::mutex&                                    m_mutex;  // non owned
     std::vector<std::unique_ptr<IHistogramFiller>> m_fillers;

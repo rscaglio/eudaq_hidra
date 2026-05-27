@@ -17,5 +17,10 @@ class IHistogramFiller {
 public:
     virtual void Fill(const HidraEvent& ev) = 0;
 
+    // Called by FillerChain::Reset() when the histogram registry is cleared (e.g. DoReset).
+    // Override to reset any filler-internal state that is relative to run start (e.g. time references).
+    // The caller (DoReset) already holds the histogram mutex.
+    virtual void Reset() {}
+
     virtual ~IHistogramFiller() = default;
 };

@@ -10,6 +10,7 @@ class SummaryFiller : public IHistogramFiller {
 public:
   explicit SummaryFiller(HistogramRegistry& reg);
   void Fill(const HidraEvent&) override;
+  void Reset() override;
 
 private:
   std::chrono::steady_clock::time_point m_run_start;

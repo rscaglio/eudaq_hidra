@@ -97,6 +97,7 @@ void HidraHttpMonitor::DoReset() {
     return;
   }
   std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
+  m_ctx->chain.Reset();
   m_ctx->registry.Reset();
 }
 
