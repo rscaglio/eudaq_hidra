@@ -75,11 +75,7 @@ void HidraHttpMonitor::DoStartRun() {
     EUDAQ_THROW("Decoders not configured");
   }
 
-  auto ctx = std::make_unique<RunContext>(m_port, std::move(*m_xdc_decoder), std::move(*m_fers_decoder));
-
-  // Clear the templates to free any cached state and ensure decoders in RunContext are the only ones used for decoding.
-  m_xdc_decoder.reset();
-  m_fers_decoder.reset();
+  auto ctx = std::make_unique<RunContext>(m_port, *m_xdc_decoder, *m_fers_decoder);
 
   std::unique_lock<std::shared_mutex> lock(m_ctx_mutex);
   m_ctx = std::move(ctx);
