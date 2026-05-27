@@ -273,13 +273,9 @@ sent.
 
 ## Current Caveats
 
-- `requestPedestalNext()` divides by `m_evt_ped`, which is zero at the start of
-  a run.
 - `ReadOneBlockAndSendEvent()` returns a success flag, but `MainLoop()` does not
   use it when updating `m_evt`.
 - The spill counter increments on trigger events that include `spillStart`, and
   also on the special `spillStart && spillEnd && !trigger` path. There is no
   separate spill state machine in the active code.
-- `m_onspill`, `m_clearRequested`, `m_spillWaitLogCounter`, and
-  `m_triggerWaitLogCounter` are currently reset/stored but not used by the
-  active trigger path.
+

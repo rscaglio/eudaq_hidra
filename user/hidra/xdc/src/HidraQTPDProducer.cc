@@ -179,8 +179,6 @@ public:
       : eudaq::Producer(name, runcontrol),
         m_handle(INVALID_HANDLE),
         m_vmeError(false),
-        m_onspill(false),
-        m_clearRequested(false),
         m_running(false),
         m_runNumber(0),
         m_evt(0),
@@ -249,7 +247,6 @@ private:
 
   void DoStopRun() override {
     m_running = false;
-    m_onspill = false;
     StopAcquisitionThread();
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
@@ -400,7 +397,9 @@ private:
   }
 
   bool requestPedestalNext(){
-    return ((double)m_evt_phy / (double)m_evt_ped) > 10;
+    if (m_evt_ped == 0 && m_evt_phy < 10) return false;
+    else if (m_evt_ped == 0) return true;
+    else return ((double)m_evt_phy / (double)m_evt_ped) > 10;
   }
 
   bool CheckBoardsReady(int timeout_us, int sleep_cycle_time_us, int sleep_begin_time_ns = 0) {
@@ -795,13 +794,9 @@ private:
 
   void ResetRunState() {
     m_running = false;
-    m_onspill = false;
-    m_clearRequested = false;
     m_evt = m_evt_ped = m_evt_phy = 0;
     m_spillCount = 0;
     m_evtTimeNs = 0;
-    m_spillWaitLogCounter = 0;
-    m_triggerWaitLogCounter = 0;
   }
 
   void ResetReadoutBuffers() {
@@ -814,8 +809,7 @@ private:
   bool m_vmeError;
   std::string m_errorString;
 
-  bool m_onspill;
-  bool m_clearRequested;
+  
   uint32_t m_v977Base = 0;
 
   std::atomic<bool> m_running;
@@ -824,13 +818,11 @@ private:
   uint64_t m_evt;
   uint64_t m_evt_phy;
   uint64_t m_evt_ped;
-  uint32_t m_spillCount; // TODO to be implemented
+  uint32_t m_spillCount; 
   int m_iped;
   uint64_t m_evtTimeNs = 0;
-  uint8_t m_TriggerMask = 0xFF; // TODO: already forwarded as tag. To be implemented!
+  uint8_t m_TriggerMask = 0xFF; 
 
-  int m_spillWaitLogCounter = 0;
-  int m_triggerWaitLogCounter = 0;
 
   std::chrono::steady_clock::time_point m_runStart;
 
