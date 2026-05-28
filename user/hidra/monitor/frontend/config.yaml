@@ -1,0 +1,67 @@
+# HiDRA monitor frontend configuration.
+#
+# All layout is declared here. Panel types are implemented in
+# `hidra_frontend/panels/`. To add a custom layout/behaviour for a tab,
+# implement a new Panel class, register it in
+# `hidra_frontend/panels/__init__.py`, then reference its type name here.
+
+backend:
+  url: http://localhost:9090
+  request_timeout_s: 2.0
+
+# Histogram decoder.
+#   pure   - parses the TBufferJSON payload directly with numpy. Fast,
+#            self-contained, default.
+#   pyroot - round-trip through ROOT.TBufferJSON.ConvertFromJSON. Slower
+#            (2-200x), keeps a global lock. Useful as a fallback if the
+#            pure decoder doesn't yet handle a payload shape.
+decoder: pure
+
+polling:
+  default_ms: 500
+  floor_ms: 50
+  choices_ms: [100, 200, 500, 1000, 2000, 5000]
+  # Static mirror of the backend PUMP_INTERVAL_MS (set in dry.ini /
+  # hidra.ini under [Monitor.HidraHttpMonitor]). Shown in the status
+  # bar so the user knows the server-side refresh cadence. Not enforced
+  # at runtime.
+  server_pump_ms_hint: 20
+
+overlay:
+  enabled: true
+  # Frontend scans this directory for *.root files. Future backend will
+  # write reference snapshots here.
+  search_dir: reference
+  default_file: null
+
+tabs:
+  - id: summary
+    label: Summary
+    panels:
+      # Counter-style display: shows the histogram's bin content as
+      # a single big number, instead of a trivial 1-bar plot.
+      - type: metric
+        histograms: [event_count]
+      # Real plot below the counter.
+      - type: grid
+        cols: 1
+        histograms: [events_vs_time]
+
+  - id: xdc
+    label: XDC
+    panels:
+      - type: grid
+        cols: 2
+        histograms: [ADC_inclusive, TDC_inclusive]
+      - type: grid
+        cols: 2
+        histograms: [ADC_mean, TDC_mean]
+
+  # Future: per-channel inspection. Will be enabled when the backend
+  # publishes per-channel TH1D (4096 bins each).
+  # - id: xdc_channels
+  #   label: XDC channels
+  #   panels:
+  #     - type: channel_selector
+  #       template: "xdc_ch_{ch}"
+  #       range: [0, 127]
