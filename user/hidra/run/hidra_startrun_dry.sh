@@ -1,5 +1,11 @@
 #!/usr/bin/env sh
 
+if [ -z "$REPO_ROOT" ]; then
+    echo "Error: REPO_ROOT is not set. Please source setup.sh first:"
+    echo "  source user/hidra/misc/setup.sh"
+    exit 1
+fi
+
 BINPATH=$REPO_ROOT/bin
 TMUX_SESSION="hidra_run_monitoring"
 DASHBOARD_DIR="$REPO_ROOT/user/hidra/misc/dashboard/rc_mon"
