@@ -12,7 +12,7 @@ void SummaryFiller::Reset() {
   m_run_start = std::chrono::steady_clock::now();
 }
 
-void SummaryFiller::Fill(const HidraEvent& event) {
+void SummaryFiller::Fill(const HidraEvent&) {
   const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_run_start).count();
   m_h_event_count->Fill(0);
   m_h_events_vs_time->Fill(elapsed);
