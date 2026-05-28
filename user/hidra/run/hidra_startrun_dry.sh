@@ -1,15 +1,18 @@
 #!/usr/bin/env sh
 
-BINPATH=../../../bin
-TMUX_SESSION="hidra_run_monitoring"
-DASHBOARD_DIR="$EUDAQHIDRA/misc/dashboard/rc_mon"
-
-mkdir -p out_data logs
-
-if [ -z "$EUDAQHIDRA" ]; then
-    echo "Error: EUDAQHIDRA is not set."
+if [ -z "$REPO_ROOT" ]; then
+    echo "Error: REPO_ROOT is not set. Please source setup.sh first:"
+    echo "  source user/hidra/misc/setup.sh"
     exit 1
 fi
+
+BINPATH=$REPO_ROOT/bin
+TMUX_SESSION="hidra_run_monitoring"
+DASHBOARD_DIR="$REPO_ROOT/user/hidra/misc/dashboard/rc_mon"
+
+export PATH="$BINPATH:$PATH"
+
+mkdir -p out_data logs
 
 if [ ! -d "$DASHBOARD_DIR" ]; then
     echo "Error: dashboard directory does not exist: $DASHBOARD_DIR"
@@ -25,15 +28,16 @@ fi
 tmux new-session -d -s "$TMUX_SESSION" \
     "cd \"$DASHBOARD_DIR\" && php -S localhost:8080"
 
-$BINPATH/euRun -n HidraRunControl &
+euRun -n HidraRunControl &
 sleep 1
 
-$BINPATH/hidraLog &
+hidraLog &
 sleep 1
 
-$BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &
+euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
+euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
 
-$BINPATH/euCliProducer -n HidraDryFERSProducer -t DryFERSProducer &
+euCliProducer -n HidraDryFERSProducer -t DryFERSProducer &
+euCliProducer -n HidraDryXDCProducer -t DryXDCProducer &
 
-$BINPATH/euCliProducer -n HidraDryXDCProducer -t DryXDCProducer

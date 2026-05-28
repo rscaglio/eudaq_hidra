@@ -7,6 +7,7 @@ option(USER_HIDRA_FERS2_BUILD "Build HiDRa FERS2 component" ON)
 option(USER_HIDRA_XDC_BUILD "Build HiDRa XDC component" ON)
 option(USER_HIDRA_DRY_BUILD "Build HiDRa Dry component" ON)
 option(USER_HIDRA_DAQ_BUILD "Build HiDRa DAQ component" ON)
+option(USER_HIDRA_MONITOR_BUILD "Build HiDRa Monitor component" ON)
 
 if(NOT USER_HIDRA_BUILD)
 	message(STATUS "user/hidra is NOT to be built (USER_HIDRA_BUILD=OFF)")
@@ -155,6 +156,14 @@ if(USER_HIDRA_DAQ_BUILD)
 	target_link_libraries(${EUDAQ_MODULE} PUBLIC ${EUDAQ_MODULE}_dc)
 else()
 	message(STATUS "user/hidra DAQ component is NOT to be built (USER_HIDRA_DAQ_BUILD=OFF)")
+endif()
+
+if(USER_HIDRA_MONITOR_BUILD)
+	message(STATUS "user/hidra Monitor component is to be built (USER_HIDRA_MONITOR_BUILD=ON)")
+	add_subdirectory(monitor)     
+	target_link_libraries(${EUDAQ_MODULE} PUBLIC ${EUDAQ_MODULE}_monitor)
+else()
+	message(STATUS "user/hidra Monitor component is NOT to be built (USER_HIDRA_MONITOR_BUILD=OFF)")
 endif()
 
 install(TARGETS

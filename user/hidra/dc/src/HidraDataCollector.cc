@@ -159,6 +159,7 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
     ++m_event_count;
     UpdateStatusTags();
     EnqueueMergedEvent(mergedEvt);
+    WriteEvent(mergedEvt);
 
     it = m_pending_events.erase(it);
   }
@@ -642,6 +643,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   ++m_event_count;
   UpdateStatusTags();
   EnqueueMergedEvent(mergedEvt);
+  WriteEvent(mergedEvt);
 
   m_pending_events.erase(trigger_number);
 
