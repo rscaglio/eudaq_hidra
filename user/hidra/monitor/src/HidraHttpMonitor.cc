@@ -168,8 +168,15 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
     }
 
     const int det_id = hidra::utils::getTagOr<int>(*subevent, "detID", index);
+    const auto block_ids = subevent->GetBlockNumList();
+    std::size_t total_payload_size = 0;
+    for (const auto block_id : block_ids) {
+      total_payload_size += subevent->GetBlock(block_id).size();
+    }
+
     std::vector<std::uint8_t> detector_payload;
-    for (const auto block_id : subevent->GetBlockNumList()) {
+    detector_payload.reserve(total_payload_size);
+    for (const auto block_id : block_ids) {
       const auto block = subevent->GetBlock(block_id);
       detector_payload.insert(detector_payload.end(), block.begin(), block.end());
     }
