@@ -39,32 +39,45 @@ def to_figure(
     * Errors during decoding/rendering produce a figure with an
       explanatory annotation instead of crashing the callback.
     """
+
+    # Decodifica subito per ottenere il titolo, se possibile
+    decoded = None
+    if obj_dict is not None and "_typename" in obj_dict:
+        try:
+            with Phase("decode.live"):
+                decoded = decoder.decode(obj_dict)
+        except Exception:
+            decoded = None
+
+    # Scegli il titolo: se decoded è valido, usa decoded.title, altrimenti name
+    plot_title = decoded.title if decoded and hasattr(decoded, "title") and decoded.title else name
     fig = go.Figure()
-    fig.update_layout(**theme.base_figure_layout(name))
+    fig.update_layout(**theme.base_figure_layout(plot_title))
 
     # No payload for this name: show a "missing on server" placeholder
     # instead of an empty plot, so the user notices that something is
     # off.
+
     if obj_dict is None or "_typename" not in obj_dict:
-        fig.update_layout(title=f"{name} (missing)")
+        fig.update_layout(title=f"{plot_title} (missing)")
         fig.add_annotation(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))
         return fig
 
     # Decode the payload (TBufferJSON dict -> DecodedHist) and add a
     # trace. We catch DecoderError separately so unknown types render
     # an explanatory message instead of a stack trace.
-    try:
-        with Phase("decode.live"):
-            decoded = decoder.decode(obj_dict)
-        with Phase(f"trace_build.{decoded.typename[:3]}"):
-            _add_trace(fig, decoded, color=theme.PRIMARY)
-    except DecoderError as exc:
-        fig.add_annotation(text=f"unsupported: {exc}", showarrow=False, font=dict(color=theme.WARN, size=12))
-        return fig
-    except Exception as exc:
-        logger.exception("decoding %s failed", name)
-        fig.add_annotation(text=f"decode error: {exc}", showarrow=False, font=dict(color=theme.ERR, size=12))
-        return fig
+
+    if decoded is not None:
+        try:
+            with Phase(f"trace_build.{decoded.typename[:3]}"):
+                _add_trace(fig, decoded, color=theme.PRIMARY)
+        except DecoderError as exc:
+            fig.add_annotation(text=f"unsupported: {exc}", showarrow=False, font=dict(color=theme.WARN, size=12))
+            return fig
+        except Exception as exc:
+            logger.exception("decoding %s failed", name)
+            fig.add_annotation(text=f"decode error: {exc}", showarrow=False, font=dict(color=theme.ERR, size=12))
+            return fig
 
     # Optional reference overlay (already decoded — comes from
     # OverlayStore which uses uproot).
@@ -114,7 +127,7 @@ def _add_trace(
                 go.Bar(
                     x=centers, y=decoded.counts, width=widths,
                     marker=dict(color=color, line=dict(width=0)),
-                    name=label,
+                    name="label",
                 )
             )
             fig.update_layout(bargap=0)

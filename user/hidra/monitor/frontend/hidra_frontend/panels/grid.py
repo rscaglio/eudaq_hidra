@@ -29,19 +29,17 @@ class GridPanel(Panel):
     def histogram_names(self) -> list[str]:
         return list(self.params["histograms"])
 
+
     def layout(self) -> html.Div:
         names = self.histogram_names()
         cols = int(self.params.get("cols", 2))
 
-        # One Graph slot per histogram. The dict ID is what the poll
-        # callback addresses via pattern matching — see poll.py.
+        # Se disponibile, usa il title statico (params['titles']), altrimenti name
+        titles = self.params.get("titles", {})
         graph_slots = [
             dcc.Graph(
                 id={"type": "panel-graph", "panel": self.panel_id, "index": i},
-                # placeholder_figure keeps the dashboard's dark theme
-                # visible before the first poll arrives (no white
-                # flash).
-                figure=theme.placeholder_figure(name),
+                figure=theme.placeholder_figure(titles.get(name, "Loading " + name)),
                 style={"flex": "1", "minWidth": "0"},
                 config={"displayModeBar": False},
             )

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from .base import Panel
 from .channel_selector import ChannelSelectorPanel
+from .detector import DetectorPanel
 from .grid import GridPanel
 from .metric import MetricPanel
 
@@ -21,6 +22,7 @@ PANEL_TYPES: dict[str, type[Panel]] = {
     "grid": GridPanel,
     "metric": MetricPanel,
     "channel_selector": ChannelSelectorPanel,
+    "detector": DetectorPanel,
 }
 
 

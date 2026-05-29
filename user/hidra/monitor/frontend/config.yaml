@@ -46,16 +46,30 @@ tabs:
       - type: grid
         cols: 1
         histograms: [events_vs_time]
+      # Detector map: every module drawn at its (row, column) position,
+      # coloured by mean ADC. Two figures: S channels and C channels.
+      - type: detector
+        histogram: ADC_mean
 
   - id: xdc
-    label: XDC
+    label: ADC
     panels:
       - type: grid
         cols: 2
-        histograms: [ADC_inclusive, TDC_inclusive]
+        histograms: [ADC_inclusive]
       - type: grid
         cols: 2
-        histograms: [ADC_mean, TDC_mean]
+        histograms: [ADC_mean]
+
+  - id: tdc
+    label: TDC
+    panels:
+      - type: grid
+        cols: 2
+        histograms: [TDC_inclusive]
+      - type: grid
+        cols: 2
+        histograms: [TDC_mean]
 
   # Future: per-channel inspection. Will be enabled when the backend
   # publishes per-channel TH1D (4096 bins each).
