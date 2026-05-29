@@ -124,6 +124,14 @@ bool IsJanusOnlyParameter(const std::string& base_name) {
       "OutFileEnableMask",
       "OutFileUnit",
       "MaxOutFileSize",
+      "HV_Vbias",
+      "HV_Imax",
+      "HV_Adjust_Range",
+      "HV_IndivAdj",
+      "TempSensType",
+      "TempFeedbackCoeff",
+      "EnableTempFeedback",
+      "HV_IndivAdj",
   };
 
   return kJanusOnly.find(base_name) != kJanusOnly.end();
