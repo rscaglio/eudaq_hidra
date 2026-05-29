@@ -124,6 +124,14 @@ bool IsJanusOnlyParameter(const std::string& base_name) {
       "OutFileEnableMask",
       "OutFileUnit",
       "MaxOutFileSize",
+      "HV_Vbias",
+      "HV_Imax",
+      "HV_Adjust_Range",
+      "HV_IndivAdj",
+      "TempSensType",
+      "TempFeedbackCoeff",
+      "EnableTempFeedback",
+      "HV_IndivAdj",
   };
 
   return kJanusOnly.find(base_name) != kJanusOnly.end();
@@ -148,7 +156,7 @@ bool FERSConfiguration::FromFile(const std::string& path, FERSConfiguration* out
   }
 
   FERSConfiguration cfg;
-  cfg.source_file_ = path;
+  cfg.m_source_file = path;
 
   std::string line;
   while (std::getline(in, line)) {
@@ -159,7 +167,7 @@ bool FERSConfiguration::FromFile(const std::string& path, FERSConfiguration* out
     }
 
     if (key.rfind("Open", 0) == 0) {
-      cfg.open_paths_.push_back(value);
+      cfg.m_open_paths.push_back(value);
       continue;
     }
 
@@ -181,7 +189,7 @@ bool FERSConfiguration::FromFile(const std::string& path, FERSConfiguration* out
     if (board_index >= 0) {
       cfg.SetBoardOverride(board_index, normalized_key, value);
     } else {
-      cfg.default_params_[normalized_key] = value;
+      cfg.m_dafault_params[normalized_key] = value;
     }
   }
 
@@ -190,17 +198,17 @@ bool FERSConfiguration::FromFile(const std::string& path, FERSConfiguration* out
 }
 
 bool FERSConfiguration::LoadIntoLibrary(std::string* error) const {
-  if (source_file_.empty()) {
+  if (m_source_file.empty()) {
     if (error != nullptr) {
       *error = "Configuration source file is empty.";
     }
     return false;
   }
 
-  int ret = FERS_LoadConfigFile(const_cast<char*>(source_file_.c_str()));
+  int ret = FERS_LoadConfigFile(const_cast<char*>(m_source_file.c_str()));
   if (ret != 0) {
     if (error != nullptr) {
-      *error = "FERS_LoadConfigFile failed with code " + std::to_string(ret) + " for file " + source_file_;
+      *error = "FERS_LoadConfigFile failed with code " + std::to_string(ret) + " for file " + m_source_file;
     }
     return false;
   }
@@ -209,13 +217,13 @@ bool FERSConfiguration::LoadIntoLibrary(std::string* error) const {
 }
 
 void FERSConfiguration::SetBoardOverride(int board_id, const std::string& param_name, const std::string& value) {
-  board_overrides_[board_id][param_name] = value;
+  m_board_overrides[board_id][param_name] = value;
 }
 
 std::map<std::string, std::string> FERSConfiguration::EffectiveParamsForBoard(int board_id) const {
-  std::map<std::string, std::string> effective = default_params_;
-  auto it = board_overrides_.find(board_id);
-  if (it != board_overrides_.end()) {
+  std::map<std::string, std::string> effective = m_dafault_params;
+  auto it = m_board_overrides.find(board_id);
+  if (it != m_board_overrides.end()) {
     for (const auto& entry : it->second) {
       effective[entry.first] = entry.second;
     }

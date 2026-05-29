@@ -9,6 +9,7 @@
 #include <deque>
 #include <limits>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -19,6 +20,7 @@
 #include "FERSlib.h"
 #undef max
 #undef min
+#include "FersException.h"
 
 namespace {
 
@@ -213,8 +215,11 @@ private:
                                          STARTRUN_ASYNC);
 
     m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
-    m_max_events_per_board =
-        conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0); // --- When not specified in the config file ---> run forever ---
+    // `FERS_MAX_EVENTS_PER_BOARD` historically limited events per board. With
+    // concentrator/TDL batch reads this parameter now acts as a global cap on
+    // the total number of FERSEvents returned by `ReadAvailableEvents` in a
+    // single call. A value of 0 means "no limit" (run until no data).
+    m_max_total_events = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0);
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
     m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
     m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
@@ -228,19 +233,10 @@ private:
       EUDAQ_THROW("Cannot parse FERS configuration file: " + error);
     }
 
-    m_board_manager = FERSBoardManager{};
-    if (!m_board_manager.BuildBoardsFromConfiguration(m_config, 0)) {
-      EUDAQ_THROW("No FERS boards found in configuration file: " + m_config_file);
-    }
-
-    if (!m_board_manager.ConnectAll(m_readout_mode, &error)) {
-      m_board_manager.DisconnectAll(nullptr);
-      EUDAQ_THROW(error);
-    }
-
-    if (!m_board_manager.ConfigureAll(m_config, m_configure_mode, true, &error)) {
-      m_board_manager.DisconnectAll(nullptr);
-      EUDAQ_THROW(error);
+    try {
+      m_board_manager = std::make_unique<FERSBoardManager>(m_config, 0, m_readout_mode, m_configure_mode);
+    } catch (const hidra::fers2::FersError& e) {
+      EUDAQ_THROW(std::string("Failed to build FERS boards: ") + e.what());
     }
 
     // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
@@ -249,8 +245,8 @@ private:
     // }
 
     m_board_ids.clear();
-    m_board_ids.reserve(m_board_manager.boards().size());
-    for (const auto& board : m_board_manager.boards()) {
+    m_board_ids.reserve(m_board_manager->boards().size());
+    for (const auto& board : m_board_manager->boards()) {
       m_board_ids.push_back(board.board_id());
       m_event_queues[board.board_id()] = {};
     }
@@ -269,7 +265,7 @@ private:
     m_event_queues.clear();
     m_monitor_status.clear();
     m_next_status_poll = std::chrono::steady_clock::time_point::min();
-    for (const auto& board : m_board_manager.boards()) {
+    for (const auto& board : m_board_manager->boards()) {
       m_event_queues[board.board_id()] = {};
     }
 
@@ -286,7 +282,7 @@ private:
     //   EUDAQ_THROW(error);
     // }
 
-    if (!m_board_manager.StartAll(m_start_mode, m_run_number, &error)) {
+    if (!m_board_manager->StartAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_THROW(error);
     }
 
@@ -296,7 +292,7 @@ private:
   void DoStopRun() override {
     m_exit_of_run = true;
     std::string error;
-    if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
+    if (m_board_manager && !m_board_manager->StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
     }
 
@@ -316,7 +312,7 @@ private:
     m_exit_of_run = true;
     m_evt_f = 0;
     std::string error;
-    if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
+    if (m_board_manager && !m_board_manager->StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
     }
 
@@ -324,9 +320,7 @@ private:
     //   EUDAQ_WARN(error);
     // }
 
-    if (!m_board_manager.DisconnectAll(&error)) {
-      EUDAQ_WARN(error);
-    }
+    m_board_manager.reset();
     m_board_ids.clear();
     m_event_queues.clear();
     m_monitor_status.clear();
@@ -335,7 +329,7 @@ private:
   void DoTerminate() override {
     m_exit_of_run = true;
     std::string error;
-    if (!m_board_manager.StopAll(m_start_mode, m_run_number, &error)) {
+    if (m_board_manager && !m_board_manager->StopAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_WARN(error);
     }
 
@@ -343,9 +337,7 @@ private:
     //   EUDAQ_WARN(error);
     // }
 
-    if (!m_board_manager.DisconnectAll(&error)) {
-      EUDAQ_WARN(error);
-    }
+    m_board_manager.reset();
   }
 
   void RunLoop() override {
@@ -355,7 +347,7 @@ private:
       PollMonitorStatusIfDue();
 
       uint64_t ts = hidra::utils::getTimens();
-      const auto events = m_board_manager.ReadAvailableEvents(m_max_events_per_board, &error);
+      const auto events = m_board_manager->ReadAvailableEvents(m_max_total_events, &error);
       if (events.size() > 0) {
         HIDRA_DEBUG(
             "ReadAvailableEvents took {} ns to read {} FERSEvents", hidra::utils::getTimens() - ts, events.size());
@@ -391,7 +383,7 @@ private:
     }
 
     std::string error;
-    auto statuses = m_board_manager.ReadMonitorStatuses(&error);
+    auto statuses = m_board_manager->ReadMonitorStatuses(&error);
     if (!error.empty()) {
       EUDAQ_WARN(error);
     }
@@ -570,7 +562,7 @@ private:
   }
 
   FERSConfiguration m_config;
-  FERSBoardManager m_board_manager;
+  std::unique_ptr<FERSBoardManager> m_board_manager;
   std::map<int, std::deque<FERSEvent>> m_event_queues;
   std::map<int, BoardMonitorStatus> m_monitor_status;
   std::vector<int> m_board_ids;
@@ -580,7 +572,7 @@ private:
   int m_configure_mode = CFG_HARD;
   int m_start_mode = STARTRUN_ASYNC;
   uint64_t m_evt_f;
-  uint64_t m_max_events_per_board;
+  uint64_t m_max_total_events;
   int m_poll_sleep_us = 1000;
   int m_status_poll_interval_s = 0;
   bool m_attach_status_tags = true;

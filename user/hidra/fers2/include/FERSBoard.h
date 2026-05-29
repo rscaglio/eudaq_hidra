@@ -8,6 +8,7 @@
 
 #include "FERSConfiguration.h"
 #include "FERSTypes.h"
+#include "FersHandle.h"
 
 namespace hidra {
 namespace fers2 {
@@ -32,6 +33,20 @@ public:
    * `connection_path` (an `Open[n]` string extracted from the config file).
    */
   FERSBoard(int board_id, const std::string& connection_path);
+  // Construct and fully initialise the board (open, init readout and optionally configure).
+  // Throws `FersError` on failure.
+  FERSBoard(int board_id,
+           const std::string& connection_path,
+           const FERSConfiguration* config,
+           int configure_mode = CFG_HARD,
+           int readout_mode = 0);
+
+  // Destructor performs best-effort resource release; never throws.
+  ~FERSBoard() noexcept;
+
+  // Movable but not copyable (owns a handle)
+  FERSBoard(FERSBoard&&) noexcept = default;
+  FERSBoard& operator=(FERSBoard&&) noexcept = default;
 
   /**
    * Open the device and prepare readout buffers.
@@ -86,19 +101,19 @@ public:
    */
   bool ReadMonitorStatus(BoardMonitorStatus* monitor_status) const;
 
-  int board_id() const { return board_id_; }
-  int handle() const { return handle_; }
-  const std::string& connection_path() const { return connection_path_; }
-  const BoardStatus& status() const { return status_; }
+  int board_id() const { return m_board_id; }
+  int handle() const { return m_handle.get(); }
+  const std::string& connection_path() const { return m_connection_path; }
+  const BoardStatus& status() const { return m_status; }
 
 private:
   /// Helper: convert the vendor event blob into a `FERSEvent` instance.
   bool SerializeEvent(void* event_ptr, int data_qualifier, FERSEvent* out_event);
 
-  int board_id_ = -1;
-  int handle_ = -1;
-  std::string connection_path_;
-  BoardStatus status_;
+  int m_board_id = -1;
+  FersHandle m_handle{};
+  std::string m_connection_path;
+  BoardStatus m_status;
 };
 
 } // namespace fers2
