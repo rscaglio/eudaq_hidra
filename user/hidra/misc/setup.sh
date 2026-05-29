@@ -124,11 +124,11 @@ runhidra(){
 }
 
 # Launch the HiDRA monitor frontend (Dash app via gunicorn). Forwards any
-# extra arguments to run.sh, so `run_frontend --port 8060` works.
-run_frontend() {
+# extra arguments to run.sh, so `hidra_frontend --port 8060` works.
+hidra_frontend() {
     local frontend_dir="$SCRIPT_DIR/../monitor/frontend"
     if [ ! -x "$frontend_dir/run.sh" ]; then
-        echo "run_frontend: $frontend_dir/run.sh not found or not executable" >&2
+        echo "hidra_frontend: $frontend_dir/run.sh not found or not executable" >&2
         return 1
     fi
     ( cd "$frontend_dir" && ./run.sh "$@" )
