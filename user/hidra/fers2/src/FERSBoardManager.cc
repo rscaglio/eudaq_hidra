@@ -234,9 +234,11 @@ bool FERSBoardManager::ConfigureAll(const FERSConfiguration& config,
                                     int configure_mode,
                                     bool load_config_file_first,
                                     std::string* error) {
+  /*
   if (load_config_file_first && !config.LoadIntoLibrary(error)) {
     return false;
   }
+  */
 
   for (auto& board : m_boards) {
     if (!board.Configure(config, configure_mode)) {
