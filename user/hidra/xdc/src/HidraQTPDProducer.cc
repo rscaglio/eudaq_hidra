@@ -389,7 +389,7 @@ private:
   }
 
   void ReleaseTriggerVeto(bool releasePedVeto = false) {
-    uint16_t setBitMask = 0x0000 & (1u << V977OUT::cPedVeto);
+    uint16_t setBitMask = 0x0000 | (1u << V977OUT::cPedVeto);
     if (releasePedVeto) setBitMask = 0x0000;
     WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
     ThrowIfVmeError("V977 output set write failed while calling VetoTrigger");
@@ -489,7 +489,6 @@ private:
           m_spillCount++;
         }
         ClearV977FlipFlops(); // this will release the Trigger veto and clear the spill pattern as well
-        ReleaseTriggerVeto();
       }
 
       // std::this_thread::sleep_for(std::chrono::microseconds(5)); // TODO: add a sleep here?
