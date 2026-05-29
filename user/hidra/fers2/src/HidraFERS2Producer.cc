@@ -108,6 +108,22 @@ std::string FormatSummary(const FERSEvent& event) {
   return oss.str();
 }
 
+  int IsMonitorStatusOk(const BoardMonitorStatus& status) { // 0 means all good
+    int retcode = 0;
+    if (status.hv_vmon_valid == 0) retcode = 1;
+    if (status.hv_vmon < 40) retcode = 2;
+    if (status.hv_vmon > 46) retcode = 3;
+    if (status.hv_imon_valid == 0) retcode = 4;
+    if (status.hv_on == 0) retcode = 10;
+    if (status.hv_ramping != 0) retcode = 11;
+    if (status.hv_over_current != 0) retcode = 12;
+    if (status.hv_over_voltage != 0) retcode = 13;
+
+    if (retcode != 0) { return status.board_id * 1000 + retcode; }
+    else return 0;
+  }
+    
+
 std::string FormatMonitorStatus(const BoardMonitorStatus& status) {
   std::ostringstream oss;
   oss << "board=" << status.board_id;
@@ -389,11 +405,18 @@ private:
     }
 
     const uint64_t read_time_ns = hidra::utils::getTimens();
+    int monitorstatus = 0;
     for (auto& status : statuses) {
       status.read_time_ns = read_time_ns;
       EUDAQ_INFO("FERS2 monitor " + FormatMonitorStatus(status));
       m_monitor_status[status.board_id] = status;
+      if (monitorstatus == 0){
+	monitorstatus = IsMonitorStatusOk(status);
+      }
     }
+
+    SetStatusTag("BoardsMon", monitorstatus == 0 ? "OK" : "NOK_"+std::to_string(monitorstatus));
+    SendStatus();
 
     m_next_status_poll = now + std::chrono::seconds(m_status_poll_interval_s);
   }
