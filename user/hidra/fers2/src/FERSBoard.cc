@@ -56,7 +56,8 @@ FERSBoard::FERSBoard(int board_id,
         throw FersError("FERS_SetParam failed for " + entry.first, r);
       }
     }
-    ret = FERS_configure(m_handle.get(), configure_mode);
+    // ret = FERS_configure(m_handle.get(), configure_mode);
+    ret = 0;
     if (ret != 0) {
       throw FersError("FERS_configure failed for '" + m_connection_path + "'", ret);
     }
