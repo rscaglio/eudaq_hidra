@@ -97,7 +97,18 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
             html.Div(
                 style={"display": "flex", "alignItems": "center", "gap": "16px", "marginBottom": "8px"},
                 children=[
-                    html.H2("HiDRa Monitor", style={"color": theme.ACCENT, "margin": 0}),
+                    html.H2(
+                        "HiDRa Monitor",
+                        id="app-title",
+                        style={
+                            "color": theme.ACCENT,
+                            "margin": 0,
+                            "letterSpacing": "1px",
+                            # Subtle accent glow on the title (HTML text takes
+                            # text-shadow, unlike the SVG plot numbers).
+                            "textShadow": "0 0 18px rgba(203, 166, 247, 0.45)",
+                        },
+                    ),
                     html.Button("⏸ Pause", id="pause-btn", n_clicks=0, style=_button_style()),
                     html.Span("Poll:", style={"color": theme.FG, "fontSize": "13px"}),
                     dcc.Dropdown(
@@ -127,8 +138,15 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
                     dcc.Tab(
                         label=tab.label,
                         value=tab.id,
-                        style={"color": theme.FG, "backgroundColor": theme.BG_ALT},
-                        selected_style={"color": theme.ACCENT, "backgroundColor": theme.BG},
+                        style={"color": theme.FG, "backgroundColor": theme.BG_ALT, "border": "none"},
+                        selected_style={
+                            "color": theme.ACCENT,
+                            "backgroundColor": theme.BG,
+                            "fontWeight": "bold",
+                            # Accent indicator on the active tab.
+                            "borderTop": f"2px solid {theme.ACCENT}",
+                            "boxShadow": "0 0 14px rgba(203, 166, 247, 0.18)",
+                        },
                     )
                     for tab in config.tabs
                 ],

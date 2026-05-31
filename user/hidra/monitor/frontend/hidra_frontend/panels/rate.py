@@ -80,6 +80,7 @@ class RatePanel(Panel):
                 id={"type": "panel-graph", "panel": self.panel_id, "index": 0},
                 figure=_rate_number_figure(None),
                 style=card_style,
+                className="metric-card glow-rate",
                 config={"displayModeBar": False},
             ),
             dcc.Graph(
@@ -95,6 +96,7 @@ class RatePanel(Panel):
                     id={"type": "panel-graph", "panel": self.panel_id, "index": 2},
                     figure=_indicator_figure(self._count_label, None),
                     style=card_style,
+                    className="metric-card glow-count",
                     config={"displayModeBar": False},
                 )
             )
@@ -184,25 +186,35 @@ def _rate_number_figure(rate: Optional[float]) -> go.Figure:
 
 def _sparkline_figure(history: list[float]) -> go.Figure:
     layout = dict(
-        margin=dict(l=6, r=6, t=24, b=6),
+        margin=dict(l=6, r=6, t=8, b=6),
         paper_bgcolor=theme.BG,
         plot_bgcolor=theme.BG,
         font=dict(color=theme.FG),
         uirevision="rate-spark",
         showlegend=False,
-        title={"text": "rate history", "font": {"size": 12, "color": theme.FG}},
         xaxis=dict(visible=False),
         yaxis=dict(visible=False, rangemode="tozero"),
     )
     traces: list = []
     if history:
+        # Glow effect: a wide, low-opacity spline underneath the crisp line.
         traces.append(
             go.Scatter(
                 y=history,
                 mode="lines",
-                line=dict(color=theme.OK, width=2),
+                line=dict(color=theme.OK, width=8, shape="spline"),
+                opacity=0.18,
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        traces.append(
+            go.Scatter(
+                y=history,
+                mode="lines",
+                line=dict(color=theme.OK, width=2.5, shape="spline"),
                 fill="tozeroy",
-                fillcolor="rgba(166, 227, 161, 0.15)",
+                fillcolor="rgba(166, 227, 161, 0.22)",
                 name="rate",
             )
         )
