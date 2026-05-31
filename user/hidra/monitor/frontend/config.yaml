@@ -48,9 +48,12 @@ tabs:
         histograms: [events_vs_time]
       # Detector map: every module drawn at its (row, column) position,
       # coloured by mean ADC. Two figures: S channels and C channels.
+      # `link_tab` makes the modules clickable: clicking one opens that
+      # tab's channel selector on the clicked channel.
       - type: detector
         histogram: ADC_mean
         height: 550px  # optional per-panel parameter, default is 320px
+        link_tab: adc_channels
 
   - id: xdc
     label: ADC
@@ -82,3 +85,15 @@ tabs:
     panels:
       - type: channel_selector
         template: "ADC_channel_{ch}"
+
+  - id: adc_saturation
+    label: ADC Saturation
+    panels:
+      - type: grid
+        cols: 1
+        histograms: [ADC_saturation]
+      - type: detector
+        histogram: ADC_saturation
+        label: "sat. fraction"
+        height: 550px
+        link_tab: adc_channels

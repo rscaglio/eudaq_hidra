@@ -9,7 +9,7 @@ from ..config import Config
 from ..decoders import Decoder
 from ..overlay import OverlayStore
 from ..panels.base import Panel
-from . import controls, overlay as overlay_cb, poll
+from . import controls, navigation, overlay as overlay_cb, poll
 
 
 def register_all(
@@ -23,6 +23,7 @@ def register_all(
     controls.register(app)
     overlay_cb.register(app, overlay_store, config)
     poll.register(app, config, panels_by_tab, client, overlay_store, decoder)
+    navigation.register(app, panels_by_tab)
 
     for panels in panels_by_tab.values():
         for panel in panels:

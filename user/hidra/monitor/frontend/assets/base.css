@@ -5,3 +5,10 @@ body {
   width: 100%;
   min-height: 100%;
 }
+
+/* Clickable detector map: show a pointer cursor over the plot area so it
+   reads as clickable. `.nsewdrag` is Plotly's main hover/drag layer that
+   covers the data region. */
+.detector-clickable .nsewdrag {
+  cursor: pointer !important;
+}

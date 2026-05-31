@@ -56,19 +56,8 @@ class ChannelSelectorPanel(Panel):
         super().__init__(panel_id, params)
         self._template = params.get("template", DEFAULT_TEMPLATE)
         self._regex = _template_regex(self._template)
-
-        # Channel histogram names, in numeric order. Priority:
-        #   1. explicit `names` (from config `range`/`names`, expanded by
-        #      config.py) — deterministic, works offline.
-        #   2. auto-discovered from the live backend histogram list
-        #      injected by layout.build_panels as `available_histograms`.
-        names = params.get("names")
-        if not names:
-            names = self._discover(params.get("available_histograms") or [])
-        self._names: list[str] = list(names)
-
-        # The currently-shown channel; defaults to the first one.
-        self._selected: Optional[str] = self._names[0] if self._names else None
+        self._names: list[str] = []
+        self._selected: Optional[str] = None
 
     def _discover(self, available: list[str]) -> list[str]:
         matched: list[tuple[int, str]] = []
@@ -83,7 +72,28 @@ class ChannelSelectorPanel(Panel):
         m = self._regex.match(name)
         return int(m.group(1)) if m else None
 
+    def select_channel(self, ch: int) -> None:
+        """Select a channel by its index (used by cross-panel navigation,
+        e.g. clicking a module on the detector map).
+
+        We set ``self._selected`` to the templated histogram name. The next
+        time the panel is laid out, ``_options()`` keeps this selection as
+        long as the channel exists on the backend (otherwise it falls back
+        to the first available channel). ``histogram_names()`` then makes
+        the poll fetch and draw it.
+        """
+        self._selected = self._template.format(ch=ch)
+
     def _options(self) -> list[dict]:
+        # Ricalcola la lista canali ogni volta
+        params = self.params
+        names = params.get("names")
+        if not names:
+            names = self._discover(params.get("available_histograms") or [])
+        self._names = list(names)
+        # Aggiorna la selezione se non più valida
+        if self._selected not in self._names:
+            self._selected = self._names[0] if self._names else None
         mapping = default_mapping()
         opts: list[dict] = []
         for name in self._names:

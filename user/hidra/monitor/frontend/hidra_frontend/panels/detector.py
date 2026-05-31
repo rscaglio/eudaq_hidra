@@ -57,16 +57,23 @@ class DetectorPanel(Panel):
     def _hist_name(self) -> str:
         return self.params.get("histogram", "ADC_mean")
 
+    def _value_label(self) -> str:
+        return self.params.get("label", "mean ADC")
+
     def histogram_names(self) -> list[str]:
         return [self._hist_name()]
 
     def layout(self) -> html.Div:
         height = self.params.get("height", "320px")
+        # When modules are clickable, tag the graphs so the stylesheet can
+        # show a pointer cursor over the plot area (see assets/base.css).
+        graph_class = "detector-clickable" if self.link_tab() else ""
         slots = [
             dcc.Graph(
                 id={"type": "panel-graph", "panel": self.panel_id, "index": i},
                 figure=theme.placeholder_figure(f"Detector — {ptype} channels"),
                 style={"flex": "1", "minWidth": "0", "height": height},
+                className=graph_class,
                 config={"displayModeBar": False},
             )
             for i, ptype in enumerate(PMT_TYPES)
@@ -76,11 +83,15 @@ class DetectorPanel(Panel):
             children=slots,
         )
 
+    def link_tab(self) -> Optional[str]:
+        """Tab id to open when a module is clicked (None = not clickable)."""
+        return self.params.get("link_tab")
+
     def render(self, figs, payloads, client_state):
         payload = payloads.get(self._hist_name())
         means = _channel_means(payload)
         info = get_pmt_channel_info()
-        return [_detector_figure(ptype, means, info) for ptype in PMT_TYPES]
+        return [_detector_figure(ptype, means, info, self._value_label()) for ptype in PMT_TYPES]
 
 
 def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
@@ -122,6 +133,7 @@ def _detector_figure(
     pmt_type: str,
     means: Optional[dict[int, float]],
     info: dict[int, dict],
+    value_label: str = "mean ADC",
 ) -> go.Figure:
     """One figure for a PMT type: a single Heatmap over the (row, column)
     grid, each cell coloured by that module's mean ADC."""
@@ -150,9 +162,12 @@ def _detector_figure(
     row_idx = {r: i for i, r in enumerate(rows)}
 
     # z = value per cell (None where there is no module / no data this
-    # poll); text = the module label shown in the cell.
+    # poll); text = the module label shown in the cell; customdata = the
+    # ADC channel index, carried through to clickData so a click can
+    # navigate to that channel's histogram.
     z: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
     text: list[list[str]] = [[""] * len(columns) for _ in rows]
+    customdata: list[list[Optional[int]]] = [[None] * len(columns) for _ in rows]
     for d in info.values():
         if d["type"] != pmt_type:
             continue
@@ -160,6 +175,7 @@ def _detector_figure(
         value = means.get(d["channel"])
         z[ri][ci] = value
         text[ri][ci] = d["module"]
+        customdata[ri][ci] = d["channel"]
 
     values = [v for rowvals in z for v in rowvals if v is not None]
     cmin, cmax = (min(values), max(values)) if values else (0.0, 1.0)
@@ -170,13 +186,14 @@ def _detector_figure(
         go.Heatmap(
             x=columns, y=rows, z=z,
             text=text, texttemplate="%{text}",
+            customdata=customdata,
             textfont=dict(size=11),
             colorscale=COLORSCALE,
             zmin=cmin, zmax=cmax,
             xgap=2, ygap=2,
             hoverongaps=False,
-            hovertemplate="%{text}<br>mean ADC %{z:.1f}<extra></extra>",
-            colorbar=dict(title="mean ADC", thickness=12),
+            hovertemplate="%{text}  ·  ch %{customdata}<br>" + value_label + " %{z:.3f}<extra></extra>",
+            colorbar=dict(title=value_label, thickness=12),
         )
     )
 
