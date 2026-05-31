@@ -23,12 +23,16 @@ from dash import dcc, html
 
 from .. import theme
 from .base import Panel
+from .graph_controls import controls_overlay
 
 
 class GridPanel(Panel):
     def histogram_names(self) -> list[str]:
         return list(self.params["histograms"])
 
+    def control_indices(self) -> list[int]:
+        # Every slot is a 1D bar histogram, so all of them get controls.
+        return list(range(len(self.histogram_names())))
 
     def layout(self) -> html.Div:
         names = self.histogram_names()
@@ -36,12 +40,21 @@ class GridPanel(Panel):
 
         # Use the static title (params['titles']) when available, else the name.
         titles = self.params.get("titles", {})
+        # Each slot is the graph with its hover-reveal controls overlay in
+        # the top-right corner (both inside a position:relative .plot-cell).
         graph_slots = [
-            dcc.Graph(
-                id={"type": "panel-graph", "panel": self.panel_id, "index": i},
-                figure=theme.placeholder_figure(titles.get(name, "Loading " + name)),
+            html.Div(
+                className="plot-cell",
                 style={"flex": "1", "minWidth": "0"},
-                config={"displayModeBar": False},
+                children=[
+                    dcc.Graph(
+                        id={"type": "panel-graph", "panel": self.panel_id, "index": i},
+                        figure=theme.placeholder_figure(titles.get(name, "Loading " + name)),
+                        style={"minWidth": "0"},
+                        config={"displayModeBar": False},
+                    ),
+                    controls_overlay(self.panel_id, i),
+                ],
             )
             for i, name in enumerate(names)
         ]

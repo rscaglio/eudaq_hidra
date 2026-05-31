@@ -153,6 +153,10 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
             #     tab's figures land in the new tab's slots.
             dcc.Store(id="client-state", data={"overlay_file": config.overlay.default_file}),
             dcc.Store(id="tab-mount-state", data={"tab": first_tab, "rev": 0}),
+            # Per-graph "reset zoom" counters: {"<panel>|<index>": n}. The
+            # poll callback folds these into each figure's uirevision so a
+            # click clears the preserved zoom on the next tick.
+            dcc.Store(id="graph-reset", data={}),
         ],
     )
 

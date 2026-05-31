@@ -32,6 +32,11 @@ class MetricPanel(Panel):
     def histogram_names(self) -> list[str]:
         return list(self.params.get("histograms", []))
 
+    def figure_names(self) -> list[str]:
+        # We read the raw payload (bin content) directly, never the
+        # pre-built bar figure — so don't build any.
+        return []
+
     def layout(self) -> html.Div:
         names = self.histogram_names()
         cards = [
@@ -76,15 +81,7 @@ def _extract_value(payload: Optional[dict]) -> Optional[float]:
 
 def _indicator_figure(name: str, value: Optional[float]) -> go.Figure:
     """Build the Plotly figure for one metric card."""
-    fig = go.Figure(
-        go.Indicator(
-            mode="number",
-            value=(value if value is not None else 0),
-            number={"font": {"size": 56, "color": theme.PRIMARY}, "valueformat": ",.0f"},
-            title={"text": name, "font": {"size": 16, "color": theme.FG}},
-        )
-    )
-    fig.update_layout(
+    layout = dict(
         margin=dict(l=10, r=10, t=10, b=10),
         paper_bgcolor=theme.BG,
         plot_bgcolor=theme.BG,
@@ -94,10 +91,20 @@ def _indicator_figure(name: str, value: Optional[float]) -> go.Figure:
         uirevision=name,
     )
     if value is None:
-        fig.add_annotation(
-            text="(missing)",
-            showarrow=False,
-            font=dict(color=theme.WARN, size=12),
-            xref="paper", yref="paper", x=0.5, y=0.05,
-        )
-    return fig
+        layout["annotations"] = [
+            dict(
+                text="(missing)",
+                showarrow=False,
+                font=dict(color=theme.WARN, size=12),
+                xref="paper", yref="paper", x=0.5, y=0.05,
+            )
+        ]
+    indicator = go.Indicator(
+        mode="number",
+        value=(value if value is not None else 0),
+        number={"font": {"size": 56, "color": theme.PRIMARY}, "valueformat": ",.0f"},
+        title={"text": name, "font": {"size": 16, "color": theme.FG}},
+    )
+    # Single-shot construction (data=/layout=) avoids the validation cost
+    # of go.Figure()+update_layout().
+    return go.Figure(data=[indicator], layout=layout)

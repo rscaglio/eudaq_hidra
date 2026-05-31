@@ -63,6 +63,11 @@ class DetectorPanel(Panel):
     def histogram_names(self) -> list[str]:
         return [self._hist_name()]
 
+    def figure_names(self) -> list[str]:
+        # The detector reads the raw TProfile buffers itself and lays the
+        # values out spatially, so it never uses the pre-built bar figure.
+        return []
+
     def layout(self) -> html.Div:
         height = self.params.get("height", "320px")
         # When modules are clickable, tag the graphs so the stylesheet can
@@ -138,17 +143,19 @@ def _detector_figure(
     """One figure for a PMT type: a single Heatmap over the (row, column)
     grid, each cell coloured by that module's mean ADC."""
     title = f"Detector — {pmt_type} channels"
-    fig = go.Figure()
-    fig.update_layout(**theme.base_figure_layout(title))
+    # Build layout + trace as plain data and construct the go.Figure once
+    # at the end — building two heatmaps per poll this way is much cheaper
+    # than go.Figure()+update_layout() (Plotly validation dominates).
+    layout = theme.base_figure_layout(title)
 
     if not info:
-        fig.add_annotation(text="no module mapping", showarrow=False, font=dict(color=theme.WARN, size=14))
-        return fig
+        layout["annotations"] = [dict(text="no module mapping", showarrow=False, font=dict(color=theme.WARN, size=14))]
+        return go.Figure(layout=layout)
 
     if means is None:
-        fig.update_layout(title=f"{title} (missing)")
-        fig.add_annotation(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))
-        return fig
+        layout["title"] = f"{title} (missing)"
+        layout["annotations"] = [dict(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))]
+        return go.Figure(layout=layout)
 
     # The grid spans the full integer row/column range of *all* PMT
     # modules (not just the present ones) so the S and C maps line up
@@ -182,36 +189,35 @@ def _detector_figure(
     if cmin == cmax:
         cmax = cmin + 1.0
 
-    fig.add_trace(
-        go.Heatmap(
-            x=columns, y=rows, z=z,
-            text=text, texttemplate="%{text}",
-            customdata=customdata,
-            textfont=dict(size=11),
-            colorscale=COLORSCALE,
-            zmin=cmin, zmax=cmax,
-            xgap=2, ygap=2,
-            hoverongaps=False,
-            hovertemplate="%{text}  ·  ch %{customdata}<br>" + value_label + " %{z:.3f}<extra></extra>",
-            colorbar=dict(title=value_label, thickness=12),
-        )
+    heatmap = go.Heatmap(
+        x=columns, y=rows, z=z,
+        text=text, texttemplate="%{text}",
+        customdata=customdata,
+        textfont=dict(size=11),
+        colorscale=COLORSCALE,
+        zmin=cmin, zmax=cmax,
+        xgap=2, ygap=2,
+        hoverongaps=False,
+        hovertemplate="%{text}  ·  ch %{customdata}<br>" + value_label + " %{z:.3f}<extra></extra>",
+        colorbar=dict(title=value_label, thickness=12),
     )
 
-    fig.update_layout(
-        xaxis=dict(
-            title="column",
-            tickmode="array", tickvals=columns,
-            showgrid=False, zeroline=False,
-        ),
-        # autorange reversed -> row 1 at the top (front view). scaleanchor
-        # with scaleratio = height/width makes each 1x1 cell display with
-        # the real 128 x 28.3 module proportions.
-        yaxis=dict(
-            title="row",
-            tickmode="array", tickvals=rows,
-            autorange="reversed",
-            showgrid=False, zeroline=False,
-            scaleanchor="x", scaleratio=MODULE_HEIGHT_MM / MODULE_WIDTH_MM,
-        ),
-    )
-    return fig
+    # Merge over the base axis styling rather than replacing it.
+    layout["xaxis"] = {
+        **layout["xaxis"],
+        "title": "column",
+        "tickmode": "array", "tickvals": columns,
+        "showgrid": False, "zeroline": False,
+    }
+    # autorange reversed -> row 1 at the top (front view). scaleanchor with
+    # scaleratio = height/width makes each 1x1 cell display with the real
+    # 128 x 28.3 module proportions.
+    layout["yaxis"] = {
+        **layout["yaxis"],
+        "title": "row",
+        "tickmode": "array", "tickvals": rows,
+        "autorange": "reversed",
+        "showgrid": False, "zeroline": False,
+        "scaleanchor": "x", "scaleratio": MODULE_HEIGHT_MM / MODULE_WIDTH_MM,
+    }
+    return go.Figure(data=[heatmap], layout=layout)

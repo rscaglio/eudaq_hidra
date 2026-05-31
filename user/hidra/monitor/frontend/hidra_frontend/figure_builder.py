@@ -51,56 +51,69 @@ def to_figure(
 
     # Pick the title: the decoded histogram's own title when valid, else the name.
     plot_title = decoded.title if decoded and hasattr(decoded, "title") and decoded.title else name
-    fig = go.Figure()
-    fig.update_layout(**theme.base_figure_layout(plot_title))
+
+    # Accumulate traces + layout tweaks as plain data, then build the
+    # go.Figure in a single shot at the end. Constructing once with
+    # data=/layout= is ~4x cheaper than go.Figure()+update_layout()+
+    # add_trace()+update_layout(), which dominates the poll (validation).
+    layout = theme.base_figure_layout(plot_title)
+    traces: list = []
+    annotations: list = []
 
     # No payload for this name: show a "missing on server" placeholder
-    # instead of an empty plot, so the user notices that something is
-    # off.
-
+    # instead of an empty plot, so the user notices that something is off.
     if obj_dict is None or "_typename" not in obj_dict:
-        fig.update_layout(title=f"{plot_title} (missing)")
-        fig.add_annotation(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))
-        return fig
+        layout["title"] = f"{plot_title} (missing)"
+        annotations.append(dict(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14)))
+        layout["annotations"] = annotations
+        return go.Figure(layout=layout)
 
-    # Decode the payload (TBufferJSON dict -> DecodedHist) and add a
-    # trace. We catch DecoderError separately so unknown types render
-    # an explanatory message instead of a stack trace.
-
+    # Build the live trace. We catch DecoderError separately so unknown
+    # types render an explanatory message instead of a stack trace.
     if decoded is not None:
         try:
             with Phase(f"trace_build.{decoded.typename[:3]}"):
-                _add_trace(fig, decoded, color=theme.PRIMARY)
+                trace, extra_layout = _build_trace(decoded, color=theme.PRIMARY)
+            if trace is not None:
+                traces.append(trace)
+                layout.update(extra_layout)
+            else:
+                annotations.append(dict(text=f"Unknown type: {decoded.typename}", showarrow=False, font=dict(size=14)))
         except DecoderError as exc:
-            fig.add_annotation(text=f"unsupported: {exc}", showarrow=False, font=dict(color=theme.WARN, size=12))
-            return fig
+            annotations.append(dict(text=f"unsupported: {exc}", showarrow=False, font=dict(color=theme.WARN, size=12)))
+            layout["annotations"] = annotations
+            return go.Figure(layout=layout)
         except Exception as exc:
             logger.exception("decoding %s failed", name)
-            fig.add_annotation(text=f"decode error: {exc}", showarrow=False, font=dict(color=theme.ERR, size=12))
-            return fig
+            annotations.append(dict(text=f"decode error: {exc}", showarrow=False, font=dict(color=theme.ERR, size=12)))
+            layout["annotations"] = annotations
+            return go.Figure(layout=layout)
 
     # Optional reference overlay (already decoded — comes from
     # OverlayStore which uses uproot).
     if overlay_hist is not None:
         with Phase("trace_build.overlay"):
-            _add_trace(fig, overlay_hist, color=theme.REFERENCE, dashed=True, label_suffix=" (ref)")
+            otrace, _ = _build_trace(overlay_hist, color=theme.REFERENCE, dashed=True, label_suffix=" (ref)")
+        if otrace is not None:
+            traces.append(otrace)
 
-    return fig
+    if annotations:
+        layout["annotations"] = annotations
+    return go.Figure(data=traces, layout=layout)
 
 
-def _add_trace(
-    fig: go.Figure,
+def _build_trace(
     decoded: DecodedHist,
     color: str,
     dashed: bool = False,
     label_suffix: str = "",
-) -> None:
-    """Append one trace to `fig`.
+) -> tuple[Optional[go.BaseTraceType], dict]:
+    """Build one trace for a decoded histogram.
 
-    * For TH1 / TProfile we emit a bar chart (the "live" trace) or a
-      dashed line trace (the "overlay" trace, when `dashed=True`).
-    * Unknown types produce an annotation in the figure so the user
-      sees what happened.
+    Returns ``(trace, extra_layout)``. ``trace`` is None for unknown
+    types (TH2 / TProfile2D / …), which the caller turns into an
+    annotation. ``extra_layout`` carries any layout tweak the trace
+    needs (e.g. ``bargap=0`` for the bar chart).
     """
     label = decoded.name + label_suffix
 
@@ -112,26 +125,25 @@ def _add_trace(
         centers = 0.5 * (decoded.edges[:-1] + decoded.edges[1:])
         widths = decoded.edges[1:] - decoded.edges[:-1]
         if dashed:
-            # A "dashed bar chart" is unreadable, so the overlay
-            # trace always uses a dashed line on top of the live bars.
-            fig.add_trace(
+            # A "dashed bar chart" is unreadable, so the overlay trace
+            # always uses a dashed line on top of the live bars.
+            return (
                 go.Scatter(
                     x=centers, y=decoded.counts,
                     mode="lines",
                     line=dict(color=color, dash="dash"),
                     name=label,
-                )
+                ),
+                {},
             )
-        else:
-            fig.add_trace(
-                go.Bar(
-                    x=centers, y=decoded.counts, width=widths,
-                    marker=dict(color=color, line=dict(width=0)),
-                    name=label,
-                )
-            )
-            fig.update_layout(bargap=0)
-        return
+        return (
+            go.Bar(
+                x=centers, y=decoded.counts, width=widths,
+                marker=dict(color=color, line=dict(width=0)),
+                name=label,
+            ),
+            {"bargap": 0},
+        )
 
     # TH2 / TProfile2D and anything else: not implemented yet.
-    fig.add_annotation(text=f"Unknown type: {decoded.typename}", showarrow=False, font=dict(size=14))
+    return None, {}

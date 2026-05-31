@@ -12,3 +12,56 @@ body {
 .detector-clickable .nsewdrag {
   cursor: pointer !important;
 }
+
+/* Per-plot controls: a modebar-style toolbar in the top-right corner that
+   fades in on hover. The graph and this overlay share a `.plot-cell`
+   (position: relative) parent. */
+.plot-cell {
+  position: relative;
+}
+
+.plot-ctl-overlay {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: rgba(30, 33, 40, 0.85);
+  font-family: monospace;
+  font-size: 11px;
+  color: #ddd;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Reveal on hover of the plot, or while interacting with the controls. */
+.plot-cell:hover .plot-ctl-overlay,
+.plot-ctl-overlay:hover,
+.plot-ctl-overlay:focus-within {
+  opacity: 1;
+}
+
+.plot-ctl-logy {
+  color: #ddd;
+  white-space: nowrap;
+}
+
+.plot-ctl-btn {
+  background: #2b2f37;
+  color: #ddd;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-family: monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.plot-ctl-btn:hover {
+  background: #3a3f49;
+}

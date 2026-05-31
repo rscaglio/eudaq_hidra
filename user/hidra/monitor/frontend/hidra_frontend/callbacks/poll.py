@@ -81,9 +81,14 @@ def register(
         Input("interval", "n_intervals"),
         Input("tab-mount-state", "data"),
         State("client-state", "data"),
+        # Per-plot controls (see panels/graph_controls.py). Read as State
+        # so toggling them doesn't itself trigger a poll — the change is
+        # picked up on the next tick.
+        State({"type": "graph-ctl-logy", "panel": ALL, "index": ALL}, "value"),
+        State("graph-reset", "data"),
         prevent_initial_call=False,
     )
-    def poll(n_intervals, tab_mount_state, client_state):
+    def poll(n_intervals, tab_mount_state, client_state, _logy_values, reset_data):
         # Defensive: in some edge cases Dash may invoke the callback
         # with a stale or unexpected Store value (e.g. during hot
         # reload). Treat anything that isn't a dict as empty.
@@ -110,12 +115,21 @@ def register(
 
             overlay_file = client_state.get("overlay_file")
 
-            # Build one Plotly figure per histogram. Overlay lookup is
-            # cached inside OverlayStore so repeated polls don't reopen
-            # the `.root` file.
+            # Build a Plotly figure only for the histograms some panel
+            # renders from `figs` (grid, channel_selector). Panels that
+            # read the raw payload instead (metric, detector) declare no
+            # figure_names, so we skip the construction cost for them.
+            needed_figs: set[str] = set()
+            for panel in panels:
+                needed_figs.update(panel.figure_names())
+
+            # Overlay lookup is cached inside OverlayStore so repeated
+            # polls don't reopen the `.root` file.
             figs_by_name: dict[str, object] = {}
             with Phase("poll.to_figure_all"):
                 for name, payload in data.items():
+                    if name not in needed_figs:
+                        continue
                     with Phase("poll.overlay_lookup"):
                         overlay_hist = overlay_store.get(overlay_file, name) if overlay_file else None
                     with Phase("poll.to_figure_one"):
@@ -142,6 +156,13 @@ def register(
             if len(figures_out) != expected:
                 return [no_update] * expected, no_update
 
+            # Apply per-plot controls (log-y toggle + reset-zoom counter)
+            # to the figures of the controllable slots. Done here, after
+            # every panel has rendered, so it stays generic across panel
+            # types.
+            with Phase("poll.apply_controls"):
+                _apply_graph_controls(panels, figures_out, reset_data or {})
+
         # Build the status bar message.
         pump_hint = config.polling.server_pump_ms_hint
         n_ok = sum(1 for v in data.values() if v is not None)
@@ -166,3 +187,49 @@ def register(
             PERF.reset()
 
         return figures_out, status
+
+
+def _apply_graph_controls(panels: list[Panel], figures_out: list, reset_data: dict) -> None:
+    """Apply log-y and reset-zoom state to the controllable figures.
+
+    Generic across panel types: a slot is controllable iff its panel
+    lists its index in `control_indices()`. We map the figures back to
+    their graph IDs through `ctx.outputs_list` (same order as
+    `figures_out`) and the log-y state through `ctx.states_list`.
+    """
+    controllable: set[str] = set()
+    for panel in panels:
+        for idx in panel.control_indices():
+            controllable.add(f"{panel.panel_id}|{idx}")
+    if not controllable:
+        return
+
+    # Log-y checklist values, read from the State group(s).
+    logy: dict[str, bool] = {}
+    for group in ctx.states_list:
+        items = group if isinstance(group, list) else [group]
+        for state in items:
+            sid = state.get("id") if isinstance(state, dict) else None
+            if isinstance(sid, dict) and sid.get("type") == "graph-ctl-logy":
+                key = f"{sid['panel']}|{sid['index']}"
+                logy[key] = "logy" in (state.get("value") or [])
+
+    out_ids = ctx.outputs_list[0] if ctx.outputs_list else []
+    for fig, out in zip(figures_out, out_ids):
+        oid = out.get("id") if isinstance(out, dict) else None
+        if not isinstance(oid, dict):
+            continue
+        key = f"{oid['panel']}|{oid['index']}"
+        if key not in controllable:
+            continue
+        # Direct attribute assignment, not fig.update_*(): the update
+        # helpers validate/merge the whole subtree (~1 ms/fig), the direct
+        # set is ~10x cheaper and all we need here.
+        # uirevision preserves the user's zoom/pan across polls; folding in
+        # the reset counter drops it on the tick after a reset click.
+        rev = reset_data.get(key, 0)
+        fig.layout.uirevision = f"{key}|{rev}"
+        # Only force log when requested — a freshly built figure already
+        # defaults to a linear y axis, so "off" needs no work.
+        if logy.get(key):
+            fig.layout.yaxis.type = "log"

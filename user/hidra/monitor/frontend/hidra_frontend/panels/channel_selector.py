@@ -38,6 +38,7 @@ from dash import Dash, Input, Output, dcc, html
 from .. import theme
 from ..mapping import default_mapping
 from .base import Panel
+from .graph_controls import controls_overlay
 
 DEFAULT_TEMPLATE = "ADC_channel_{ch}"
 
@@ -113,6 +114,10 @@ class ChannelSelectorPanel(Panel):
     def histogram_names(self) -> list[str]:
         return [self._selected] if self._selected else []
 
+    def control_indices(self) -> list[int]:
+        # Single 1D bar histogram in slot 0.
+        return [0]
+
     def layout(self) -> html.Div:
         options = self._options()
         dropdown = dcc.Dropdown(
@@ -123,11 +128,17 @@ class ChannelSelectorPanel(Panel):
             placeholder="(no channels on backend)" if not options else "select a channel",
             style={"width": "320px", "color": "#000"},
         )
-        graph = dcc.Graph(
-            id={"type": "panel-graph", "panel": self.panel_id, "index": 0},
-            figure=theme.placeholder_figure(self._selected or "no channel"),
-            style={"height": "420px"},
-            config={"displayModeBar": False},
+        graph = html.Div(
+            className="plot-cell",
+            children=[
+                dcc.Graph(
+                    id={"type": "panel-graph", "panel": self.panel_id, "index": 0},
+                    figure=theme.placeholder_figure(self._selected or "no channel"),
+                    style={"height": "420px"},
+                    config={"displayModeBar": False},
+                ),
+                controls_overlay(self.panel_id, 0),
+            ],
         )
         return html.Div(
             [

@@ -57,6 +57,27 @@ class Panel(ABC):
           file, paused flag, ...).
         """
 
+    def figure_names(self) -> list[str]:
+        """Subset of `histogram_names()` this panel renders from the
+        pre-built `figs` dict (vs. reading the raw `payloads`).
+
+        The poll callback builds a Plotly figure only for these names, so
+        panels that consume the raw payload directly (metric, detector)
+        override this to `[]` and avoid the figure-construction cost.
+        Default: everything the panel fetches.
+        """
+        return self.histogram_names()
+
+    def control_indices(self) -> list[int]:
+        """Graph-slot indices that carry per-plot controls (log-y, reset zoom).
+
+        Default: no controls. Panels whose slots are 1D bar histograms
+        (e.g. grid, channel_selector) override this to opt in. The poll
+        callback uses the returned indices to know which figures should
+        get a persistent `uirevision` and have the controls applied.
+        """
+        return []
+
     def register_callbacks(self, app: Dash) -> None:
         """Optional: panels with their own widgets register callbacks here."""
         return None
