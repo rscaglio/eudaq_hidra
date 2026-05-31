@@ -40,7 +40,7 @@ def to_figure(
       explanatory annotation instead of crashing the callback.
     """
 
-    # Decodifica subito per ottenere il titolo, se possibile
+    # Decode early so we can use the histogram's own title, if available.
     decoded = None
     if obj_dict is not None and "_typename" in obj_dict:
         try:
@@ -49,7 +49,7 @@ def to_figure(
         except Exception:
             decoded = None
 
-    # Scegli il titolo: se decoded è valido, usa decoded.title, altrimenti name
+    # Pick the title: the decoded histogram's own title when valid, else the name.
     plot_title = decoded.title if decoded and hasattr(decoded, "title") and decoded.title else name
     fig = go.Figure()
     fig.update_layout(**theme.base_figure_layout(plot_title))
@@ -127,7 +127,7 @@ def _add_trace(
                 go.Bar(
                     x=centers, y=decoded.counts, width=widths,
                     marker=dict(color=color, line=dict(width=0)),
-                    name="label",
+                    name=label,
                 )
             )
             fig.update_layout(bargap=0)

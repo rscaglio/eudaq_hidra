@@ -34,7 +34,7 @@ class GridPanel(Panel):
         names = self.histogram_names()
         cols = int(self.params.get("cols", 2))
 
-        # Se disponibile, usa il title statico (params['titles']), altrimenti name
+        # Use the static title (params['titles']) when available, else the name.
         titles = self.params.get("titles", {})
         graph_slots = [
             dcc.Graph(

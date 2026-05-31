@@ -50,24 +50,32 @@ XDCFiller::XDCFiller(HistogramRegistry& reg,
 
 void XDCFiller::Fill(const HidraEvent& event) {
   for (size_t i = 0; i < event.xdc.ADCvalues.size(); ++i) {
-    m_profile_adc->Fill(i, event.xdc.ADCvalues[i]);
-    m_hist_adc_inclusive->Fill(event.xdc.ADCvalues[i]);
+    const double value = event.xdc.ADCvalues[i];
+    // The decoder leaves channels with no hit at the -1 sentinel; skip them so
+    // they don't drag down ADC_mean or dilute the saturation fraction.
+    if (value < 0) {
+      continue;
+    }
+    m_profile_adc->Fill(i, value);
+    m_hist_adc_inclusive->Fill(value);
     if (i < m_hist_adc_channels.size()) {
-      m_hist_adc_channels[i]->Fill(event.xdc.ADCvalues[i]);
+      m_hist_adc_channels[i]->Fill(value);
     } else {
       HIDRA_ERROR("ADC channel index {} is out of bounds for histogram array. Skipping filling for this channel.", i);
     }
-    m_profile_adc_saturation->Fill(i, event.xdc.ADCvalues[i] > m_saturation_threshold_adc ? 1 : 0);
+    m_profile_adc_saturation->Fill(i, value > m_saturation_threshold_adc ? 1 : 0);
   }
 
   for (size_t i = 0; i < event.xdc.TDCvalues.size(); ++i) {
-    m_profile_tdc->Fill(i, event.xdc.TDCvalues[i]);
-    m_hist_tdc_inclusive->Fill(event.xdc.TDCvalues[i]);
-
-  }
-
-  for (size_t i = 0; i < m_hist_tdc_channels.size() && i < event.xdc.TDCvalues.size(); ++i) {
-    m_hist_tdc_channels[i]->Fill(event.xdc.TDCvalues[i]);
-    m_profile_tdc_saturation->Fill(i, event.xdc.TDCvalues[i] > m_saturation_threshold_tdc ? 1 : 0);
+    const double value = event.xdc.TDCvalues[i];
+    if (value < 0) {
+      continue;
+    }
+    m_profile_tdc->Fill(i, value);
+    m_hist_tdc_inclusive->Fill(value);
+    if (i < m_hist_tdc_channels.size()) {
+      m_hist_tdc_channels[i]->Fill(value);
+      m_profile_tdc_saturation->Fill(i, value > m_saturation_threshold_tdc ? 1 : 0);
+    }
   }
 }

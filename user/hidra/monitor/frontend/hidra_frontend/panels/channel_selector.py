@@ -85,13 +85,13 @@ class ChannelSelectorPanel(Panel):
         self._selected = self._template.format(ch=ch)
 
     def _options(self) -> list[dict]:
-        # Ricalcola la lista canali ogni volta
+        # Recompute the channel list on every call.
         params = self.params
         names = params.get("names")
         if not names:
             names = self._discover(params.get("available_histograms") or [])
         self._names = list(names)
-        # Aggiorna la selezione se non più valida
+        # Refresh the selection if it is no longer valid.
         if self._selected not in self._names:
             self._selected = self._names[0] if self._names else None
         mapping = default_mapping()
