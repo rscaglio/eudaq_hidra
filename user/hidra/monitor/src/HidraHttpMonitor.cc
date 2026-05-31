@@ -31,7 +31,7 @@ HidraHttpMonitor::RunContext::RunContext(int port,
       fers_decoder(std::move(fers_dec)),
       event_prescale(prescale) {
 
-  chain.Add(std::make_unique<SummaryFiller>(registry));
+  chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
   chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms

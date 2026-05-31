@@ -1,19 +1,23 @@
 #include "SummaryFiller.hh"
 
-SummaryFiller::SummaryFiller(HistogramRegistry& reg)
+SummaryFiller::SummaryFiller(HistogramRegistry& reg, unsigned int prescale)
     : IHistogramFiller("SummaryFiller"),
-      m_run_start(std::chrono::steady_clock::now()) {
+      m_prescale(prescale > 0 ? static_cast<double>(prescale) : 1.0) {
   m_h_event_count = reg.Add(std::make_unique<TH1I>("event_count", "Event count", 1, 0, 1));
-  m_h_events_vs_time =
-      reg.Add(std::make_unique<TH1F>("events_vs_time", "Events vs time;elapsed time [s];events / bin", 300, 0, 300));
+  // Single-bin counter holding the true (pre-prescale) number of events
+  // received so far. TH1D (not TH1I) so it doesn't overflow on long runs.
+  m_h_events_received = reg.Add(std::make_unique<TH1D>("events_received", "Events received (pre-prescale)", 1, 0, 1));
 }
 
 void SummaryFiller::Reset() {
-  m_run_start = std::chrono::steady_clock::now();
+  m_events_seen = 0;
 }
 
 void SummaryFiller::Fill(const HidraEvent&) {
-  const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_run_start).count();
   m_h_event_count->Fill(0);
-  m_h_events_vs_time->Fill(elapsed);
+  // We only see one of every EVENT_PRESCALE events, so the true count is
+  // (sampled events) x prescale. Set (not Fill) since this is a running
+  // total. Its *deltas* give the true rate regardless of the prescale.
+  ++m_events_seen;
+  m_h_events_received->SetBinContent(1, static_cast<double>(m_events_seen) * m_prescale);
 }

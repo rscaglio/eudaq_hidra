@@ -17,12 +17,14 @@ from .channel_selector import ChannelSelectorPanel
 from .detector import DetectorPanel
 from .grid import GridPanel
 from .metric import MetricPanel
+from .rate import RatePanel
 
 PANEL_TYPES: dict[str, type[Panel]] = {
     "grid": GridPanel,
     "metric": MetricPanel,
     "channel_selector": ChannelSelectorPanel,
     "detector": DetectorPanel,
+    "rate": RatePanel,
 }
 
 

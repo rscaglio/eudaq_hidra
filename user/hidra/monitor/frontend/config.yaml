@@ -38,14 +38,12 @@ tabs:
   - id: summary
     label: Summary
     panels:
-      # Counter-style display: shows the histogram's bin content as
-      # a single big number, instead of a trivial 1-bar plot.
-      - type: metric
-        histograms: [event_count]
-      # Real plot below the counter.
-      - type: grid
-        cols: 1
-        histograms: [events_vs_time]
+      # Run header on one row: live event rate (Hz) from the true
+      # pre-prescale counter `events_received`, its sparkline, and the
+      # total event count.
+      - type: rate
+        histogram: events_received
+        count_histogram: event_count
       # Detector map: every module drawn at its (row, column) position,
       # coloured by mean ADC. Two figures: S channels and C channels.
       # `link_tab` makes the modules clickable: clicking one opens that
