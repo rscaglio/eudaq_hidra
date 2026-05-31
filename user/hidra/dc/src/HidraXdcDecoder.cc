@@ -1,7 +1,6 @@
 #include "HidraUtils.hh"
 #include "HidraXdcDecoder.hh"
 
-
 #include <cstring>
 
 namespace hidra {
@@ -32,7 +31,11 @@ struct V792Word {
 };
 
 HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map)
-    : m_vme_geo_map(std::move(vme_geo_map)) {}
+    : m_vme_geo_map(std::move(vme_geo_map)) {
+
+  m_n_adc_channels = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map) + 1;
+  HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels based on VME geo map", m_n_adc_channels);
+}
 
 void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent& event) const {
   event = HidraXdcEvent{};
@@ -57,9 +60,8 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   std::vector<std::uint32_t> words(word_count);
   std::memcpy(words.data(), payload.data(), word_count * sizeof(std::uint32_t));
 
-  const int max_channel_index = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map);
-  std::vector<double> ADCvalues(max_channel_index, -1);
-  std::vector<double> ADCflags(max_channel_index, -1);
+  std::vector<double> ADCvalues(m_n_adc_channels, -1);
+  std::vector<double> ADCflags(m_n_adc_channels, -1);
   std::vector<double> TDCvalues(1500, -1);
   std::vector<double> TDCflags(1500, -1);
 
@@ -94,7 +96,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       expected_word_mask = 0b000;
       for (int ichan = 0; ichan < nchan; ++ichan) {
         ++it;
-        if (it == words.end()){
+        if (it == words.end()) {
           HIDRA_ERROR("No more words in the XDC data block, while payload data word is expected. Aborting");
           return;
         }
@@ -113,9 +115,9 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           int encoded_channel = (module_type == "unknown")
                                     ? V.channel()
                                     : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), V.channel());
-          if (encoded_channel < 0 || encoded_channel >= max_channel_index) {
+          if (encoded_channel < 0 || encoded_channel >= m_n_adc_channels) {
             HIDRA_ERROR(
-                "Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, max_channel_index);
+                "Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, m_n_adc_channels);
           } else {
             ADCvalues[encoded_channel] = V.value();
             ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
@@ -133,10 +135,10 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       } // loop over channels
 
       ++it;
-      if (it == words.end()){
-          HIDRA_ERROR("No more words in the XDC data block, while trailer is expected. Aborting");
-          return;
-        }
+      if (it == words.end()) {
+        HIDRA_ERROR("No more words in the XDC data block, while trailer is expected. Aborting");
+        return;
+      }
       word = *it;
 
       expected_word_mask = 0b100;

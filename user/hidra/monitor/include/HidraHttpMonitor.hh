@@ -86,7 +86,7 @@ private:
     std::atomic<uint64_t> event_counter{0};
 
     /** Build a run context with configured decoders, HTTP port, pump interval, and event prescale. */
-    RunContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec);
+    RunContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec, int n_adc_channels);
     ~RunContext() noexcept;
     void LogTelemetry();
   };
