@@ -65,3 +65,32 @@ body {
 .plot-ctl-btn:hover {
   background: #3a3f49;
 }
+
+/* "Wow" header cards: rounded, with a soft accent glow and a subtle lift on
+   hover. Colours reuse the existing palette (OK green / PRIMARY blue) only as
+   a halo — the card background stays the plot's own colour. */
+.metric-card {
+  border-radius: 10px;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.glow-rate {
+  box-shadow: 0 0 0 1px rgba(166, 227, 161, 0.25), 0 0 18px rgba(166, 227, 161, 0.16);
+}
+
+.glow-count {
+  box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.25), 0 0 18px rgba(137, 180, 250, 0.16);
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+}
+
+.glow-rate:hover {
+  box-shadow: 0 0 0 1px rgba(166, 227, 161, 0.45), 0 0 26px rgba(166, 227, 161, 0.30);
+}
+
+.glow-count:hover {
+  box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.45), 0 0 26px rgba(137, 180, 250, 0.30);
+}
