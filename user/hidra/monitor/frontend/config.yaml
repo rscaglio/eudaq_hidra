@@ -50,6 +50,7 @@ tabs:
       # coloured by mean ADC. Two figures: S channels and C channels.
       - type: detector
         histogram: ADC_mean
+        height: 550px  # optional per-panel parameter, default is 320px
 
   - id: xdc
     label: ADC
@@ -71,11 +72,13 @@ tabs:
         cols: 2
         histograms: [TDC_mean]
 
-  # Future: per-channel inspection. Will be enabled when the backend
-  # publishes per-channel TH1D (4096 bins each).
-  # - id: xdc_channels
-  #   label: XDC channels
-  #   panels:
-  #     - type: channel_selector
-  #       template: "xdc_ch_{ch}"
-  #       range: [0, 127]
+  # Per-channel ADC inspection: one histogram at a time, with a dropdown
+  # to pick the channel. Channels are auto-discovered from the backend
+  # (every ADC_channel_<N> it exposes), so the list always matches the
+  # current VME geo map. To pin an explicit set instead, add a
+  # `range: [lo, hi]` next to `template`.
+  - id: adc_channels
+    label: ADC channels
+    panels:
+      - type: channel_selector
+        template: "ADC_channel_{ch}"

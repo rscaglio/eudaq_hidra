@@ -61,7 +61,7 @@ def build_app(config_path: str | None = None) -> dash.Dash:
     else:
         log.warning("backend at %s is not reachable yet — UI will retry on each poll", config.backend.url)
 
-    panels_by_tab = build_panels(config)
+    panels_by_tab = build_panels(config, available)
 
     app = dash.Dash(__name__, title="HiDRA Monitor", update_title='')
     app.layout = build(config, panels_by_tab)

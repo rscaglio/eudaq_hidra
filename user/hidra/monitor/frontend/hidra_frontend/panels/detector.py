@@ -61,11 +61,12 @@ class DetectorPanel(Panel):
         return [self._hist_name()]
 
     def layout(self) -> html.Div:
+        height = self.params.get("height", "320px")
         slots = [
             dcc.Graph(
                 id={"type": "panel-graph", "panel": self.panel_id, "index": i},
                 figure=theme.placeholder_figure(f"Detector — {ptype} channels"),
-                style={"flex": "1", "minWidth": "0", "height": "320px"},
+                style={"flex": "1", "minWidth": "0", "height": height},
                 config={"displayModeBar": False},
             )
             for i, ptype in enumerate(PMT_TYPES)
@@ -113,6 +114,7 @@ def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
         elif sumw[idx]:
             # Plain TH1 fallback: the bin content is already the value.
             means[channel] = float(sumw[idx])
+
     return means
 
 
@@ -157,7 +159,7 @@ def _detector_figure(
         ri, ci = row_idx[d["row"]], col_idx[d["column"]]
         value = means.get(d["channel"])
         z[ri][ci] = value
-        text[ri][ci] = d["module"] if value is None else f"{d['module']}<br>{value:.0f}"
+        text[ri][ci] = d["module"]
 
     values = [v for rowvals in z for v in rowvals if v is not None]
     cmin, cmax = (min(values), max(values)) if values else (0.0, 1.0)
@@ -168,7 +170,7 @@ def _detector_figure(
         go.Heatmap(
             x=columns, y=rows, z=z,
             text=text, texttemplate="%{text}",
-            textfont=dict(size=11, color=theme.FG),
+            textfont=dict(size=11),
             colorscale=COLORSCALE,
             zmin=cmin, zmax=cmax,
             xgap=2, ygap=2,

@@ -174,10 +174,15 @@ Append an entry under `tabs:` in `config.yaml`:
   ("scorecard"). Good for counter-like histograms (e.g.
   `event_count`, a TH1I with one bin). The displayed number is the
   sum of all in-range bins. Params: `histograms: [name1, ...]`.
-- `channel_selector` — *stub*. Will let the user pick one channel
-  from a list and show a single histogram. Waiting on per-channel
-  TH1Ds from the backend. Enabling it today raises
-  `NotImplementedError`.
+- `channel_selector` — show one per-channel histogram at a time with
+  a dropdown to switch channel. Built for the backend's
+  `ADC_channel_<N>` TH1Ds. The channel list is auto-discovered from
+  the backend (every name matching `template`), so it always matches
+  the current VME geo map. Dropdown labels are enriched with the
+  detector name from the calo mapping when known (e.g. `ch 5 · M105S`).
+  Params: `template: "ADC_channel_{ch}"` (default). To pin an explicit
+  set instead of auto-discovery, add `range: [lo, hi]` or a `names`
+  list. The selected channel updates the plot on the next poll tick.
 
 ### Add a custom panel (custom layout / widgets)
 
@@ -320,7 +325,5 @@ Python is **not** wired into CMake. The setup.sh helpers
   exposes a reset endpoint.
 - `TODO(event_display)` — single-event panel type; needs a
   non-cumulative backend feed.
-- `TODO(per_channel_hists)` — enable `channel_selector` once
-  `xdc_ch_<N>` TH1Ds are published.
 - `TODO(remote_overlay)` — fetch reference files over HTTP instead
   of through the shared filesystem.

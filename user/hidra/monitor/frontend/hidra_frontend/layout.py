@@ -21,8 +21,20 @@ from .panels import build_panel
 from .panels.base import Panel
 
 
-def build_panels(config: Config) -> dict[str, list[Panel]]:
-    """Instantiate one Panel object per panel entry. Indexed by tab id."""
+def build_panels(
+    config: Config,
+    available_histograms: list[str] | None = None,
+) -> dict[str, list[Panel]]:
+    """Instantiate one Panel object per panel entry. Indexed by tab id.
+
+    `available_histograms` is the list of names the backend currently
+    exposes (from `BackendClient.list_histograms()`). Panels that
+    auto-discover their histograms — e.g. `channel_selector`, which
+    builds its dropdown from every `ADC_channel_<N>` on the server —
+    receive it via the `available_histograms` param. Panels that name
+    their histograms explicitly in config.yaml ignore it.
+    """
+    available = list(available_histograms or [])
     by_tab: dict[str, list[Panel]] = {}
     for tab in config.tabs:
         panels: list[Panel] = []
@@ -30,7 +42,10 @@ def build_panels(config: Config) -> dict[str, list[Panel]]:
         # The `<tab>__p<i>` pattern makes IDs unique across tabs.
         for i, panel_cfg in enumerate(tab.panels):
             panel_id = f"{tab.id}__p{i}"
-            panels.append(build_panel(panel_id, panel_cfg.type, panel_cfg.params))
+            params = panel_cfg.params
+            if panel_cfg.type == "channel_selector" and not params.get("names"):
+                params = {**params, "available_histograms": available}
+            panels.append(build_panel(panel_id, panel_cfg.type, params))
         by_tab[tab.id] = panels
     return by_tab
 

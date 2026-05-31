@@ -57,7 +57,7 @@ class ADCMapping:
                     f"Unknown module '{module_name}' for ADC channel {channel_str}"
                 )
 
-            module_row, module_column = self._modules[module_name]
+            module_column, module_row = self._modules[module_name]
 
             result[int(channel_str)] = {
                 "channel": int(channel_str),
