@@ -4,6 +4,7 @@
 
 #include "SummaryFiller.hh"
 #include "XDCFiller.hh"
+#include "MetaFiller.hh"
 #include "HidraUtils.hh"
 #include "ScopedTimer.hh"
 
@@ -37,6 +38,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
 
   chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
   chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100));
+  chain.Add(std::make_unique<MetaFiller>(registry));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -267,6 +269,9 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
   // follows.
 
   HidraEvent decoded;
+
+  // Per-event metadata (trigger mask, spill, timestamps, …) comes from the EUDAQ event/tags, not the binary payload.
+  m_ctx->meta_decoder.decode(*ev, decoded.meta);
 
   for (size_t index = 0; index < ev->GetNumSubEvent(); ++index) {
     eudaq::EventSPC subevent = ev->GetSubEvent(index); // no copy, just a shared pointer copy of the subevent handle
