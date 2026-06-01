@@ -13,7 +13,7 @@ subclasses).
    │ THttpServer      │  /multi.  │  │ dcc.Tabs, dcc.Graph(s),  │ │
    │ /Histograms/...  │◄──json───►│  │ poll-rate dropdown, ...  │ │
    │ port 9090        │  every    │  └──────────────────────────┘ │
-   └──────────────────┘  500 ms   │           ▲                   │
+   └──────────────────┘  >100 ms  │           ▲                   │
                                   │           │ figures           │
                                   │  ┌──────────────────────────┐ │
                                   │  │ Python callbacks         │ │
@@ -21,7 +21,7 @@ subclasses).
                                   │  │  ├ tab switch            │ │
                                   │  │  └ overlay / controls    │ │
                                   │  └──────────────────────────┘ │
-                                  │           port 8050            │
+                                  │           port 8050           │
                                   └───────────────────────────────┘
 ```
 
