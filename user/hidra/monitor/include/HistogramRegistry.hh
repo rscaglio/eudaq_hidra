@@ -42,6 +42,17 @@ public:
 
   void ForEach(const std::function<void(TH1*)>& func) const;
 
+  /**
+   * @brief Write all registered histograms to a ROOT file.
+   *
+   * Opens @p filepath in RECREATE mode and writes every histogram into it. The
+   * histograms remain owned by the registry (they stay detached from any ROOT
+   * directory), so writing does not transfer ownership.
+   *
+   * @return true on success, false if the file could not be opened.
+   */
+  bool SaveToFile(const std::string& filepath) const;
+
 private:
   std::unordered_map<std::string, std::unique_ptr<TH1>> m_histograms;
 };

@@ -9,6 +9,9 @@
 
 #include <eudaq/Event.hh>
 #include <eudaq/Factory.hh>
+#include <eudaq/FileNamer.hh>
+
+#include <ctime>
 
 const uint32_t HidraHttpMonitor::m_id_factory = eudaq::cstr2hash("HidraHttpMonitor");
 
@@ -17,9 +20,9 @@ auto _reg = eudaq::Factory<eudaq::Monitor>::Register<HidraHttpMonitor, const std
     HidraHttpMonitor::m_id_factory);
 }
 
-// ── RunContext ────────────────────────────────────────────────────────────
+// ── MonitorContext ──────────────────────────────────────────────────────────
 
-HidraHttpMonitor::RunContext::RunContext(
+HidraHttpMonitor::MonitorContext::MonitorContext(
     int port,
     int pump_interval_ms,
   int prescale,
@@ -39,16 +42,23 @@ HidraHttpMonitor::RunContext::RunContext(
   publisher.Start();
 }
 
-HidraHttpMonitor::RunContext::~RunContext() noexcept {
+HidraHttpMonitor::MonitorContext::~MonitorContext() noexcept {
   publisher.Stop();
-  try {
-    LogTelemetry();
-  } catch (...) {
-    // Best-effort telemetry: swallow exceptions to keep destructor safe.
-  }
 }
 
-void HidraHttpMonitor::RunContext::LogTelemetry() {
+void HidraHttpMonitor::MonitorContext::ResetTelemetry() {
+  // Caller holds publisher.Mutex(): ProcessRequestsTimer is written by the pump thread inside that same lock, and the
+  // decode/fill timers are written by DoReceive which is not running at a run boundary.
+  duration_xdc_decode.Reset();
+  duration_fers_decode.Reset();
+  chain.LockWaitTimer().Reset();
+  for (const auto& filler : chain.Fillers()) {
+    filler->Timer().Reset();
+  }
+  publisher.ProcessRequestsTimer().Reset();
+}
+
+void HidraHttpMonitor::MonitorContext::LogTelemetry() {
   HIDRA_INFO("=== Monitor Telemetry ===");
 
   HIDRA_INFO("  " + duration_xdc_decode.Summary());
@@ -81,7 +91,21 @@ void HidraHttpMonitor::DoInitialise() {
       HIDRA_WARN("EVENT_PRESCALE=0 is invalid, forcing EVENT_PRESCALE=1");
       m_event_prescale = 1;
     }
+    // FileNamer pattern for the ROOT file written at end-of-run. Set empty to disable saving.
+    m_histo_output_pattern = ini->Get("HISTO_OUTPUT_PATTERN", m_histo_output_pattern);
   }
+}
+
+std::string HidraHttpMonitor::MakeHistoOutputFile() const {
+  std::time_t time_now = std::time(nullptr);
+  char time_buff[13];
+  time_buff[12] = 0;
+  std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", std::localtime(&time_now));
+
+  return eudaq::FileNamer(m_histo_output_pattern)
+      .Set('X', ".root")
+      .Set('R', GetRunNumber())
+      .Set('D', std::string(time_buff));
 }
 
 void HidraHttpMonitor::DoConfigure() {
@@ -101,34 +125,74 @@ void HidraHttpMonitor::DoConfigure() {
     }
   }
 
-  m_xdc_decoder.emplace(vme_geo_map);
-  m_fers_decoder.emplace();
+  hidra::HidraXdcDecoder xdc_decoder(vme_geo_map);
+  hidra::HidraFersDecoder fers_decoder;
+
+  std::unique_lock<std::shared_mutex> lock(m_state_mutex);
+  if (!m_ctx) {
+    // First configure: build the long-lived monitoring context. This starts the HTTP server with empty histograms,
+    // so the GUI is reachable from now on and stays up across run start/stop.
+    m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
+                                             std::move(fers_decoder));
+  } else {
+    // Reconfigure: keep the server alive, only swap the decoders to the new configuration.
+    m_ctx->xdc_decoder = std::move(xdc_decoder);
+    m_ctx->fers_decoder = std::move(fers_decoder);
+  }
+
+  // Clear the histogram contents left over from a previous run: a (re)configuration means a fresh setup, so the GUI
+  // should not keep showing stale data. We deliberately do NOT reset the fillers' run-relative state here (e.g.
+  // SummaryFiller's start-of-run time reference): that belongs to DoStartRun, as a configure may happen well before the
+  // run actually starts. On the first configure the histograms are already empty, so this is a no-op.
+  std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
+  m_ctx->registry.Reset();
 }
 
 void HidraHttpMonitor::DoStartRun() {
   HIDRA_INFO("Starting HidraHttpMonitor run");
-  if (!m_xdc_decoder || !m_fers_decoder) {
-    EUDAQ_THROW("Decoders not configured");
+
+  std::shared_lock<std::shared_mutex> lock(m_state_mutex);
+  if (!m_ctx) {
+    EUDAQ_THROW("HidraHttpMonitor started before being configured");
   }
 
-  auto ctx = std::make_unique<RunContext>(m_port, m_pump_interval_ms, m_event_prescale, *m_xdc_decoder, *m_fers_decoder);
-
-  std::unique_lock<std::shared_mutex> lock(m_ctx_mutex);
-  m_ctx = std::move(ctx);
+  // Reset the histograms (in place, so the THttpServer keeps pointing at the same objects) and the per-run state, so
+  // the new run starts from a clean slate while the server keeps serving.
+  m_ctx->event_counter.store(0, std::memory_order_relaxed);
+  std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
+  m_ctx->chain.Reset();
+  m_ctx->registry.Reset();
+  m_ctx->ResetTelemetry();
 }
 
 void HidraHttpMonitor::DoStopRun() {
   HIDRA_INFO("Stopping HidraHttpMonitor run");
-  // The unique lock waits for all in-flight DoReceive to release the shared lock. Only then we destroy m_ctx: the
-  // destruction safely joins the pump thread and shuts down THttpServer
+  // The run is over but we deliberately keep m_ctx (and its HTTP server) alive so the histograms of the run just
+  // finished stay browsable until the next run starts or the monitor terminates. Here we log the run telemetry and
+  // snapshot the histograms to a ROOT file.
 
-  std::unique_lock<std::shared_mutex> lock(m_ctx_mutex);
-  m_ctx.reset();
+  std::shared_lock<std::shared_mutex> lock(m_state_mutex);
+  if (!m_ctx) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
+  m_ctx->LogTelemetry();
+
+  if (m_histo_output_pattern.empty()) {
+    return;
+  }
+  const std::string path = MakeHistoOutputFile();
+  if (m_ctx->registry.SaveToFile(path)) {
+    HIDRA_INFO("Saved monitor histograms to {}", path);
+  } else {
+    HIDRA_WARN("Failed to save monitor histograms to {}", path);
+  }
 }
 
 void HidraHttpMonitor::DoReset() {
   HIDRA_INFO("Resetting HidraHttpMonitor state");
-  std::shared_lock<std::shared_mutex> lock(m_ctx_mutex);
+  std::shared_lock<std::shared_mutex> lock(m_state_mutex);
   if (!m_ctx) {
     return;
   }
@@ -139,12 +203,15 @@ void HidraHttpMonitor::DoReset() {
 
 void HidraHttpMonitor::DoTerminate() {
   HIDRA_INFO("Terminating HidraHttpMonitor");
-  DoStopRun();
+  // Final shutdown: destroy the context, which stops the HTTP server. The unique lock waits for in-flight DoReceive to
+  // finish before the context is torn down.
+  std::unique_lock<std::shared_mutex> lock(m_state_mutex);
+  m_ctx.reset();
 }
 
 void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
-  // Shared lock: keeps m_ctx alive for the whole call.
-  std::shared_lock<std::shared_mutex> lock(m_ctx_mutex);
+  // Shared lock: keeps m_ctx alive and the decoders stable for the whole call.
+  std::shared_lock<std::shared_mutex> lock(m_state_mutex);
   if (!m_ctx) {
     return;
   }

@@ -18,15 +18,21 @@
  * - T_http: civetweb HTTP I/O thread, not modifying histograms.
  *
  * Locking model:
- * - m_ctx_mutex (std::shared_mutex) protects RunContext lifetime.
+ * - m_state_mutex (std::shared_mutex) protects MonitorContext lifetime and the
+ *   decoders that DoConfigure() may swap.
  * - publisher.Mutex() (std::mutex) protects histogram content.
  *
- * Lock order in DoReceive() is always:
- * m_ctx_mutex (shared) -> publisher.Mutex().
+ * Lock order is always:
+ * m_state_mutex (shared/unique) -> publisher.Mutex().
  * The reverse order must never be used.
  *
- * RunContext owns all run-scoped objects. It is created in DoStartRun() and
- * destroyed in DoStopRun().
+ * MonitorContext owns the long-lived monitoring infrastructure (HTTP server,
+ * histogram registry and fillers). It is created once in DoConfigure() and lives
+ * until DoTerminate(). The HTTP server therefore stays up across start/stop of
+ * runs: at DoStartRun() the histograms are reset in place (the THttpServer keeps
+ * pointing at the same TH1 objects) and at DoStopRun() they are snapshotted to a
+ * ROOT file but remain browsable. This lets users inspect the data of a run once
+ * it has finished.
  */
 
 #include "FillerChain.hh"
@@ -43,7 +49,6 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string>
-#include <optional>
 #include <atomic>
 
 class HidraHttpMonitor : public eudaq::Monitor {
@@ -53,11 +58,11 @@ public:
 
   /** EUDAQ lifecycle hook for initial setup before configuration. */
   void DoInitialise() override;
-  /** EUDAQ lifecycle hook for reading and applying monitor configuration. */
+  /** EUDAQ lifecycle hook for creating the monitoring context (first call) and (re)building decoders. */
   void DoConfigure() override;
-  /** EUDAQ lifecycle hook for creating run-scoped context and starting services. */
+  /** EUDAQ lifecycle hook for resetting histograms and telemetry at the start of a run. */
   void DoStartRun() override;
-  /** EUDAQ lifecycle hook for stopping services and destroying run-scoped context. */
+  /** EUDAQ lifecycle hook for saving the run histograms while keeping the HTTP server alive. */
   void DoStopRun() override;
   /** EUDAQ lifecycle hook for resetting monitor state while keeping the process alive. */
   void DoReset() override;
@@ -69,13 +74,24 @@ public:
   static const uint32_t m_id_factory;
 
 private:
-  /** Run-scoped ownership bundle for objects created at run start and released at run stop. */
-  struct RunContext {
+  /** Resolve the output path for the saved-histograms ROOT file of the current run. */
+  std::string MakeHistoOutputFile() const;
+
+  /**
+   * Long-lived monitoring infrastructure.
+   *
+   * Created once in DoConfigure() and destroyed in DoTerminate(). It owns the
+   * HTTP server (via HistogramPublisher), the histogram registry and the filler
+   * chain, all of which survive individual runs. The decoders are part of the
+   * context too but are run/config dependent: DoConfigure() may replace them on
+   * a reconfigure while keeping the server and histograms.
+   */
+  struct MonitorContext {
     HistogramRegistry registry;
     HistogramPublisher publisher;
     FillerChain chain;
 
-    /** Run-scoped decoders that may carry run-dependent state such as calibration caches. */
+    /** Decoders carrying run/config-dependent state. Swapped by DoConfigure() under m_state_mutex. */
     hidra::HidraXdcDecoder xdc_decoder;
     hidra::HidraFersDecoder fers_decoder;
 
@@ -85,21 +101,23 @@ private:
     int event_prescale{1};
     std::atomic<uint64_t> event_counter{0};
 
-    /** Build a run context with configured decoders, HTTP port, pump interval, and event prescale. */
-    RunContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec, hidra::HidraFersDecoder fers_dec);
-    ~RunContext() noexcept;
+    /** Build the context, register fillers and start the HTTP server. */
+    MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
+                   hidra::HidraFersDecoder fers_dec);
+    ~MonitorContext() noexcept;
+    /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
+    void ResetTelemetry();
     void LogTelemetry();
   };
 
   int m_port{9090};
   int m_pump_interval_ms{20}; /**< Pump interval in milliseconds (~50 Hz default). */
   int m_event_prescale{1}; /**< Process 1 event every N events (N>=1). */
-  /** Decoder templates loaded in DoConfigure() and copied to RunContext. */
-  std::optional<hidra::HidraXdcDecoder>  m_xdc_decoder;
-  std::optional<hidra::HidraFersDecoder> m_fers_decoder;
+  /** FileNamer pattern for the histograms saved at end-of-run. Empty disables saving. */
+  std::string m_histo_output_pattern{"out_data/monitor_run$6R_$12D$X"};
 
-  /** Protects lifetime transitions of m_ctx across lifecycle and receive paths. */
-  mutable std::shared_mutex m_ctx_mutex;
-  /** Active run context, created in DoStartRun() and reset in DoStopRun(). */
-  std::unique_ptr<RunContext> m_ctx;
+  /** Protects MonitorContext lifetime and decoder swaps across lifecycle and receive paths. */
+  mutable std::shared_mutex m_state_mutex;
+  /** Monitoring context, created in DoConfigure() and reset in DoTerminate(). */
+  std::unique_ptr<MonitorContext> m_ctx;
 };
