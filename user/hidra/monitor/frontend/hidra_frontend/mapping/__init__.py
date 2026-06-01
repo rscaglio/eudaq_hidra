@@ -3,7 +3,8 @@
 Maps ADC channel indices to detector positions (module, row, column,
 S/C type). The raw maps live in the bundled JSON files
 (`adc_channels.json` = channel -> detector name, `modules.json` =
-module -> [row, column]); `ADCMapping` joins them.
+module -> [column, row]); `ADCMapping` joins them.
+
 
 Most callers just want "channel index -> info" for the PMT channels —
 use the module-level `get_pmt_channel_info()` helper, which loads the
