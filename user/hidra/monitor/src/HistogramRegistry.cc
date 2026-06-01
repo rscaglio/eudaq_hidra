@@ -4,6 +4,7 @@
 #include <TFile.h>
 
 #include <filesystem>
+#include <system_error>
 
 TH1* HistogramRegistry::Get(std::string_view name) const {
     // A copy of the name is needed to construct the std::string key for lookup

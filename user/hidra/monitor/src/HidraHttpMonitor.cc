@@ -98,8 +98,14 @@ void HidraHttpMonitor::DoInitialise() {
 
 std::string HidraHttpMonitor::MakeHistoOutputFile() const {
   std::time_t time_now = std::time(nullptr);
+  // Thread-safe local-time conversion (std::localtime uses shared static storage). localtime_r is POSIX, localtime_s is
+  // the Windows equivalent (note the reversed argument order).
   std::tm tm_buf{};
-  localtime_r(&time_now, &tm_buf); // thread-safe variant; std::localtime uses shared static storage
+#ifdef _WIN32
+  localtime_s(&tm_buf, &time_now);
+#else
+  localtime_r(&time_now, &tm_buf);
+#endif
   char time_buff[13];
   time_buff[12] = 0;
   std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", &tm_buf);
