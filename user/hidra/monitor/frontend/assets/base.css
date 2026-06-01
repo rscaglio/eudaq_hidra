@@ -94,3 +94,63 @@ body {
 .glow-count:hover {
   box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.45), 0 0 26px rgba(137, 180, 250, 0.30);
 }
+
+/* Sticky header: a soft shadow underneath so it reads as floating above the
+   scrolling panels. */
+.app-header {
+  box-shadow: 0 6px 14px -8px rgba(0, 0, 0, 0.6);
+}
+
+/* Button hover/active polish (palette only). */
+.btn {
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+.btn:hover {
+  background-color: #3a3f49 !important;
+  border-color: #cba6f7 !important;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+
+/* ── Dark Catppuccin dropdowns (dcc.Dropdown = react-select v1) ────────── */
+.Select-control,
+.is-open > .Select-control,
+.Select.is-focused:not(.is-open) > .Select-control {
+  background-color: #313244 !important;
+  border: 1px solid #45475a !important;
+  box-shadow: none !important;
+}
+.Select-control:hover {
+  border-color: #cba6f7 !important;
+}
+.Select-menu-outer {
+  background-color: #313244 !important;
+  border: 1px solid #45475a !important;
+}
+.Select-value-label,
+.has-value.Select--single > .Select-control .Select-value .Select-value-label,
+.Select--single > .Select-control .Select-value .Select-value-label,
+.Select-input > input {
+  color: #cdd6f4 !important;
+}
+.Select-placeholder {
+  color: #9399b2 !important;
+}
+.Select-option {
+  background-color: #313244 !important;
+  color: #cdd6f4 !important;
+}
+.Select-option.is-focused {
+  background-color: #45475a !important;
+}
+.Select-option.is-selected {
+  background-color: #585b70 !important;
+  color: #cba6f7 !important;
+}
+.Select-arrow {
+  border-color: #cdd6f4 transparent transparent !important;
+}
+.Select-clear {
+  color: #cdd6f4 !important;
+}

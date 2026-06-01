@@ -56,20 +56,20 @@ tabs:
   - id: xdc
     label: ADC
     panels:
-      - type: grid
+      - type: histograms
         cols: 2
         histograms: [ADC_inclusive]
-      - type: grid
+      - type: histograms
         cols: 2
         histograms: [ADC_mean]
 
   - id: tdc
     label: TDC
     panels:
-      - type: grid
+      - type: histograms
         cols: 2
         histograms: [TDC_inclusive]
-      - type: grid
+      - type: histograms
         cols: 2
         histograms: [TDC_mean]
 
@@ -87,7 +87,7 @@ tabs:
   - id: adc_saturation
     label: ADC Saturation
     panels:
-      - type: grid
+      - type: histograms
         cols: 1
         histograms: [ADC_saturation]
       - type: detector

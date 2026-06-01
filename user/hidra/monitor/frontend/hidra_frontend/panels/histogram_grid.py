@@ -1,9 +1,9 @@
-"""GridPanel — the default panel: a fixed list of histograms in an N-column grid.
+"""HistogramGridPanel — the default panel: a fixed list of histograms in an N-column grid.
 
-This is the panel type you reference with `type: grid` in
+This is the panel type you reference with `type: histograms` in
 `config.yaml`. It expects:
 
-    - type: grid
+    - type: histograms
       cols: 2                                # optional, default 2
       histograms: [hist_name_1, hist_name_2, ...]
 
@@ -26,7 +26,7 @@ from .base import Panel
 from .graph_controls import controls_overlay
 
 
-class GridPanel(Panel):
+class HistogramGridPanel(Panel):
     def histogram_names(self) -> list[str]:
         return list(self.params["histograms"])
 

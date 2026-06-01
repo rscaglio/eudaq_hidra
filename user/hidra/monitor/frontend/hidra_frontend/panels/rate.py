@@ -167,7 +167,7 @@ def _rate_number_figure(rate: Optional[float]) -> go.Figure:
         margin=dict(l=10, r=10, t=28, b=6),
         paper_bgcolor=theme.BG,
         plot_bgcolor=theme.BG,
-        font=dict(color=theme.FG),
+        font=dict(color=theme.FG, family=theme.FONT_FAMILY),
         uirevision="rate-number",
     )
     if rate is None:
@@ -189,7 +189,7 @@ def _sparkline_figure(history: list[float]) -> go.Figure:
         margin=dict(l=6, r=6, t=8, b=6),
         paper_bgcolor=theme.BG,
         plot_bgcolor=theme.BG,
-        font=dict(color=theme.FG),
+        font=dict(color=theme.FG, family=theme.FONT_FAMILY),
         uirevision="rate-spark",
         showlegend=False,
         xaxis=dict(visible=False),

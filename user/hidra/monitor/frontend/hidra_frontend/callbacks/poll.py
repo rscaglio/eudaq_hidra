@@ -31,6 +31,7 @@ import logging
 
 from dash import ALL, Dash, Input, Output, State, ctx, html, no_update
 
+from .. import theme
 from ..backend_client import BackendClient
 from ..config import Config
 from ..decoders import Decoder
@@ -163,20 +164,26 @@ def register(
             with Phase("poll.apply_controls"):
                 _apply_graph_controls(panels, figures_out, reset_data or {})
 
-        # Build the status bar message.
+        # Build the status bar message: a coloured state dot + text. The
+        # dot encodes backend health at a glance (green ok / red
+        # unreachable / amber idle).
         pump_hint = config.polling.server_pump_ms_hint
         n_ok = sum(1 for v in data.values() if v is not None)
         n_total = len(data)
-        overlay_text = f" · overlay: {overlay_file}" if overlay_file else ""
+        overlay_text = f"  ·  overlay: {overlay_file}" if overlay_file else ""
         if not wanted:
-            status = f"no histograms requested · server pump ~{pump_hint} ms"
+            dot, text = theme.WARN, f"no histograms requested  ·  server pump ~{pump_hint} ms"
         elif not reachable:
-            status = f"⚠️  cannot reach backend at {config.backend.url}{overlay_text}"
+            dot, text = theme.ERR, f"cannot reach backend at {config.backend.url}{overlay_text}"
         else:
-            status = (
-                f"✅  {n_ok}/{n_total} histograms · poll #{n_intervals} · "
+            dot, text = theme.OK, (
+                f"{n_ok}/{n_total} histograms  ·  poll #{n_intervals}  ·  "
                 f"server pump ~{pump_hint} ms{overlay_text}"
             )
+        status = [
+            html.Span("●", style={"color": dot, "marginRight": "8px", "textShadow": f"0 0 8px {dot}"}),
+            text,
+        ]
 
         # Periodic perf summary so it's easy to spot when something
         # gets slow (e.g. lots of histograms added to a tab).

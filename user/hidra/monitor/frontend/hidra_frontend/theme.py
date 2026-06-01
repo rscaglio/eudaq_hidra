@@ -2,6 +2,10 @@
 
 import plotly.graph_objects as go
 
+# Font family shared by the UI (CSS) and the Plotly figures, so plot text
+# speaks the same visual language as the rest of the dashboard.
+FONT_FAMILY = "monospace"
+
 BG = "#1e1e2e"
 BG_ALT = "#181825"
 FG = "#cdd6f4"
@@ -27,7 +31,7 @@ def base_figure_layout(title: str) -> dict:
         margin=dict(l=40, r=20, t=40, b=40),
         paper_bgcolor=BG,
         plot_bgcolor=BG,
-        font=dict(color=FG),
+        font=dict(color=FG, family=FONT_FAMILY),
         xaxis=dict(
             showgrid=True,
             gridcolor=GRID,

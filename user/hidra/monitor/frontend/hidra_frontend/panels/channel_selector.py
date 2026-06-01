@@ -126,7 +126,7 @@ class ChannelSelectorPanel(Panel):
             value=self._selected,
             clearable=False,
             placeholder="(no channels on backend)" if not options else "select a channel",
-            style={"width": "320px", "color": "#000"},
+            style={"width": "320px"},
         )
         graph = html.Div(
             className="plot-cell",

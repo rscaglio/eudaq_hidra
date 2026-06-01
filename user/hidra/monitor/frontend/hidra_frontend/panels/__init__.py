@@ -15,12 +15,12 @@ from __future__ import annotations
 from .base import Panel
 from .channel_selector import ChannelSelectorPanel
 from .detector import DetectorPanel
-from .grid import GridPanel
+from .histogram_grid import HistogramGridPanel
 from .metric import MetricPanel
 from .rate import RatePanel
 
 PANEL_TYPES: dict[str, type[Panel]] = {
-    "grid": GridPanel,
+    "histograms": HistogramGridPanel,
     "metric": MetricPanel,
     "channel_selector": ChannelSelectorPanel,
     "detector": DetectorPanel,

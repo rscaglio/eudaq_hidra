@@ -54,6 +54,19 @@ COLORSCALE = "Viridis"
 
 
 class DetectorPanel(Panel):
+    def __init__(self, panel_id, params):
+        super().__init__(panel_id, params)
+        # The spatial layout (grid extent, per-cell module labels and
+        # channel indices) derives only from the calo mapping, which is
+        # fixed for the process lifetime. Build it once on first render
+        # and reuse it every poll — only the `z` colours change.
+        self._geometry: Optional[dict] = None
+
+    def _geom(self) -> Optional[dict]:
+        if self._geometry is None:
+            self._geometry = _build_geometry(get_pmt_channel_info())
+        return self._geometry
+
     def _hist_name(self) -> str:
         return self.params.get("histogram", "ADC_mean")
 
@@ -95,8 +108,8 @@ class DetectorPanel(Panel):
     def render(self, figs, payloads, client_state):
         payload = payloads.get(self._hist_name())
         means = _channel_means(payload)
-        info = get_pmt_channel_info()
-        return [_detector_figure(ptype, means, info, self._value_label()) for ptype in PMT_TYPES]
+        geom = self._geom()
+        return [_detector_figure(ptype, means, geom, self._value_label()) for ptype in PMT_TYPES]
 
 
 def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
@@ -134,21 +147,65 @@ def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
     return means
 
 
+def _build_geometry(info: dict[int, dict]) -> Optional[dict]:
+    """Precompute the static spatial layout shared by every poll.
+
+    The grid extent and the per-cell module labels / channel indices are
+    fixed by the calo mapping, so we build them once. Returns None when
+    there is no mapping (the figure then shows a "no module mapping"
+    placeholder). The returned dict holds, per PMT type, the `text` and
+    `customdata` grids and a flat list of `(row_idx, col_idx, channel)`
+    placements that `render` walks to fill in just the `z` values.
+
+    The grid spans the full integer row/column range of *all* PMT modules
+    (not just one type's) so the S and C maps line up and any missing
+    position stays an empty cell rather than being collapsed away.
+    """
+    if not info:
+        return None
+
+    all_cols = [d["column"] for d in info.values()]
+    all_rows = [d["row"] for d in info.values()]
+    columns = list(range(min(all_cols), max(all_cols) + 1))
+    rows = list(range(min(all_rows), max(all_rows) + 1))
+    col_idx = {c: i for i, c in enumerate(columns)}
+    row_idx = {r: i for i, r in enumerate(rows)}
+
+    per_type: dict[str, dict] = {}
+    for pmt_type in PMT_TYPES:
+        text: list[list[str]] = [[""] * len(columns) for _ in rows]
+        customdata: list[list[Optional[int]]] = [[None] * len(columns) for _ in rows]
+        cells: list[tuple[int, int, int]] = []
+        for d in info.values():
+            if d["type"] != pmt_type:
+                continue
+            ri, ci = row_idx[d["row"]], col_idx[d["column"]]
+            text[ri][ci] = d["module"]
+            customdata[ri][ci] = d["channel"]
+            cells.append((ri, ci, d["channel"]))
+        per_type[pmt_type] = {"text": text, "customdata": customdata, "cells": cells}
+
+    return {"columns": columns, "rows": rows, "per_type": per_type}
+
+
 def _detector_figure(
     pmt_type: str,
     means: Optional[dict[int, float]],
-    info: dict[int, dict],
+    geom: Optional[dict],
     value_label: str = "mean ADC",
 ) -> go.Figure:
     """One figure for a PMT type: a single Heatmap over the (row, column)
-    grid, each cell coloured by that module's mean ADC."""
+    grid, each cell coloured by that module's mean ADC.
+
+    `geom` is the precomputed static layout (see `_build_geometry`); only
+    the `z` colours are rebuilt here, per poll."""
     title = f"Detector — {pmt_type} channels"
     # Build layout + trace as plain data and construct the go.Figure once
     # at the end — building two heatmaps per poll this way is much cheaper
     # than go.Figure()+update_layout() (Plotly validation dominates).
     layout = theme.base_figure_layout(title)
 
-    if not info:
+    if geom is None:
         layout["annotations"] = [dict(text="no module mapping", showarrow=False, font=dict(color=theme.WARN, size=14))]
         return go.Figure(layout=layout)
 
@@ -157,42 +214,28 @@ def _detector_figure(
         layout["annotations"] = [dict(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))]
         return go.Figure(layout=layout)
 
-    # The grid spans the full integer row/column range of *all* PMT
-    # modules (not just the present ones) so the S and C maps line up
-    # and any missing position is left as an empty cell rather than
-    # collapsed away.
-    all_cols = [d["column"] for d in info.values()]
-    all_rows = [d["row"] for d in info.values()]
-    columns = list(range(min(all_cols), max(all_cols) + 1))
-    rows = list(range(min(all_rows), max(all_rows) + 1))
-    col_idx = {c: i for i, c in enumerate(columns)}
-    row_idx = {r: i for i, r in enumerate(rows)}
+    columns = geom["columns"]
+    rows = geom["rows"]
+    cell_info = geom["per_type"][pmt_type]
 
-    # z = value per cell (None where there is no module / no data this
-    # poll); text = the module label shown in the cell; customdata = the
-    # ADC channel index, carried through to clickData so a click can
-    # navigate to that channel's histogram.
+    # Only `z` varies poll-to-poll; the text/customdata grids and cell
+    # placements come straight from the cached geometry.
     z: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
-    text: list[list[str]] = [[""] * len(columns) for _ in rows]
-    customdata: list[list[Optional[int]]] = [[None] * len(columns) for _ in rows]
-    for d in info.values():
-        if d["type"] != pmt_type:
-            continue
-        ri, ci = row_idx[d["row"]], col_idx[d["column"]]
-        value = means.get(d["channel"])
+    values: list[float] = []
+    for ri, ci, channel in cell_info["cells"]:
+        value = means.get(channel)
         z[ri][ci] = value
-        text[ri][ci] = d["module"]
-        customdata[ri][ci] = d["channel"]
+        if value is not None:
+            values.append(value)
 
-    values = [v for rowvals in z for v in rowvals if v is not None]
     cmin, cmax = (min(values), max(values)) if values else (0.0, 1.0)
     if cmin == cmax:
         cmax = cmin + 1.0
 
     heatmap = go.Heatmap(
         x=columns, y=rows, z=z,
-        text=text, texttemplate="%{text}",
-        customdata=customdata,
+        text=cell_info["text"], texttemplate="%{text}",
+        customdata=cell_info["customdata"],
         textfont=dict(size=11),
         colorscale=COLORSCALE,
         zmin=cmin, zmax=cmax,

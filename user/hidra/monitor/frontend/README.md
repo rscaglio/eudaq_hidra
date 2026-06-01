@@ -63,6 +63,17 @@ overlay cache, perf counters) in memory, so multiple gunicorn workers
 each have their own copy. The default of 1 is the safe choice for
 this dashboard.
 
+Note on browser sessions: some interactive state also lives per
+process and is therefore **shared across all connected browsers**, not
+isolated per session. In particular the channel-selector's current
+channel (`ChannelSelectorPanel._selected`) and the rate panel's
+history/EMA (`RatePanel._history`/`_ema`/`_prev_count`) are global: if
+two people open the dashboard at once, picking a channel in one tab
+changes it for everyone, and the rate sparkline mixes both clients'
+poll cadences. This is acceptable for the intended single-screen
+control-room use; making it per-session would require routing that
+state through per-session `dcc.Store`s instead of instance attributes.
+
 ### Dev server (Flask, with `--debug` hot-reload)
 
 If you specifically want the Flask dev server (e.g. for `--debug`
@@ -104,7 +115,7 @@ hidra_frontend/
 
   panels/                    # how a tab's content is built
     base.py                  #   Panel ABC — implement this for custom layouts
-    grid.py                  #   "grid" panel type (the default)
+    histogram_grid.py        #   "histograms" panel type (the default)
     channel_selector.py      #   stub for future per-channel TH1Ds
 
   callbacks/                 # Dash callbacks (one file per concern)
@@ -140,7 +151,7 @@ tabs:
   - id: summary                   # url-safe slug, must be unique
     label: Summary                # human readable, shown on the tab
     panels:
-      - type: grid                # see "panel types" below
+      - type: histograms          # see "panel types" below
         cols: 2
         histograms: [event_count, events_vs_time]
 ```
@@ -161,14 +172,14 @@ Append an entry under `tabs:` in `config.yaml`:
   - id: my_tab
     label: My tab
     panels:
-      - type: grid
+      - type: histograms
         cols: 2
         histograms: [some_hist, other_hist]
 ```
 
 ### Built-in panel types
 
-- `grid` — fixed list of histograms in an N-column grid.
+- `histograms` — fixed list of histograms in an N-column grid.
   Params: `histograms: [name1, name2, ...]`, `cols: 2` (default).
 - `metric` — show each histogram's content as a single big number
   ("scorecard"). Good for counter-like histograms (e.g.
@@ -186,7 +197,7 @@ Append an entry under `tabs:` in `config.yaml`:
 
 ### Add a custom panel (custom layout / widgets)
 
-When `grid` isn't enough — e.g. you want a slider, a multi-row
+When `histograms` isn't enough — e.g. you want a slider, a multi-row
 custom layout, or special interactions — write a Panel subclass.
 
 1. Create `hidra_frontend/panels/my_panel.py`:

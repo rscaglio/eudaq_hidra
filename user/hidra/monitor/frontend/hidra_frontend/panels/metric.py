@@ -85,7 +85,7 @@ def _indicator_figure(name: str, value: Optional[float]) -> go.Figure:
         margin=dict(l=10, r=10, t=10, b=10),
         paper_bgcolor=theme.BG,
         plot_bgcolor=theme.BG,
-        font=dict(color=theme.FG),
+        font=dict(color=theme.FG, family=theme.FONT_FAMILY),
         # Keep the per-card uirevision so Plotly doesn't reset any UI
         # state we might add in the future (mode switches etc.).
         uirevision=name,

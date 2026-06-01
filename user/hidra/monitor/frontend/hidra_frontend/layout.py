@@ -74,12 +74,13 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
                 value=config.overlay.default_file,
                 placeholder="(none)",
                 clearable=True,
-                style={"width": "260px", "color": "#000"},
+                style={"width": "260px"},
             ),
             html.Button(
                 "Refresh files",
                 id="overlay-refresh-btn",
                 n_clicks=0,
+                className="btn",
                 style=_button_style(),
             ),
         ]
@@ -93,64 +94,87 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
             "padding": "16px",
         },
         children=[
-            # ── Top bar: title, pause, poll rate, overlay ─────────────
+            # ── Sticky header: stays pinned so the controls and tabs are
+            #    always reachable while the panels below scroll. ─────────
             html.Div(
-                style={"display": "flex", "alignItems": "center", "gap": "16px", "marginBottom": "8px"},
+                className="app-header",
+                style={
+                    "position": "sticky",
+                    "top": "0",
+                    "zIndex": 50,
+                    "backgroundColor": theme.BG,
+                    "paddingTop": "4px",
+                    "paddingBottom": "8px",
+                    "marginBottom": "4px",
+                    "borderBottom": f"1px solid {theme.BORDER}",
+                },
                 children=[
-                    html.H2(
-                        "HiDRa Monitor",
-                        id="app-title",
-                        style={
-                            "color": theme.ACCENT,
-                            "margin": 0,
-                            "letterSpacing": "1px",
-                            # Subtle accent glow on the title (HTML text takes
-                            # text-shadow, unlike the SVG plot numbers).
-                            "textShadow": "0 0 18px rgba(203, 166, 247, 0.45)",
-                        },
+                    # Top bar: title, pause, poll rate, overlay
+                    html.Div(
+                        style={"display": "flex", "alignItems": "center", "gap": "16px", "marginBottom": "8px"},
+                        children=[
+                            html.H2(
+                                "HiDRa Monitor",
+                                id="app-title",
+                                style={
+                                    "color": theme.ACCENT,
+                                    "margin": 0,
+                                    "letterSpacing": "1px",
+                                    # Subtle accent glow on the title (HTML text
+                                    # takes text-shadow, unlike the SVG numbers).
+                                    "textShadow": "0 0 18px rgba(203, 166, 247, 0.45)",
+                                },
+                            ),
+                            html.Button("⏸ Pause", id="pause-btn", n_clicks=0, className="btn", style=_button_style()),
+                            html.Span("Poll:", style={"color": theme.FG, "fontSize": "13px"}),
+                            dcc.Dropdown(
+                                id="poll-rate-dropdown",
+                                options=poll_choices,
+                                value=config.polling.default_ms,
+                                clearable=False,
+                                style={"width": "120px"},
+                            ),
+                            *overlay_controls,
+                        ],
                     ),
-                    html.Button("⏸ Pause", id="pause-btn", n_clicks=0, style=_button_style()),
-                    html.Span("Poll:", style={"color": theme.FG, "fontSize": "13px"}),
-                    dcc.Dropdown(
-                        id="poll-rate-dropdown",
-                        options=poll_choices,
-                        value=config.polling.default_ms,
-                        clearable=False,
-                        style={"width": "120px", "color": "#000"},
+
+                    # Status bar (updated on every poll). Plain text with a
+                    # coloured state dot prepended by the poll callback.
+                    html.Div(
+                        id="status-bar",
+                        style={"color": theme.FG, "fontSize": "12px"},
+                        children=f"server pump ~{pump_hint} ms",
                     ),
-                    *overlay_controls,
+
+                    # Tabs
+                    dcc.Tabs(
+                        id="tabs",
+                        value=first_tab,
+                        colors={"border": theme.SURFACE, "primary": theme.ACCENT, "background": theme.BG_ALT},
+                        style={"marginTop": "10px"},
+                        children=[
+                            dcc.Tab(
+                                label=tab.label,
+                                value=tab.id,
+                                style={"color": theme.FG, "backgroundColor": theme.BG_ALT, "border": "none"},
+                                selected_style={
+                                    "color": theme.ACCENT,
+                                    "backgroundColor": theme.BG,
+                                    "fontWeight": "bold",
+                                    # Accent indicator on the active tab.
+                                    "borderTop": f"2px solid {theme.ACCENT}",
+                                    "boxShadow": "0 0 14px rgba(203, 166, 247, 0.18)",
+                                },
+                            )
+                            for tab in config.tabs
+                        ],
+                    ),
                 ],
             ),
 
-            # ── Status bar (updated on every poll) ────────────────────
-            html.Div(
-                id="status-bar",
-                style={"color": theme.OK, "marginBottom": "12px", "fontSize": "12px"},
-                children=f"server pump ~{pump_hint} ms",
-            ),
-
-            # ── Tabs ─────────────────────────────────────────────────
-            dcc.Tabs(
-                id="tabs",
-                value=first_tab,
-                colors={"border": theme.SURFACE, "primary": theme.ACCENT, "background": theme.BG_ALT},
-                children=[
-                    dcc.Tab(
-                        label=tab.label,
-                        value=tab.id,
-                        style={"color": theme.FG, "backgroundColor": theme.BG_ALT, "border": "none"},
-                        selected_style={
-                            "color": theme.ACCENT,
-                            "backgroundColor": theme.BG,
-                            "fontWeight": "bold",
-                            # Accent indicator on the active tab.
-                            "borderTop": f"2px solid {theme.ACCENT}",
-                            "boxShadow": "0 0 14px rgba(203, 166, 247, 0.18)",
-                        },
-                    )
-                    for tab in config.tabs
-                ],
-            ),
+            # Frozen-data indicator: shown by the pause callback so a paused
+            # dashboard can't be mistaken for live data.
+            html.Div(id="paused-badge", children="⏸ PAUSED — data frozen", style={"display": "none"}),
 
             # The active tab's panels are injected here by
             # `update_tab_content` in callbacks/poll.py.
