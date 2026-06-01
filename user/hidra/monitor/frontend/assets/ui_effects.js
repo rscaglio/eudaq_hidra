@@ -5,7 +5,12 @@
  * removes itself when done. The overlay has pointer-events disabled so it
  * never blocks the UI.
  *
- * Triggers: a triple-click on the title, and once a day at local midnight.
+ * Triggers:
+ *   - a triple-click on the title (always available), and
+ *   - optionally, once a day at a configured local hour. That automatic
+ *     trigger is read from the `#ui-effects-config` element's
+ *     `data-shower-hour` attribute (set from config.yaml's
+ *     `ui_effects.shower_hour`); an empty value disables it.
  */
 (function () {
   "use strict";
@@ -30,19 +35,52 @@
     clickTimer = setTimeout(function () { clicks = 0; }, 1200);
   });
 
-  // ── Trigger: once a day at local midnight ──────────────────────────
+  // ── Trigger: once a day at a configured local hour ─────────────────
+  // The hour comes from config.yaml via the #ui-effects-config element.
+  // An empty / out-of-range value disables the automatic trigger.
+  function readShowerHour(el) {
+    var v = el.getAttribute("data-shower-hour");
+    if (v === null || v === "" || v === "null") return null;
+    var h = parseInt(v, 10);
+    return isNaN(h) || h < 0 || h > 23 ? null : h;
+  }
+
   // Recompute the delay each time (instead of a fixed 24h interval) so it
   // stays aligned across DST changes. Only fires while a page is open.
-  function msUntilNextMidnight() {
+  function msUntilNextHour(hour) {
     var now = new Date();
-    var next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    var next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
     return next - now;
   }
-  (function scheduleMidnight() {
-    setTimeout(function () {
-      shower();
-      scheduleMidnight();
-    }, msUntilNextMidnight());
+
+  function startScheduler(el) {
+    var hour = readShowerHour(el);
+    if (hour === null) return; // automatic trigger disabled in config
+    (function scheduleDaily() {
+      setTimeout(function () {
+        shower();
+        scheduleDaily();
+      }, msUntilNextHour(hour));
+    })();
+  }
+
+  // Dash renders the layout (and thus #ui-effects-config) client-side
+  // after this asset loads, so wait for the element before scheduling.
+  (function waitForConfig() {
+    var el = document.getElementById("ui-effects-config");
+    if (el) {
+      startScheduler(el);
+      return;
+    }
+    var obs = new MutationObserver(function () {
+      var found = document.getElementById("ui-effects-config");
+      if (found) {
+        obs.disconnect();
+        startScheduler(found);
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
   })();
 
   function toast(text) {

@@ -41,6 +41,15 @@ class OverlayCfg:
 
 
 @dataclass
+class UICfg:
+    # Local hour (0-23) at which the daily "cosmic-ray shower" animation
+    # fires automatically. None disables the scheduled trigger (the
+    # animation is still available on demand via a triple-click on the
+    # title).
+    shower_hour: int | None = None
+
+
+@dataclass
 class PanelCfg:
     type: str
     params: dict[str, Any]
@@ -59,6 +68,7 @@ class Config:
     polling: PollingCfg
     overlay: OverlayCfg
     tabs: list[TabCfg]
+    ui: UICfg = field(default_factory=UICfg)
     decoder: str = "pure"
     config_dir: Path = field(default_factory=Path)
 
@@ -118,11 +128,19 @@ def load_config(path: str | Path) -> Config:
 
     decoder = str(raw.get("decoder", "pure"))
 
+    u = raw.get("ui_effects") or {}
+    raw_hour = u.get("shower_hour")
+    shower_hour = int(raw_hour) if raw_hour is not None else None
+    if shower_hour is not None and not 0 <= shower_hour <= 23:
+        raise ValueError(f"ui_effects.shower_hour must be in 0..23 (or null), got {shower_hour}")
+    ui = UICfg(shower_hour=shower_hour)
+
     return Config(
         backend=backend,
         polling=polling,
         overlay=overlay,
         tabs=tabs,
+        ui=ui,
         decoder=decoder,
         config_dir=config_dir,
     )

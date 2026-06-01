@@ -199,6 +199,15 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
             # poll callback folds these into each figure's uirevision so a
             # click clears the preserved zoom on the next tick.
             dcc.Store(id="graph-reset", data={}),
+
+            # Static config read by assets/ui_effects.js (a plain asset, not
+            # a Dash callback): the local hour for the daily "shower"
+            # animation, or empty to disable the automatic trigger.
+            html.Div(
+                id="ui-effects-config",
+                style={"display": "none"},
+                **{"data-shower-hour": "" if config.ui.shower_hour is None else str(config.ui.shower_hour)},
+            ),
         ],
     )
 
