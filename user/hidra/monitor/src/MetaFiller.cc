@@ -46,7 +46,7 @@ MetaFiller::MetaFiller(HistogramRegistry& reg)
   m_h_events_per_spill->SetCanExtend(TH1::kAllAxes);
 
   // Inter-event time (begin[i] - begin[i-1]), log-binned in microseconds.
-  const std::vector<double> dt_edges = LogBinEdges(1.0, 1.0e7, 10); // 1 us .. 10 s, 10 bins/decade
+  const std::vector<double> dt_edges = LogBinEdges(1.0, 1.0e7, 20); // 1 us .. 10 s, 20 bins/decade
   m_h_dt_between_events = reg.Add(std::make_unique<TH1D>(
       "dt_between_events", "Time between consecutive events;#Delta t [#mus];events",
       static_cast<int>(dt_edges.size()) - 1, dt_edges.data()));
