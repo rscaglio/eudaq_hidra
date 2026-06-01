@@ -4,6 +4,7 @@
 
 #include "SummaryFiller.hh"
 #include "XDCFiller.hh"
+#include "MetaFiller.hh"
 #include "HidraUtils.hh"
 #include "ScopedTimer.hh"
 
@@ -37,6 +38,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
 
   chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
   chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100));
+  chain.Add(std::make_unique<MetaFiller>(registry));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
