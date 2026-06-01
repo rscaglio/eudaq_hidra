@@ -75,4 +75,22 @@ class BackendClient:
             logger.warning("fetch_multi failed: %s", exc)
             return {n: None for n in names}
 
-        return {name: (entry if entry else None) for name, entry in zip(names, entries)}
+        # Always return exactly one item per requested name. If the
+        # backend sends back fewer entries than requested (partial
+        # response, proxy truncation, server bug), zip() would silently
+        # drop the trailing names — and the caller's status accounting
+        # (n_total = len(data)) would be wrong too. Index by position
+        # with a bounds check instead, filling any shortfall with None.
+        if not isinstance(entries, list):
+            logger.warning("fetch_multi: expected a JSON list, got %s", type(entries).__name__)
+            entries = []
+        if len(entries) != len(names):
+            logger.warning(
+                "fetch_multi: backend returned %d entries for %d requested names; "
+                "missing ones treated as absent",
+                len(entries), len(names),
+            )
+        return {
+            name: (entries[i] if i < len(entries) and entries[i] else None)
+            for i, name in enumerate(names)
+        }
