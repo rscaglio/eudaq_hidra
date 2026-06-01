@@ -53,6 +53,7 @@ tabs:
       - type: rate
         histogram: events_received
         count_histogram: event_count
+        smoothing: 0.9  # alpha for exponential smoothing of the sparkline; 1 = no smoothing
       # Detector map: every module drawn at its (row, column) position,
       # coloured by mean ADC. Two figures: S channels and C channels.
       # `link_tab` makes the modules clickable: clicking one opens that

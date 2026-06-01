@@ -7,13 +7,17 @@ counter is pre-prescale, this is the real DAQ rate regardless of
 ``EVENT_PRESCALE`` (a sampled counter like ``event_count`` would read low
 by a factor of the prescale).
 
+The big-number card always shows this **raw** instantaneous rate;
+``smoothing`` only smooths the sparkline next to it.
+
 Config (in ``config.yaml``)::
 
     - type: rate
       histogram: events_received   # optional, this is the default
       count_histogram: event_count # optional; adds a total-count card
       count_label: "Events"        # optional title for that card
-      smoothing: 0.4               # optional EMA factor in (0, 1]; 1 = none
+      smoothing: 0.4               # optional EMA factor for the SPARKLINE
+                                   # in [0.02, 1]; 1 = none (number is raw)
       history: 120                 # optional sparkline length (samples)
 
 Graph slots, left to right on one row: the rate number card (slot 0), a
@@ -30,6 +34,7 @@ payload here, like the metric panel.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
@@ -40,7 +45,15 @@ from .. import theme
 from .base import Panel
 from .metric import _indicator_figure
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_HIST = "events_received"
+
+# Smallest practical EMA factor. The averaging window is ~1/alpha samples,
+# so values below this (e.g. 0.001 ≈ 1000 samples ≈ minutes of poll) make
+# the sparkline take far too long to track reality and look "frozen". The
+# big-number card is always raw, so this floor only affects the sparkline.
+MIN_SMOOTHING = 0.02
 
 
 class RatePanel(Panel):
@@ -51,14 +64,30 @@ class RatePanel(Panel):
         self._count_hist = params.get("count_histogram")
         # Friendly label for that card (the histogram name is ugly as a title).
         self._count_label = params.get("count_label", "Events")
-        # EMA factor for the displayed number / sparkline: 1.0 = raw, no
-        # smoothing; smaller = smoother but laggier.
-        self._alpha = float(params.get("smoothing", 0.4))
+        # EMA factor for the *sparkline*: 1.0 = raw, no smoothing; smaller
+        # = smoother but laggier. The big-number card ignores this and
+        # always shows the raw instantaneous rate. Valid range is
+        # [MIN_SMOOTHING, 1.0]: alpha <= 0 freezes the EMA on the first
+        # sample, alpha > 1 overshoots, and very small alpha makes the
+        # sparkline unusably slow. Clamp out-of-range values (keeping the
+        # user's intended direction) and warn rather than failing.
+        alpha = float(params.get("smoothing", 0.4))
+        if not MIN_SMOOTHING <= alpha <= 1.0:
+            clamped = min(1.0, max(MIN_SMOOTHING, alpha))
+            logger.warning(
+                "rate panel %s: smoothing=%s outside [%s, 1]; clamping to %s",
+                panel_id, alpha, MIN_SMOOTHING, clamped,
+            )
+            alpha = clamped
+        self._alpha = alpha
         self._maxlen = int(params.get("history", 120))
         self._prev_count: Optional[float] = None
         self._prev_time: Optional[float] = None
         self._ema: Optional[float] = None
         self._history: list[float] = []
+        # Last raw (un-smoothed) instantaneous rate — what the number card
+        # shows; kept so a transient missing counter doesn't blank it.
+        self._last_rate: Optional[float] = None
 
     # ---- Panel API -------------------------------------------------------
 
@@ -116,12 +145,16 @@ class RatePanel(Panel):
     # ---- rate computation ------------------------------------------------
 
     def _update(self, count: Optional[float]) -> Optional[float]:
-        """Fold one new counter reading into the rate state; return the
-        current smoothed rate (Hz), or None if not computable yet."""
+        """Fold one new counter reading into the rate state.
+
+        Returns the raw (un-smoothed) instantaneous rate in Hz for the
+        big-number card, or None if not computable yet. The smoothed EMA
+        is accumulated into ``self._history`` and only drives the
+        sparkline."""
         if count is None:
             # Counter missing (e.g. backend not yet rebuilt): keep showing
             # the last known value, don't advance the deltas.
-            return self._ema
+            return self._last_rate
 
         now = time.monotonic()
         rate: Optional[float] = None
@@ -140,11 +173,13 @@ class RatePanel(Panel):
         self._prev_time = now
 
         if rate is not None:
+            # Raw rate drives the number card; the EMA drives the sparkline.
+            self._last_rate = rate
             self._ema = rate if self._ema is None else self._alpha * rate + (1 - self._alpha) * self._ema
             self._history.append(self._ema)
             if len(self._history) > self._maxlen:
                 self._history = self._history[-self._maxlen:]
-        return self._ema
+        return self._last_rate
 
 
 def _extract_count(payload: Optional[dict]) -> Optional[float]:
