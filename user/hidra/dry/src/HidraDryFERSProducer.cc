@@ -39,9 +39,10 @@ void HidraDryFERSProducer::DoConfigure() {
 }
 
 void HidraDryFERSProducer::DoStartRun() {
-  // (Re)open the replay file and position right after the file header, exactly as for the first run. DoStopRun() closes
-  // the file, so without this a second start (without a re-configure) would read from a closed stream and replay
-  // nothing. Reusing ReadFileInfo() guarantees every run starts from the same known-good position.
+  // ReadFileInfo() reopens the file and reads the FILE_HEADER_SIZE-byte header, leaving the get pointer at the first
+  // event block — exactly the position the first run uses, where Mainloop starts reading. DoStopRun() closes the file,
+  // so without this a second start (without a re-configure) would read from a closed stream and replay nothing.
+  // (This also drops the old re-run seek to FILE_HEADER_SIZE+1, which was one byte past the first event.)
   ReadFileInfo();
 
   m_eudaq_run_number = GetRunNumber();
@@ -90,6 +91,9 @@ void HidraDryFERSProducer::DoTerminate() {
   }
 }
 
+// Open the replay file (closing it first if already open), read the FILE_HEADER_SIZE-byte header (which also yields the
+// file run number) and leave the get pointer at the first event block. Called both at configure and at the start of
+// every run, so each run replays from the same known-good position.
 void HidraDryFERSProducer::ReadFileInfo() {
   if (m_ifile.is_open()) {
     m_ifile.close();
