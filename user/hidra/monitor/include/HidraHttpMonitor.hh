@@ -41,6 +41,7 @@
 
 #include <HidraXdcDecoder.hh>
 #include <HidraFersDecoder.hh>
+#include <HidraMetaDecoder.hh>
 
 #include <eudaq/Factory.hh>
 #include <eudaq/Monitor.hh>
@@ -104,6 +105,9 @@ private:
     /** Decoders carrying run/config-dependent state. Swapped by DoConfigure() under m_state_mutex. */
     hidra::HidraXdcDecoder xdc_decoder;
     hidra::HidraFersDecoder fers_decoder;
+
+    /** Stateless decoder that extracts per-event metadata (trigger mask, spill, …) from the EUDAQ event. */
+    hidra::HidraMetaDecoder meta_decoder;
 
     DurationAccumulator duration_xdc_decode{"decode_xdc"};
     DurationAccumulator duration_fers_decode{"decode_fers"};

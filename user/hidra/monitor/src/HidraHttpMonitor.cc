@@ -268,6 +268,9 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
 
   HidraEvent decoded;
 
+  // Per-event metadata (trigger mask, spill, timestamps, …) comes from the EUDAQ event/tags, not the binary payload.
+  m_ctx->meta_decoder.decode(*ev, decoded.meta);
+
   for (size_t index = 0; index < ev->GetNumSubEvent(); ++index) {
     eudaq::EventSPC subevent = ev->GetSubEvent(index); // no copy, just a shared pointer copy of the subevent handle
     if (!subevent) {
