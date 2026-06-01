@@ -106,9 +106,11 @@ std::string HidraHttpMonitor::MakeHistoOutputFile() const {
 #else
   localtime_r(&time_now, &tm_buf);
 #endif
-  char time_buff[13];
-  time_buff[12] = 0;
-  std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", &tm_buf);
+  // strftime null-terminates on success; zero-initialise so the buffer is a valid (empty) string if it ever fails.
+  char time_buff[13] = {};
+  if (std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", &tm_buf) == 0) {
+    HIDRA_WARN("strftime failed to format the timestamp for the monitor output file name");
+  }
 
   return eudaq::FileNamer(m_histo_output_pattern)
       .Set('X', ".root")
@@ -143,7 +145,9 @@ void HidraHttpMonitor::DoConfigure() {
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
                                              std::move(fers_decoder));
   } else {
-    // Reconfigure: keep the server alive, only swap the decoders to the new configuration.
+    // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
+    // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap
+    // does not need publisher.Mutex(); the unique lock already excludes DoReceive, the only reader.
     m_ctx->xdc_decoder = std::move(xdc_decoder);
     m_ctx->fers_decoder = std::move(fers_decoder);
   }

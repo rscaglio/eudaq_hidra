@@ -111,7 +111,11 @@ private:
     int event_prescale{1};
     std::atomic<uint64_t> event_counter{0};
 
-    /** True while a run is active and not yet finalized. Guards FinalizeRun(). Protected by publisher.Mutex(). */
+    /**
+     * True while a run is active and not yet finalized. Guards FinalizeRun().
+     * Read/written only under publisher.Mutex(); callers additionally hold
+     * m_state_mutex (shared or unique), which keeps the context alive.
+     */
     bool run_active{false};
 
     /** Build the context, register fillers and start the HTTP server. */

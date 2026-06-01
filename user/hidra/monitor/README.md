@@ -191,7 +191,7 @@ against a `DoReceive` that is still running.
 | Hook | `m_state_mutex` | `publisher.Mutex()` |
 |------|-----------------|---------------------|
 | `DoReceive` | shared | exclusive (inside `FillerChain::Fill`, decoding stays outside it) |
-| `DoConfigure` | unique | exclusive (to clear histogram contents) |
+| `DoConfigure` | unique | exclusive, only for the `registry.Reset()` step (the decoder swap happens earlier under `m_state_mutex` alone) |
 | `DoStartRun` | shared | exclusive (reset histograms + telemetry) |
 | `DoStopRun` | shared | exclusive (log telemetry + ROOT save) |
 | `DoReset` | shared | exclusive (reset histograms) |
