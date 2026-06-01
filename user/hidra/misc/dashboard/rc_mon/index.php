@@ -68,6 +68,32 @@ h1 {
   box-shadow: 0 0 18px var(--bad);
 }
 
+.led-metric {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.status-led {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bad);
+  box-shadow: 0 0 22px var(--bad);
+}
+
+.status-led.ok {
+  background: var(--ok);
+  box-shadow: 0 0 22px var(--ok);
+}
+
+.status-led.bad {
+  background: var(--bad);
+  box-shadow: 0 0 22px var(--bad);
+}
+
 .sub {
   color: var(--muted);
   font-size: 14px;
@@ -224,6 +250,14 @@ main {
     </div>
 
     <div class="card">
+      <div class="metric-label">BoardsMon</div>
+      <div class="led-metric">
+        <span id="boardsMonLed" class="status-led bad"></span>
+        <div class="metric-value" id="boardsMon">—</div>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="metric-label">DAQ age</div>
       <div class="metric-value" id="age">—</div>
     </div>
@@ -269,6 +303,20 @@ function stateClass(state) {
 
 function tagValue(tags, key) {
   return tags && tags[key] !== undefined ? tags[key] : null;
+}
+
+function updateBoardsMonStatus(devices) {
+  const boardsMon = tagValue(devices["HidraFERS2Producer"]?.tags, "BoardsMon");
+  const status = boardsMon === null ? "—" : String(boardsMon);
+  const isOk = status === "OK";
+
+  const valueEl = document.getElementById("boardsMon");
+  valueEl.textContent = status;
+  valueEl.classList.toggle("stopped", !isOk);
+
+  const led = document.getElementById("boardsMonLed");
+  led.classList.toggle("ok", isOk);
+  led.classList.toggle("bad", !isOk);
 }
 
 function escapeHtml(x) {
@@ -369,6 +417,7 @@ function render(data) {
     totalEvents = Number(tagValue(devices["HidraDataCollector"].tags,"EventsOnDisk")) || 0;
 
   document.getElementById("totalEvents").textContent = totalEvents;
+  updateBoardsMonStatus(devices);
 
   const globalStatus = computeGlobalStatus(deviceNames, devices, now, ageSec);
   const dot = document.getElementById("liveDot");
