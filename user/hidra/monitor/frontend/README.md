@@ -147,6 +147,12 @@ overlay:
   search_dir: reference           # where to look for .root files
   default_file: null
 
+ui_effects:
+  shower_hour: 0                  # local hour (0-23) for the daily "cosmic
+                                  # shower" animation; null disables the
+                                  # automatic trigger (triple-click the
+                                  # title still works either way)
+
 tabs:
   - id: summary                   # url-safe slug, must be unique
     label: Summary                # human readable, shown on the tab
