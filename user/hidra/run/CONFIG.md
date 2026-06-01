@@ -77,6 +77,7 @@ from the external FERSlib configuration file selected with `FERS_CONF_FILE`.
 | `FERS_POLL_SLEEP_US` | `1` | Sleep time, in microseconds, between polling loops. Lower values reduce latency but increase CPU usage. |
 | `FERS_MAX_EVENTS_PER_BOARD` | `0` | Optional. Maximum number of events read per board in each polling loop. Leave commented or set to `0` for no limit. |
 | `FERS_STATUS_POLL_INTERVAL_S` | `10` | Interval, in seconds, for polling monitor values such as voltage, current, temperatures and HV status. `0` disables status polling. |
+| `POLL_MONITOR_OUT_OF_SPILL` | `0` | If `1`, also polls monitor status once after 2 seconds without read events, regardless of the `FERS_STATUS_POLL_INTERVAL_S` timeout. |
 | `FERS_STATUS_ATTACH_TAGS` | `0` | If `1`, attaches the latest status values as tags to outgoing EUDAQ events. If `0`, status values are only logged. |
 | `FERS_SEND_TIMESTAMP` | `1` | If `1`, uses the FERS timestamp as the EUDAQ event timestamp. |
 

@@ -73,9 +73,13 @@ producer `.conf` section with:
 
 ```ini
 FERS_STATUS_POLL_INTERVAL_S = 2
+POLL_MONITOR_OUT_OF_SPILL = 1
 ```
 
-Set the value to `0` to disable polling. When enabled, the producer reads:
+Set the interval value to `0` to disable interval polling. When
+`POLL_MONITOR_OUT_OF_SPILL` is enabled, the producer also polls once after 2
+seconds without read events, regardless of the interval timeout. When enabled,
+the producer reads:
 
 - HV monitor voltage/current: `Vmon`, `Imon`
 - temperatures: FPGA, board, TDC0/TDC1 when available, HV module, detector
