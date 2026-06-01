@@ -238,6 +238,7 @@ private:
     m_max_total_events = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0);
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
     m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
+    m_poll_monitor_out_of_spill = conf->Get("POLL_MONITOR_OUT_OF_SPILL", 0) != 0;
     m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
     if (m_status_poll_interval_s < 0) {
       EUDAQ_WARN("FERS_STATUS_POLL_INTERVAL_S is negative; disabling FERS2 status polling");
@@ -271,6 +272,9 @@ private:
     if (m_status_poll_interval_s > 0) {
       EUDAQ_INFO("FERS2 status polling enabled every " + std::to_string(m_status_poll_interval_s) + " s");
     }
+    if (m_poll_monitor_out_of_spill) {
+      EUDAQ_INFO("FERS2 out-of-spill status polling enabled after 2 s without read events");
+    }
   }
 
   void DoStartRun() override {
@@ -281,6 +285,8 @@ private:
     m_event_queues.clear();
     m_monitor_status.clear();
     m_next_status_poll = std::chrono::steady_clock::time_point::min();
+    m_last_event_read = std::chrono::steady_clock::time_point::min();
+    m_polled_monitor_out_of_spill = false;
     for (const auto& board : m_board_manager->boards()) {
       m_event_queues[board.board_id()] = {};
     }
@@ -367,6 +373,8 @@ private:
       if (events.size() > 0) {
         HIDRA_DEBUG(
             "ReadAvailableEvents took {} ns to read {} FERSEvents", hidra::utils::getTimens() - ts, events.size());
+        m_last_event_read = std::chrono::steady_clock::now();
+        m_polled_monitor_out_of_spill = false;
       }
 
       if (!error.empty()) {
@@ -389,12 +397,15 @@ private:
   }
 
   void PollMonitorStatusIfDue() {
-    if (m_status_poll_interval_s <= 0) {
-      return;
-    }
-
     const auto now = std::chrono::steady_clock::now();
-    if (m_next_status_poll != std::chrono::steady_clock::time_point::min() && now < m_next_status_poll) {
+    const bool interval_poll_due =
+        m_status_poll_interval_s > 0 &&
+        (m_next_status_poll == std::chrono::steady_clock::time_point::min() || now >= m_next_status_poll);
+    const bool out_of_spill_poll_due =
+        m_poll_monitor_out_of_spill && m_last_event_read != std::chrono::steady_clock::time_point::min() &&
+        !m_polled_monitor_out_of_spill && now - m_last_event_read >= std::chrono::seconds(2);
+
+    if (!interval_poll_due && !out_of_spill_poll_due) {
       return;
     }
 
@@ -418,7 +429,12 @@ private:
     SetStatusTag("BoardsMon", monitorstatus == 0 ? "OK" : "NOK_"+std::to_string(monitorstatus));
     SendStatus();
 
-    m_next_status_poll = now + std::chrono::seconds(m_status_poll_interval_s);
+    if (m_status_poll_interval_s > 0) {
+      m_next_status_poll = now + std::chrono::seconds(m_status_poll_interval_s);
+    }
+    if (out_of_spill_poll_due) {
+      m_polled_monitor_out_of_spill = true;
+    }
   }
 
   void AddMonitorStatusTags(eudaq::Event& event) const {
@@ -598,10 +614,13 @@ private:
   uint64_t m_max_total_events;
   int m_poll_sleep_us = 1000;
   int m_status_poll_interval_s = 0;
+  bool m_poll_monitor_out_of_spill = false;
   bool m_attach_status_tags = true;
   bool m_send_timestamp = true;
   bool m_exit_of_run = false;
   std::chrono::steady_clock::time_point m_next_status_poll = std::chrono::steady_clock::time_point::min();
+  std::chrono::steady_clock::time_point m_last_event_read = std::chrono::steady_clock::time_point::min();
+  bool m_polled_monitor_out_of_spill = false;
   uint64_t m_stamp_last_sent_ns = 0;
   uint32_t m_dummy_spill_number = std::numeric_limits<uint32_t>::max();
   std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
