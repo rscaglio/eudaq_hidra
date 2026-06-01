@@ -43,7 +43,7 @@ browsable after the STOP. The long-lived state is bundled in `MonitorContext`
 | `DoStartRun` | reset histograms and per-run state (event counter, telemetry, fillers' run-relative state such as the start-of-run time reference), then keep serving. |
 | `DoStopRun` | log per-run telemetry and snapshot the histograms to a ROOT file. The server and the histograms stay alive and browsable. |
 | `DoReset` | clear histogram contents and fillers' run-relative state. |
-| `DoTerminate` | destroy the context, which stops the HTTP server. |
+| `DoTerminate` | finalize the run (telemetry + ROOT snapshot) if it is still active, then destroy the context, which stops the HTTP server. |
 | `DoReceive` | decode the sub-events and fill the histograms. |
 
 Because the server stays up, histograms are **reset in place** (`TH1::Reset()`),
@@ -77,10 +77,13 @@ state untouched at configure is safe.
 
 ## End-of-run ROOT snapshot
 
-At every `DoStopRun` the current histograms are written to a ROOT file via
+At `DoStopRun` — or at `DoTerminate` if the monitor is terminated while a run is
+still active — the current histograms are written to a ROOT file via
 `HistogramRegistry::SaveToFile()` (the histograms remain owned by the registry;
-writing does not transfer ownership). This lets users keep and compare the
-histograms of past runs offline.
+writing does not transfer ownership). The snapshot is taken at most once per run
+(guarded by `MonitorContext::run_active`), so a STOP followed by a TERMINATE does
+not save twice. This lets users keep and compare the histograms of past runs
+offline. `SaveToFile()` creates the parent directory if it does not exist.
 
 The output path is built from `HISTO_OUTPUT_PATTERN` with `eudaq::FileNamer`
 (same mechanism as the data collector's `EUDAQ_FW_PATTERN`). Setting the pattern
@@ -192,4 +195,4 @@ against a `DoReceive` that is still running.
 | `DoStartRun` | shared | exclusive (reset histograms + telemetry) |
 | `DoStopRun` | shared | exclusive (log telemetry + ROOT save) |
 | `DoReset` | shared | exclusive (reset histograms) |
-| `DoTerminate` | unique | not taken — destroying the context calls `publisher.Stop()`, which joins the pump thread; the pump thread itself needs `publisher.Mutex()`, so we must **not** hold it here or the join would deadlock |
+| `DoTerminate` | unique | exclusive, briefly, inside `FinalizeRun()` (telemetry + ROOT save for a still-active run) — released **before** destroying the context. The teardown calls `publisher.Stop()`, which joins the pump thread, and the pump thread itself needs `publisher.Mutex()`, so the mutex must **not** be held during the join or it would deadlock |

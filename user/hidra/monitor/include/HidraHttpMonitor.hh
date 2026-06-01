@@ -66,7 +66,7 @@ public:
   void DoStopRun() override;
   /** EUDAQ lifecycle hook for resetting monitor state while keeping the process alive. */
   void DoReset() override;
-  /** EUDAQ lifecycle hook for final shutdown of monitor resources. */
+  /** EUDAQ lifecycle hook that finalizes a still-active run (telemetry + ROOT snapshot) and shuts down resources. */
   void DoTerminate() override;
   /** Receive and process a single EUDAQ event. */
   void DoReceive(eudaq::EventSP ev) override;
@@ -76,6 +76,16 @@ public:
 private:
   /** Resolve the output path for the saved-histograms ROOT file of the current run. */
   std::string MakeHistoOutputFile() const;
+
+  /**
+   * Finalize the current run: log telemetry and snapshot the histograms to ROOT.
+   *
+   * Runs at most once per run (guarded by MonitorContext::run_active), so a STOP
+   * followed by a TERMINATE saves exactly once. Called by both DoStopRun() and
+   * DoTerminate(). The caller must hold m_state_mutex and guarantee m_ctx is set;
+   * this method takes publisher.Mutex() itself.
+   */
+  void FinalizeRun();
 
   /**
    * Long-lived monitoring infrastructure.
@@ -100,6 +110,9 @@ private:
 
     int event_prescale{1};
     std::atomic<uint64_t> event_counter{0};
+
+    /** True while a run is active and not yet finalized. Guards FinalizeRun(). Protected by publisher.Mutex(). */
+    bool run_active{false};
 
     /** Build the context, register fillers and start the HTTP server. */
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,

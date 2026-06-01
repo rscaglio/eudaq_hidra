@@ -98,9 +98,11 @@ void HidraHttpMonitor::DoInitialise() {
 
 std::string HidraHttpMonitor::MakeHistoOutputFile() const {
   std::time_t time_now = std::time(nullptr);
+  std::tm tm_buf{};
+  localtime_r(&time_now, &tm_buf); // thread-safe variant; std::localtime uses shared static storage
   char time_buff[13];
   time_buff[12] = 0;
-  std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", std::localtime(&time_now));
+  std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", &tm_buf);
 
   return eudaq::FileNamer(m_histo_output_pattern)
       .Set('X', ".root")
@@ -163,31 +165,44 @@ void HidraHttpMonitor::DoStartRun() {
   m_ctx->chain.Reset();
   m_ctx->registry.Reset();
   m_ctx->ResetTelemetry();
+  m_ctx->run_active = true; // re-arm finalization for the new run
+}
+
+void HidraHttpMonitor::FinalizeRun() {
+  // Caller holds m_state_mutex and guarantees m_ctx is set.
+  // The telemetry log and the ROOT save are done while holding publisher.Mutex() on purpose: ROOT is not thread-safe,
+  // so writing a TFile concurrently with the pump thread's TBufferJSON serialization would race on global ROOT state.
+  // The only cost is briefly pausing HTTP serialization at end-of-run, when no events are arriving anyway.
+  std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
+  if (!m_ctx->run_active) {
+    return; // already finalized (e.g. STOP then TERMINATE), or no run was started
+  }
+
+  m_ctx->LogTelemetry();
+
+  if (!m_histo_output_pattern.empty()) {
+    const std::string path = MakeHistoOutputFile();
+    if (m_ctx->registry.SaveToFile(path)) {
+      HIDRA_INFO("Saved monitor histograms to {}", path);
+    } else {
+      HIDRA_WARN("Failed to save monitor histograms to {}", path);
+    }
+  }
+
+  m_ctx->run_active = false;
 }
 
 void HidraHttpMonitor::DoStopRun() {
   HIDRA_INFO("Stopping HidraHttpMonitor run");
   // The run is over but we deliberately keep m_ctx (and its HTTP server) alive so the histograms of the run just
-  // finished stay browsable until the next run starts or the monitor terminates. Here we log the run telemetry and
-  // snapshot the histograms to a ROOT file.
+  // finished stay browsable until the next run starts or the monitor terminates. Here we just finalize the run (log
+  // telemetry and snapshot the histograms to a ROOT file).
 
   std::shared_lock<std::shared_mutex> lock(m_state_mutex);
   if (!m_ctx) {
     return;
   }
-
-  std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
-  m_ctx->LogTelemetry();
-
-  if (m_histo_output_pattern.empty()) {
-    return;
-  }
-  const std::string path = MakeHistoOutputFile();
-  if (m_ctx->registry.SaveToFile(path)) {
-    HIDRA_INFO("Saved monitor histograms to {}", path);
-  } else {
-    HIDRA_WARN("Failed to save monitor histograms to {}", path);
-  }
+  FinalizeRun();
 }
 
 void HidraHttpMonitor::DoReset() {
@@ -203,9 +218,13 @@ void HidraHttpMonitor::DoReset() {
 
 void HidraHttpMonitor::DoTerminate() {
   HIDRA_INFO("Terminating HidraHttpMonitor");
-  // Final shutdown: destroy the context, which stops the HTTP server. The unique lock waits for in-flight DoReceive to
-  // finish before the context is torn down.
+  // Final shutdown. The unique lock waits for in-flight DoReceive to finish. If the monitor is terminated while a run
+  // is still active (no explicit STOP), finalize it first so telemetry and the ROOT snapshot are not lost; FinalizeRun
+  // is a no-op if the run was already finalized. Then destroy the context, which stops the HTTP server.
   std::unique_lock<std::shared_mutex> lock(m_state_mutex);
+  if (m_ctx) {
+    FinalizeRun();
+  }
   m_ctx.reset();
 }
 

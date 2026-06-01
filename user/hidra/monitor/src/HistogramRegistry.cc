@@ -3,6 +3,8 @@
 #include <TDirectory.h>
 #include <TFile.h>
 
+#include <filesystem>
+
 TH1* HistogramRegistry::Get(std::string_view name) const {
     // A copy of the name is needed to construct the std::string key for lookup
     // This can be avoided using a heterogeneous lookup
@@ -23,6 +25,15 @@ void HistogramRegistry::ForEach(const std::function<void(TH1*)>& fn) const {
 }
 
 bool HistogramRegistry::SaveToFile(const std::string& filepath) const {
+    // Make sure the parent directory exists: TFile(..., "RECREATE") fails if it
+    // does not. Best-effort — if creation fails, the IsZombie() check below
+    // reports the failure to the caller.
+    const std::filesystem::path path(filepath);
+    if (path.has_parent_path()) {
+        std::error_code ec;
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+
     // Preserve the caller's current ROOT directory: TFile's constructor makes
     // the new file the current directory, and we must not leak that side effect.
     TDirectory* prev = gDirectory;
