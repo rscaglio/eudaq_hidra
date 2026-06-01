@@ -25,17 +25,18 @@ auto _reg = eudaq::Factory<eudaq::Monitor>::Register<HidraHttpMonitor, const std
 HidraHttpMonitor::MonitorContext::MonitorContext(
     int port,
     int pump_interval_ms,
-  int prescale,
+    int prescale,
     hidra::HidraXdcDecoder xdc_dec,
-    hidra::HidraFersDecoder fers_dec)
+    hidra::HidraFersDecoder fers_dec,
+    int n_adc_channels)
     : publisher(registry, port, pump_interval_ms),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
       event_prescale(prescale) {
 
-  chain.Add(std::make_unique<SummaryFiller>(registry));
-  chain.Add(std::make_unique<XDCFiller>(registry));
+  chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
+  chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -137,13 +138,16 @@ void HidraHttpMonitor::DoConfigure() {
 
   hidra::HidraXdcDecoder xdc_decoder(vme_geo_map);
   hidra::HidraFersDecoder fers_decoder;
+  // Capture the channel count before moving the decoder: the XDCFiller histograms are sized from it. As the fillers are
+  // built once (the histogram set is fixed for the life of the server), this is only consumed on the first configure.
+  const int n_adc_channels = xdc_decoder.NADCChannels();
 
   std::unique_lock<std::shared_mutex> lock(m_state_mutex);
   if (!m_ctx) {
     // First configure: build the long-lived monitoring context. This starts the HTTP server with empty histograms,
     // so the GUI is reachable from now on and stays up across run start/stop.
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
-                                             std::move(fers_decoder));
+                                             std::move(fers_decoder), n_adc_channels);
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap

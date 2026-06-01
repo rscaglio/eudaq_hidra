@@ -1,0 +1,107 @@
+# HiDRA monitor frontend configuration.
+#
+# All layout is declared here. Panel types are implemented in
+# `hidra_frontend/panels/`. To add a custom layout/behaviour for a tab,
+# implement a new Panel class, register it in
+# `hidra_frontend/panels/__init__.py`, then reference its type name here.
+
+backend:
+  url: http://localhost:9090
+  request_timeout_s: 2.0
+
+# Histogram decoder.
+#   pure   - parses the TBufferJSON payload directly with numpy. Fast,
+#            self-contained, default.
+#   pyroot - round-trip through ROOT.TBufferJSON.ConvertFromJSON. Slower
+#            (2-200x), keeps a global lock. Useful as a fallback if the
+#            pure decoder doesn't yet handle a payload shape.
+decoder: pure
+
+polling:
+  default_ms: 500
+  floor_ms: 50
+  choices_ms: [100, 200, 500, 1000, 2000, 5000]
+  # Static mirror of the backend PUMP_INTERVAL_MS (set in dry.ini /
+  # hidra.ini under [Monitor.HidraHttpMonitor]). Shown in the status
+  # bar so the user knows the server-side refresh cadence. Not enforced
+  # at runtime.
+  server_pump_ms_hint: 20
+
+overlay:
+  enabled: true
+  # Frontend scans this directory for *.root files. Future backend will
+  # write reference snapshots here.
+  search_dir: reference
+  default_file: null
+
+# Ambient UI effects (the "cosmic-ray shower" particle animation). The
+# animation is always available on demand via a triple-click on the title;
+# this section only controls the automatic once-a-day trigger.
+ui_effects:
+  # Local hour (0-23) at which the daily shower fires. Set to null to
+  # disable the automatic trigger entirely (e.g. for production /
+  # control-room screens, so nothing animates unexpectedly).
+  shower_hour: 0
+
+tabs:
+  - id: summary
+    label: Summary
+    panels:
+      # Run header on one row: live event rate (Hz) from the true
+      # pre-prescale counter `events_received`, its sparkline, and the
+      # total event count.
+      - type: rate
+        histogram: events_received
+        count_histogram: event_count
+        smoothing: 0.9  # alpha for exponential smoothing of the sparkline; 1 = no smoothing
+      # Detector map: every module drawn at its (row, column) position,
+      # coloured by mean ADC. Two figures: S channels and C channels.
+      # `link_tab` makes the modules clickable: clicking one opens that
+      # tab's channel selector on the clicked channel.
+      - type: detector
+        histogram: ADC_mean
+        height: 550px  # optional per-panel parameter, default is 320px
+        link_tab: adc_channels
+
+  - id: xdc
+    label: ADC
+    panels:
+      - type: histograms
+        cols: 2
+        histograms: [ADC_inclusive]
+      - type: histograms
+        cols: 2
+        histograms: [ADC_mean]
+
+  - id: tdc
+    label: TDC
+    panels:
+      - type: histograms
+        cols: 2
+        histograms: [TDC_inclusive]
+      - type: histograms
+        cols: 2
+        histograms: [TDC_mean]
+
+  # Per-channel ADC inspection: one histogram at a time, with a dropdown
+  # to pick the channel. Channels are auto-discovered from the backend
+  # (every ADC_channel_<N> it exposes), so the list always matches the
+  # current VME geo map. To pin an explicit set instead, add a
+  # `range: [lo, hi]` next to `template`.
+  - id: adc_channels
+    label: ADC channels
+    panels:
+      - type: channel_selector
+        template: "ADC_channel_{ch}"
+
+  - id: adc_saturation
+    label: ADC Saturation
+    panels:
+      - type: histograms
+        cols: 1
+        histograms: [ADC_saturation]
+      - type: detector
+        histogram: ADC_saturation
+        label: "sat. fraction"
+        height: 550px
+        link_tab: adc_channels

@@ -120,7 +120,7 @@ private:
 
     /** Build the context, register fillers and start the HTTP server. */
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
-                   hidra::HidraFersDecoder fers_dec);
+                   hidra::HidraFersDecoder fers_dec, int n_adc_channels);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();
