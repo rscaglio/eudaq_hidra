@@ -19,20 +19,20 @@ auto _reg = eudaq::Factory<eudaq::Monitor>::Register<HidraHttpMonitor, const std
 
 // ── RunContext ────────────────────────────────────────────────────────────
 
-HidraHttpMonitor::RunContext::RunContext(
-    int port,
-    int pump_interval_ms,
-  int prescale,
-    hidra::HidraXdcDecoder xdc_dec,
-    hidra::HidraFersDecoder fers_dec)
+HidraHttpMonitor::RunContext::RunContext(int port,
+                                         int pump_interval_ms,
+                                         int prescale,
+                                         hidra::HidraXdcDecoder xdc_dec,
+                                         hidra::HidraFersDecoder fers_dec,
+                                         int n_adc_channels)
     : publisher(registry, port, pump_interval_ms),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
       event_prescale(prescale) {
 
-  chain.Add(std::make_unique<SummaryFiller>(registry));
-  chain.Add(std::make_unique<XDCFiller>(registry));
+  chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
+  chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -111,7 +111,8 @@ void HidraHttpMonitor::DoStartRun() {
     EUDAQ_THROW("Decoders not configured");
   }
 
-  auto ctx = std::make_unique<RunContext>(m_port, m_pump_interval_ms, m_event_prescale, *m_xdc_decoder, *m_fers_decoder);
+  auto ctx = std::make_unique<RunContext>(
+      m_port, m_pump_interval_ms, m_event_prescale, *m_xdc_decoder, *m_fers_decoder, m_xdc_decoder->NADCChannels());
 
   std::unique_lock<std::shared_mutex> lock(m_ctx_mutex);
   m_ctx = std::move(ctx);

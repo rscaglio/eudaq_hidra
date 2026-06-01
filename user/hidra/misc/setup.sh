@@ -115,14 +115,25 @@ build_hidra() {
 
 runhidra(){
     cd $REPO_RUN
-    
+
     if [[ "$1" == "dry" ]]; then
     ./hidra_startrun_dry.sh
     else
 	./hidra_startrun_joint.sh
 	fi
 }
-   
+
+# Launch the HiDRA monitor frontend (Dash app via gunicorn). Forwards any
+# extra arguments to run.sh, so `hidra_frontend --port 8060` works.
+hidra_frontend() {
+    local frontend_dir="$SCRIPT_DIR/../monitor/frontend"
+    if [ ! -x "$frontend_dir/run.sh" ]; then
+        echo "hidra_frontend: $frontend_dir/run.sh not found or not executable" >&2
+        return 1
+    fi
+    ( cd "$frontend_dir" && ./run.sh "$@" )
+}
+
 
 # Create a local CMakeUserPresets.json file in the repository root so VSCode/CMake Tools
 # can use the HiDRA presets. This file is meant for local use and should not be committed.
