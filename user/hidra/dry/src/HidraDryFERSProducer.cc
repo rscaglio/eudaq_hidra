@@ -39,6 +39,11 @@ void HidraDryFERSProducer::DoConfigure() {
 }
 
 void HidraDryFERSProducer::DoStartRun() {
+  // ReadFileInfo() reopens the file and reads the FILE_HEADER_SIZE-byte header, leaving the get pointer at the first
+  // event block — exactly the position the first run uses, where Mainloop starts reading. DoStopRun() closes the file,
+  // so without this a second start (without a re-configure) would read from a closed stream and replay nothing.
+  // (This also drops the old re-run seek to FILE_HEADER_SIZE+1, which was one byte past the first event.)
+  ReadFileInfo();
 
   m_eudaq_run_number = GetRunNumber();
   auto bore = eudaq::Event::MakeUnique("DryFERS");
@@ -49,12 +54,6 @@ void HidraDryFERSProducer::DoStartRun() {
   EUDAQ_INFO("Starting HidraDryFERSProducer run");
   EUDAQ_INFO("Sending Dry FERS BORE " + hidra::utils::GetEventInfo(bore.get()));
   SendEvent(std::move(bore));
-
-  if (m_bytes_read > FILE_HEADER_SIZE) {
-    EUDAQ_INFO("Restar reading from first event block at byte " + std::to_string(FILE_HEADER_SIZE + 1));
-    m_ifile.seekg(FILE_HEADER_SIZE + 1, std::ios::beg);
-    m_bytes_read = FILE_HEADER_SIZE;
-  }
 
   m_exit_of_run = false;
   m_thd_run = std::thread(&HidraDryFERSProducer::Mainloop, this);
@@ -92,6 +91,9 @@ void HidraDryFERSProducer::DoTerminate() {
   }
 }
 
+// Open the replay file (closing it first if already open), read the FILE_HEADER_SIZE-byte header (which also yields the
+// file run number) and leave the get pointer at the first event block. Called both at configure and at the start of
+// every run, so each run replays from the same known-good position.
 void HidraDryFERSProducer::ReadFileInfo() {
   if (m_ifile.is_open()) {
     m_ifile.close();
