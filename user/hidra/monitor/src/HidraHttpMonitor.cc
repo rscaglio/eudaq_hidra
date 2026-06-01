@@ -109,14 +109,21 @@ std::string HidraHttpMonitor::MakeHistoOutputFile() const {
 #endif
   // strftime null-terminates on success; zero-initialise so the buffer is a valid (empty) string if it ever fails.
   char time_buff[13] = {};
-  if (std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", &tm_buf) == 0) {
-    HIDRA_WARN("strftime failed to format the timestamp for the monitor output file name");
+  std::string date_str;
+  if (std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", &tm_buf) != 0) {
+    date_str = time_buff;
+  } else {
+    // Fall back to a non-empty, unique value so the $D field cannot collapse to empty and make two runs clobber the
+    // same output file.
+    date_str = std::to_string(static_cast<long long>(time_now));
+    HIDRA_WARN("strftime failed to format the timestamp; using epoch seconds ({}) in the monitor output file name",
+               date_str);
   }
 
   return eudaq::FileNamer(m_histo_output_pattern)
       .Set('X', ".root")
       .Set('R', GetRunNumber())
-      .Set('D', std::string(time_buff));
+      .Set('D', date_str);
 }
 
 void HidraHttpMonitor::DoConfigure() {
