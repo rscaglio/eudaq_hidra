@@ -33,7 +33,7 @@ struct V792Word {
 HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map)
     : m_vme_geo_map(std::move(vme_geo_map)) {
 
-  m_n_adc_channels = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map) + 1;
+  m_n_adc_channels = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map);
   HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels based on VME geo map", m_n_adc_channels);
 }
 
