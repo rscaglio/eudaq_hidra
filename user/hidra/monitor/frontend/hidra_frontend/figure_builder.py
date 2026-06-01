@@ -41,13 +41,23 @@ def to_figure(
     """
 
     # Decode early so we can use the histogram's own title, if available.
+    # A failed decode must NOT silently fall through to an empty plot
+    # (which looks like valid-but-blank data): capture the error here and
+    # render it as an annotation below. DecoderError = a payload shape we
+    # don't support yet (expected, warn); anything else is unexpected and
+    # gets a full stack trace in the log.
     decoded = None
+    decode_error: Optional[tuple[str, str]] = None  # (message, colour)
     if obj_dict is not None and "_typename" in obj_dict:
         try:
             with Phase("decode.live"):
                 decoded = decoder.decode(obj_dict)
-        except Exception:
-            decoded = None
+        except DecoderError as exc:
+            logger.warning("decoding %s unsupported: %s", name, exc)
+            decode_error = (f"unsupported: {exc}", theme.WARN)
+        except Exception as exc:
+            logger.exception("decoding %s failed", name)
+            decode_error = (f"decode error: {exc}", theme.ERR)
 
     # Pick the title: the decoded histogram's own title when valid, else the name.
     plot_title = decoded.title if decoded and hasattr(decoded, "title") and decoded.title else name
@@ -68,8 +78,15 @@ def to_figure(
         layout["annotations"] = annotations
         return go.Figure(layout=layout)
 
-    # Build the live trace. We catch DecoderError separately so unknown
-    # types render an explanatory message instead of a stack trace.
+    # Decoding failed (above): show the captured message instead of an
+    # empty plot, so a broken payload is visibly broken rather than blank.
+    if decode_error is not None:
+        text, colour = decode_error
+        annotations.append(dict(text=text, showarrow=False, font=dict(color=colour, size=12)))
+        layout["annotations"] = annotations
+        return go.Figure(layout=layout)
+
+    # Build the live trace from the (successfully) decoded histogram.
     if decoded is not None:
         try:
             with Phase(f"trace_build.{decoded.typename[:3]}"):
@@ -79,13 +96,11 @@ def to_figure(
                 layout.update(extra_layout)
             else:
                 annotations.append(dict(text=f"Unknown type: {decoded.typename}", showarrow=False, font=dict(size=14)))
-        except DecoderError as exc:
-            annotations.append(dict(text=f"unsupported: {exc}", showarrow=False, font=dict(color=theme.WARN, size=12)))
-            layout["annotations"] = annotations
-            return go.Figure(layout=layout)
         except Exception as exc:
-            logger.exception("decoding %s failed", name)
-            annotations.append(dict(text=f"decode error: {exc}", showarrow=False, font=dict(color=theme.ERR, size=12)))
+            # The payload decoded but we couldn't turn it into a trace
+            # (e.g. malformed edges): render it rather than going blank.
+            logger.exception("building trace for %s failed", name)
+            annotations.append(dict(text=f"render error: {exc}", showarrow=False, font=dict(color=theme.ERR, size=12)))
             layout["annotations"] = annotations
             return go.Figure(layout=layout)
 
