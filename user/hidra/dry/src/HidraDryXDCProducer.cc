@@ -40,6 +40,10 @@ void HidraDryXDCProducer::DoConfigure() {
 }
 
 void HidraDryXDCProducer::DoStartRun() {
+  // (Re)open and rewind the replay file so every run starts from the beginning. DoStopRun() closes the file, so without
+  // this a second start (without a re-configure) would read from a closed stream and replay nothing.
+  ReadFileSize();
+
   m_runNumber = GetRunNumber();
   auto bore = eudaq::Event::MakeUnique("DryXDC");
   bore->SetBORE();

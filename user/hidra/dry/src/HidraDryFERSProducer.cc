@@ -39,6 +39,10 @@ void HidraDryFERSProducer::DoConfigure() {
 }
 
 void HidraDryFERSProducer::DoStartRun() {
+  // (Re)open the replay file and position right after the file header, exactly as for the first run. DoStopRun() closes
+  // the file, so without this a second start (without a re-configure) would read from a closed stream and replay
+  // nothing. Reusing ReadFileInfo() guarantees every run starts from the same known-good position.
+  ReadFileInfo();
 
   m_eudaq_run_number = GetRunNumber();
   auto bore = eudaq::Event::MakeUnique("DryFERS");
@@ -49,12 +53,6 @@ void HidraDryFERSProducer::DoStartRun() {
   EUDAQ_INFO("Starting HidraDryFERSProducer run");
   EUDAQ_INFO("Sending Dry FERS BORE " + hidra::utils::GetEventInfo(bore.get()));
   SendEvent(std::move(bore));
-
-  if (m_bytes_read > FILE_HEADER_SIZE) {
-    EUDAQ_INFO("Restar reading from first event block at byte " + std::to_string(FILE_HEADER_SIZE + 1));
-    m_ifile.seekg(FILE_HEADER_SIZE + 1, std::ios::beg);
-    m_bytes_read = FILE_HEADER_SIZE;
-  }
 
   m_exit_of_run = false;
   m_thd_run = std::thread(&HidraDryFERSProducer::Mainloop, this);
