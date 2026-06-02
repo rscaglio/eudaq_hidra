@@ -218,6 +218,7 @@ void HidraDryXDCProducer::Mainloop() {
 
     const uint64_t ts_begin_ns = event_time_sec * 1000000000ULL + event_time_usec * 1000ULL;
     ev->SetTimestamp(ts_begin_ns, ts_begin_ns + 100ULL, true);
+    ev->SetTag("nativeTimestampBegin", std::to_string(ts_begin_ns));
     ev->SetEventN(event_number);
     ev->SetTriggerN(event_number, true);
 

@@ -92,11 +92,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   auto fullEvt = eudaq::Event::MakeUnique("MergedEvent");
   fullEvt->SetRunN(GetRunNumber());
   fullEvt->SetTriggerN(pending.trigger_number);
-  fullEvt->SetTimestamp(pending.first_seen_ns,
-                        pending.first_seen_ns +
-                            100UL); // TODO this is the timestamp when the event is built, not when it was triggered. It
-                                    // doesn't break any logic, but can be improved
-
+  
   uint8_t detectormask = 0x0;
 
   for (const auto& is : m_expected_sources_map) {
@@ -108,13 +104,17 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   }
 
   uint8_t trigMask = 0xFF;
-  uint32_t spillNum = 0xFFFFFFFF;
+  uint32_t spillNum = std::numeric_limits<uint32_t>::max();
+  uint64_t ts_begin = std::numeric_limits<uint64_t>::max();
+  uint64_t ts_end = 0;
 
   for (; it != pending.events_by_source.end(); ++it) {
     fullEvt->SetTag(std::to_string(it->first) + "_size",
                     it->second.event->GetTag("detectorDataSize")); // "<detID>_size = size"
     it->second.event->SetTag("Producer", it->second.ConnectionName);
     it->second.event->SetTag("detID", it->first);
+    ts_begin = std::min(ts_begin, it->second.event->GetTimestampBegin());
+    ts_end = std::max(ts_end, it->second.event->GetTimestampBegin());
     uint8_t sourceTrigMask = hidra::utils::getTagOr<std::uint8_t>(*it->second.event, "triggerMask", trigMask, false);
     uint32_t sourceSpillNum = hidra::utils::getTagOr<std::uint32_t>(*it->second.event, "spillNumber", spillNum, false);
     if (trigMask != sourceTrigMask) {
@@ -139,6 +139,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
     detectormask |= (1 << (it->first));
   }
 
+  fullEvt->SetTimestamp(ts_begin, std::max(ts_begin, ts_end)); // do not allow ts_end < ts_bing
   fullEvt->SetTag("triggerMask", std::to_string(trigMask));
   fullEvt->SetTag("spillNumber", std::to_string(spillNum));
   fullEvt->SetTag("detectorMask", std::to_string(detectormask));

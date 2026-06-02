@@ -322,6 +322,7 @@ private:
     //   EUDAQ_THROW(error);
     // }
 
+    m_start_boards_call_ts_ns = hidra::utils::getTimens();
     if (!m_board_manager->StartAll(m_start_mode, m_run_number, &error)) {
       EUDAQ_THROW(error);
     }
@@ -568,8 +569,9 @@ private:
 
         const auto& event = queue.front();
         if (m_send_timestamp && !timestamp_set) {
-          const uint64_t start_ts_ns = event.timestamp_us > 0.0 ? static_cast<uint64_t>(1000 * event.timestamp_us) : 0u;
-          ev->SetTimestamp(start_ts_ns, start_ts_ns + 100UL);
+          uint64_t start_ts_ns = event.timestamp_us > 0.0 ? static_cast<uint64_t>(1000 * event.timestamp_us) : 0u;
+          start_ts_ns += m_start_boards_call_ts_ns;
+          ev->SetTimestamp(start_ts_ns , start_ts_ns + 100UL);
           timestamp_set = true;
         }
         HIDRA_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " +
@@ -607,6 +609,7 @@ private:
       if (m_stamp_last_sent_ns > 0) {
         HIDRA_DEBUG("Trig {}, time elapsed since last sent: {} ns", trigger_n, ts_now - m_stamp_last_sent_ns);
       }
+      ev->SetTag("nativeTimestampBegin", std::to_string(ev->GetTimestampBegin() - m_start_boards_call_ts_ns));
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
       ev->SetTag("endianness", m_machine_endianness); // TODO review this tag
       AddMonitorStatusTags(*ev);
@@ -642,6 +645,7 @@ private:
   std::chrono::steady_clock::time_point m_last_event_read = std::chrono::steady_clock::time_point::min();
   bool m_polled_monitor_out_of_spill = false;
   uint64_t m_stamp_last_sent_ns = 0;
+  uint64_t m_start_boards_call_ts_ns = 0;
   std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };
 
