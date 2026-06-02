@@ -137,6 +137,7 @@ std::string GetEventInfo(eudaq::Event* ev, int opt) {
   if (opt == 2) {
     info += " n_source " + ev->GetTag("N_SOURCES");
     info += " trig " + std::to_string(ev->GetTriggerN());
+    info += " trgmask " + getTagOr(*ev, "triggerMask", std::string("N/A"), false);
     info += " ts " + std::to_string(ev->GetTimestampBegin());
     info += " -- (s/tg/ev/ts) ";
     for (int isub = 0; isub < ev->GetNumSubEvent(); isub++) {

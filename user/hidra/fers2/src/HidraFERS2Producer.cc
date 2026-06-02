@@ -24,9 +24,9 @@
 
 namespace {
 
+using hidra::fers2::BoardMonitorStatus;
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
-using hidra::fers2::BoardMonitorStatus;
 using hidra::fers2::FERSEvent;
 
 std::string FormatSummary(const FERSEvent& event) {
@@ -108,21 +108,39 @@ std::string FormatSummary(const FERSEvent& event) {
   return oss.str();
 }
 
-  int IsMonitorStatusOk(const BoardMonitorStatus& status) { // 0 means all good
-    int retcode = 0;
-    if (status.hv_vmon_valid == 0) retcode = 1;
-    if (status.hv_vmon < 40) retcode = 2;
-    if (status.hv_vmon > 46) retcode = 3;
-    if (status.hv_imon_valid == 0) retcode = 4;
-    if (status.hv_on == 0) retcode = 10;
-    if (status.hv_ramping != 0) retcode = 11;
-    if (status.hv_over_current != 0) retcode = 12;
-    if (status.hv_over_voltage != 0) retcode = 13;
-
-    if (retcode != 0) { return status.board_id * 1000 + retcode; }
-    else return 0;
+int IsMonitorStatusOk(const BoardMonitorStatus& status) { // 0 means all good
+  int retcode = 0;
+  if (status.hv_vmon_valid == 0) {
+    retcode = 1;
   }
-    
+  if (status.hv_vmon < 40) {
+    retcode = 2;
+  }
+  if (status.hv_vmon > 46) {
+    retcode = 3;
+  }
+  if (status.hv_imon_valid == 0) {
+    retcode = 4;
+  }
+  if (status.hv_on == 0) {
+    retcode = 10;
+  }
+  if (status.hv_ramping != 0) {
+    retcode = 11;
+  }
+  if (status.hv_over_current != 0) {
+    retcode = 12;
+  }
+  if (status.hv_over_voltage != 0) {
+    retcode = 13;
+  }
+
+  if (retcode != 0) {
+    return status.board_id * 1000 + retcode;
+  } else {
+    return 0;
+  }
+}
 
 std::string FormatMonitorStatus(const BoardMonitorStatus& status) {
   std::ostringstream oss;
@@ -421,12 +439,12 @@ private:
       status.read_time_ns = read_time_ns;
       EUDAQ_INFO("FERS2 monitor " + FormatMonitorStatus(status));
       m_monitor_status[status.board_id] = status;
-      if (monitorstatus == 0){
-	monitorstatus = IsMonitorStatusOk(status);
+      if (monitorstatus == 0) {
+        monitorstatus = IsMonitorStatusOk(status);
       }
     }
 
-    SetStatusTag("BoardsMon", monitorstatus == 0 ? "OK" : "NOK_"+std::to_string(monitorstatus));
+    SetStatusTag("BoardsMon", monitorstatus == 0 ? "OK" : "NOK_" + std::to_string(monitorstatus));
     SendStatus();
 
     if (m_status_poll_interval_s > 0) {
@@ -554,7 +572,7 @@ private:
           ev->SetTimestamp(start_ts_ns, start_ts_ns + 100UL);
           timestamp_set = true;
         }
-        EUDAQ_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " +
+        HIDRA_DEBUG("Building payload for board " + std::to_string(board_id) + ", trigger id " +
                     std::to_string(trigger_n));
 
         // ADDING AN EXTENDED BLOCK WITH THE SAME CONTENT AS THE ORIGINAL ONE, BUT WITH A HEADER CONTAINING THE BOARD ID
@@ -590,12 +608,14 @@ private:
         HIDRA_DEBUG("Trig {}, time elapsed since last sent: {} ns", trigger_n, ts_now - m_stamp_last_sent_ns);
       }
       ev->SetTag("detectorDataSize", std::to_string(total_payload_bytes));
-      ev->SetTag("spillNumber", std::to_string(m_dummy_spill_number));
       ev->SetTag("endianness", m_machine_endianness); // TODO review this tag
       AddMonitorStatusTags(*ev);
       SendEvent(std::move(ev));
       m_stamp_last_sent_ns = ts_now;
       HIDRA_DEBUG("FERS producers sent event for trg {}", trigger_n);
+      if (m_evt_f % 500 == 0) {
+        HIDRA_INFO("FERS producer sent event for trg {}. Total events sent: {}", trigger_n, m_evt_f);
+      }
       ++m_evt_f;
     }
   }
@@ -622,7 +642,6 @@ private:
   std::chrono::steady_clock::time_point m_last_event_read = std::chrono::steady_clock::time_point::min();
   bool m_polled_monitor_out_of_spill = false;
   uint64_t m_stamp_last_sent_ns = 0;
-  uint32_t m_dummy_spill_number = std::numeric_limits<uint32_t>::max();
   std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };
 

@@ -52,8 +52,12 @@ bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event) {
   }
 
   if (m_calib_timing_needed) {
-    HIDRA_INFO("Merged event for trigger {} will not be enqueued because timing calibration is not yet validated",
-               event->GetTriggerN());
+    HIDRA_DEBUG("Merged event for trigger {} will not be enqueued for writing because timing calibration is not yet validated",
+                event->GetTriggerN());
+    if (m_event_count < 5){
+      HIDRA_INFO("Merged evt for trig {} not enqueued because timing calib not yet validated. This will be true till evt {}...",
+                event->GetTriggerN(), m_Nevents_time_calib);
+    }
     return false;
   }
 
@@ -68,7 +72,7 @@ bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event) {
   }
 
   if (!accepted) {
-    HIDRA_WARN("Merged event for trigger {} was not accepted by any active writer", event->GetTriggerN());
+    HIDRA_ERROR("Merged event for trigger {} was not accepted by any active writer", event->GetTriggerN());
   }
 
   return accepted;
@@ -88,8 +92,10 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   auto fullEvt = eudaq::Event::MakeUnique("MergedEvent");
   fullEvt->SetRunN(GetRunNumber());
   fullEvt->SetTriggerN(pending.trigger_number);
-  fullEvt->SetTimestamp(pending.first_seen_ns, pending.first_seen_ns + 100UL);
-  fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
+  fullEvt->SetTimestamp(pending.first_seen_ns,
+                        pending.first_seen_ns +
+                            100UL); // TODO this is the timestamp when the event is built, not when it was triggered. It
+                                    // doesn't break any logic, but can be improved
 
   uint8_t detectormask = 0x0;
 
@@ -101,7 +107,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
                     0); // "<detID>_size = 0"
   }
 
-  uint8_t trigMask = 0xFF; 
+  uint8_t trigMask = 0xFF;
   uint32_t spillNum = 0xFFFFFFFF;
 
   for (; it != pending.events_by_source.end(); ++it) {
@@ -111,19 +117,21 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
     it->second.event->SetTag("detID", it->first);
     uint8_t sourceTrigMask = hidra::utils::getTagOr<std::uint8_t>(*it->second.event, "triggerMask", trigMask, false);
     uint32_t sourceSpillNum = hidra::utils::getTagOr<std::uint32_t>(*it->second.event, "spillNumber", spillNum, false);
-    if (trigMask != 0xFF && trigMask != sourceTrigMask) {
-      HIDRA_ERROR("Inconsistent trigger mask for detID {}: current subevent has {}, but previous have {}. Using {}",
-                 it->first,
-                 sourceTrigMask,
-                 trigMask,
-                 sourceTrigMask);
+    if (trigMask != sourceTrigMask) {
+      HIDRA_ERROR("Evt {}: Inconsistent trigger mask for detID {}: current subevent has {}, but previous have {}. Using {}",
+                  pending.trigger_number,
+                  it->first,
+                  sourceTrigMask,
+                  trigMask,
+                  sourceTrigMask);
     }
-    if (spillNum != 0xFFFFFFFF && spillNum != sourceSpillNum) {
-      HIDRA_ERROR("Inconsistent spill number for detID {}: current subevent has {}, but previous have {}. Using {}",
-                 it->first,
-                 sourceSpillNum,
-                 spillNum,
-                 sourceSpillNum);
+    if (spillNum != sourceSpillNum) {
+      HIDRA_ERROR("Evt {}: Inconsistent spill number for detID {}: current subevent has {}, but previous have {}. Using {}",
+                  pending.trigger_number,
+                  it->first,
+                  sourceSpillNum,
+                  spillNum,
+                  sourceSpillNum);
     }
     trigMask = sourceTrigMask;
     spillNum = sourceSpillNum;
@@ -135,7 +143,15 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   fullEvt->SetTag("spillNumber", std::to_string(spillNum));
   fullEvt->SetTag("detectorMask", std::to_string(detectormask));
 
-  HIDRA_DEBUG("MERGED EVENT BUILT: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
+  HIDRA_DEBUG("Merged event built: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
+  if (m_event_count % 500 == 0) {
+    HIDRA_INFO("Merged event built: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
+    HIDRA_INFO("So far: {} events ({} complete, {} incomplete), pending triggers: {}",
+               m_event_count,
+               m_n_complete_events,
+               m_n_incomplete_events,
+               m_pending_events.size());
+  }
 
   return fullEvt;
 }
@@ -148,14 +164,7 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
 
   for (auto it = m_pending_events.begin(); it != m_pending_events.end();) {
 
-    uint64_t age_ns;
-
-    if (!m_is_replay_mode) {
-      age_ns = hidra::utils::getTimens() - it->second.first_seen_ns;
-    } else {
-      auto lastit = m_pending_events.rbegin();
-      age_ns = lastit->second.first_seen_ns - it->second.first_seen_ns;
-    }
+    uint64_t age_ns = hidra::utils::getTimens() - it->second.first_seen_ns;
 
     if (age_ns <= m_sync_timeout_us * 1000) {
       ++it;
@@ -205,7 +214,7 @@ void HidraDataCollector::UpdateStatusTags() {
   SetStatusTag("Completes", std::to_string(m_n_complete_events));
   SetStatusTag("Incompletes", std::to_string(m_n_incomplete_events));
   SetStatusTag("EventsOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenEventCount() : 0));
-  if (m_calib_timing_enabled){
+  if (m_calib_timing_enabled) {
     SetStatusTag("kBOnDisk", std::to_string(m_binary_writer ? m_binary_writer->GetWrittenByteCount() / 1000 : 0));
     SetStatusTag("CalibTimingStatus", m_calib_timing_needed ? "Waiting" : (m_calib_timing_validated ? "Ok" : "Failed"));
     SetStatusTag("CalibMaxTimeSpread", m_calib_timing_needed ? "Waiting" : std::to_string(m_maxTimeSpread) + " ns");
@@ -236,12 +245,6 @@ void HidraDataCollector::DoInitialise() {
   auto ini = GetInitConfiguration();
   if (!ini) {
     HIDRA_WARN("HidraDataCollector: missing init configuration");
-  }
-
-  m_is_replay_mode = (bool)ini->Get("REPLAY_MODE", 0);
-
-  if (m_is_replay_mode) {
-    HIDRA_WARN("DataCollector is in REPLAY MODE");
   }
 
   m_event_count = 0;
@@ -612,20 +615,22 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
     }
 
     if (m_calib_timing_validated) {
-      HIDRA_INFO("Timing calibration successful! max deltaT spread is {} ns for det progressive index {}. Calibration took {} us. "
+      HIDRA_INFO("Timing calibration successful! max deltaT spread is {} ns for det progressive index {}. Calibration "
+                 "took {} us. "
                  "Result is {}",
                  m_maxTimeSpread,
                  maxIndex,
                  calib_duration_us,
                  m_calib_trg_offset_report);
     } else {
-      HIDRA_ERROR("Timing calibration failed! max deltaT spread is {} ns for det progressive index {}, max allowed is {} ns. "
-                  "Calibration took {} us. Result is {}",
-                  m_maxTimeSpread,
-                  maxIndex,
-                  m_calib_timing_cfg.maxDeltaTRange,
-                  calib_duration_us,
-                  m_calib_trg_offset_report);
+      HIDRA_ERROR(
+          "Timing calibration failed! max deltaT spread is {} ns for det progressive index {}, max allowed is {} ns. "
+          "Calibration took {} us. Result is {}",
+          m_maxTimeSpread,
+          maxIndex,
+          m_calib_timing_cfg.maxDeltaTRange,
+          calib_duration_us,
+          m_calib_trg_offset_report);
     }
   }
 
@@ -676,4 +681,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   auto t_end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
   HIDRA_DEBUG("DoReceive (w/ complete building) took {} us", duration);
+  if (m_event_count % 1000 == 0) {
+    HIDRA_INFO("DoReceive (w/ complete building) took {} us", duration);
+  }
 }
