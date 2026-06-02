@@ -43,17 +43,17 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   const auto payload_size = payload.size();
 
   if (payload_size == 0) {
-    HIDRA_WARN("XDC payload is empty");
+    HIDRA_ERROR("XDC payload is empty. Aborting");
     return;
   }
 
   if (payload_size % 4 != 0) {
-    HIDRA_ERROR("XDC payload size is not a multiple of 4 bytes {}. Aborting", payload_size);
+    HIDRA_ERROR("XDC payload size {} is not a multiple of 4 bytes. Aborting", payload_size);
     return;
   }
   const std::size_t word_count = payload_size / 4;
   if (word_count == 0) {
-    HIDRA_WARN("XDC payload is empty");
+    HIDRA_ERROR("XDC payload is too short or empty. Aborting");
     return;
   }
 

@@ -71,7 +71,7 @@ void HidraFersDecoder::decode(const std::vector<std::uint8_t>& payload, HidraFer
     }
     uint64_t allchan_mask = std::numeric_limits<uint64_t>::max();
 
-    if (boardblock.chmask != allchan_mask) {
+    if (boardblock.chmask != allchan_mask) { // TODO: improve this check by counting number of bits in mask, to allow for some disabled channels
       HIDRA_WARN("FERS block {} has chmask {:016X}. Refusing to decode if less then 64 channels are enabled",
                  iboard,
                  boardblock.chmask);

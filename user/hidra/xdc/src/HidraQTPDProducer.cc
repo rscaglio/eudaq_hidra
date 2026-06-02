@@ -385,7 +385,7 @@ private:
     uint16_t setBitMask = 0x0000 | (1u << V977OUT::cVeto) | (1u << V977OUT::cPedVeto);
     WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
     ThrowIfVmeError("V977 output set write failed while calling VetoTrigger");
-    HIDRA_INFO("trigger vetoed");
+    HIDRA_DEBUG("trigger vetoed");
   }
 
   void ReleaseTriggerVeto(bool releasePedVeto = false) {
@@ -393,7 +393,7 @@ private:
     if (releasePedVeto) setBitMask = 0x0000;
     WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
     ThrowIfVmeError("V977 output set write failed while calling VetoTrigger");
-    HIDRA_INFO("trigger vetoed");
+    HIDRA_DEBUG("trigger veto released");
   }
 
   bool requestPedestalNext(){
@@ -479,7 +479,10 @@ private:
         SetStatusTag("PedTrigN", std::to_string(m_evt_ped));
         SetStatusTag("SpillN", std::to_string(m_spillCount));
         SendStatus();
-        HIDRA_DEBUG("Evt {} mask {}. Phy {} Ped {} Spill {}", m_evt, m_TriggerMask, m_evt_phy, m_evt_ped, m_spillCount);
+        if (m_evt % 500 == 0) {
+          HIDRA_INFO("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}", m_evt, m_TriggerMask, eventHandlingOk, m_evt_phy, m_evt_ped, m_spillCount);
+        }
+        HIDRA_DEBUG("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}", m_evt, m_TriggerMask, eventHandlingOk, m_evt_phy, m_evt_ped, m_spillCount);
         /////////////////
       
         // Set pedestal veto if we want pedestal next;
@@ -607,13 +610,16 @@ private:
 
   bool ReadOneBlockAndSendEvent() { // return false if errors
 
-    int ready_timeout_us = 100; // TODO: test then move to config
+    int ready_timeout_us = 100; 
     int ready_cycle_us = 10;
 
+    // TODO: not used in 2025, check if needed
+    /* 
     if (!CheckBoardsReady(ready_timeout_us, ready_cycle_us)) {
       HIDRA_ERROR("QDC data not ready after {} us", ready_timeout_us);
       return false;
     }
+    */
 
     int byteCount = 0;
     const CVErrorCodes ret = CAENVME_FIFOMBLTReadCycle(m_handle,
@@ -640,7 +646,6 @@ private:
       return false;
     }
 
-    HIDRA_INFO("Event Triggered, m_evt = {}", m_evt);
 
     SendDataEvent(byteCount);
     return true;
