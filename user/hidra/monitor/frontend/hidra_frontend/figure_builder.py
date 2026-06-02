@@ -30,21 +30,24 @@ logger = logging.getLogger(__name__)
 # titles like "#Delta t [#mus]"; Plotly doesn't speak TLatex, so we
 # translate the handful of tokens the HiDRA histograms actually use.
 # Unknown "#tokens" are left as-is rather than guessed at.
-_ROOT_TLATEX = {
-    "#Delta": "Δ",
-    "#delta": "δ",
-    "#sigma": "σ",
-    "#Sigma": "Σ",
-    "#sum": "Σ",
-    "#pi": "π",
-    "#times": "×",
-    "#sqrt": "√",
-    "#mu": "µ",  # leave last: also turns "#mus" into "µs"
-}
+# An explicit ordered list (not a dict) makes the substitution order part
+# of the contract; here no token is a substring of another, so order does
+# not actually affect the result.
+_ROOT_TLATEX = [
+    ("#Delta", "Δ"),
+    ("#delta", "δ"),
+    ("#sigma", "σ"),
+    ("#Sigma", "Σ"),
+    ("#sum", "∑"),  # n-ary summation, distinct from #Sigma
+    ("#pi", "π"),
+    ("#times", "×"),
+    ("#sqrt", "√"),
+    ("#mu", "µ"),  # also turns "#mus" into "µs"
+]
 
 
 def _root_latex_to_unicode(s: str) -> str:
-    for token, glyph in _ROOT_TLATEX.items():
+    for token, glyph in _ROOT_TLATEX:
         s = s.replace(token, glyph)
     return s
 
@@ -167,8 +170,11 @@ def to_figure(
     # stores them as "Title;x-title;y-title" — already split into
     # fXaxis.fTitle / fYaxis.fTitle by ROOT at construction. Histograms with
     # no axis title (most ADC/TDC ones) leave these empty and are unchanged.
-    x_title = _root_latex_to_unicode((obj_dict.get("fXaxis") or {}).get("fTitle", "") or "")
-    y_title = _root_latex_to_unicode((obj_dict.get("fYaxis") or {}).get("fTitle", "") or "")
+    # obj_dict is non-None here (guarded by the early returns above); normalize
+    # defensively so the .get() chain is safe regardless.
+    obj = obj_dict or {}
+    x_title = _root_latex_to_unicode((obj.get("fXaxis") or {}).get("fTitle", "") or "")
+    y_title = _root_latex_to_unicode((obj.get("fYaxis") or {}).get("fTitle", "") or "")
     if x_title:
         layout["xaxis"]["title"] = x_title
 
