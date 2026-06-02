@@ -134,7 +134,11 @@ def register(
                     with Phase("poll.overlay_lookup"):
                         overlay_hist = overlay_store.get(overlay_file, name) if overlay_file else None
                     with Phase("poll.to_figure_one"):
-                        figs_by_name[name] = to_figure(decoder, payload, name, overlay_hist=overlay_hist)
+                        figs_by_name[name] = to_figure(
+                            decoder, payload, name,
+                            overlay_hist=overlay_hist,
+                            options=config.histogram_options.get(name),
+                        )
 
             # Each panel decides which figures land in its own graph
             # slots, in the order matching the `index` IDs it created

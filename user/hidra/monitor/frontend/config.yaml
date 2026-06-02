@@ -34,6 +34,16 @@ overlay:
   search_dir: reference
   default_file: null
 
+# Per-histogram display options, keyed by histogram name. They apply
+# wherever that histogram is shown (any tab/panel). Both default to false.
+#   logx    - logarithmic x-axis (only when all bin edges are positive).
+#   density - divide each bin by its width, so non-uniform binning shows a
+#             comparable height per unit x instead of raw per-bin counts.
+histogram_options:
+  dt_between_events:
+    logx: true
+    density: true
+
 # Ambient UI effects (the "cosmic-ray shower" particle animation). The
 # animation is always available on demand via a triple-click on the title;
 # this section only controls the automatic once-a-day trigger.
@@ -62,6 +72,15 @@ tabs:
         histogram: ADC_mean
         height: 550px  # optional per-panel parameter, default is 320px
         link_tab: adc_channels
+      # Per-event metadata histograms (filled by MetaFiller on the backend):
+      #   trigger_mask       - gate / physics / pedestal / both
+      #   detectors_present  - one bin per detID, counts when each is present
+      #   events_per_spill   - event multiplicity vs spill number
+      #   dt_between_events  - inter-event time, log-binned (see
+      #                        histogram_options below for logx + density)
+      - type: histograms
+        cols: 2
+        histograms: [trigger_mask, detectors_present, events_per_spill, dt_between_events]
 
   - id: xdc
     label: ADC

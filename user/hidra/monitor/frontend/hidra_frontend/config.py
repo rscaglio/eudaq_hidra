@@ -50,6 +50,23 @@ class UICfg:
 
 
 @dataclass
+class HistogramDisplayCfg:
+    """Per-histogram display options, keyed by histogram name in the
+    top-level `histogram_options:` section of config.yaml.
+
+    * `logx`    - render the x-axis on a logarithmic scale. Only applied
+                  when every bin edge is positive (a log axis cannot show
+                  x <= 0); otherwise it falls back to linear.
+    * `density` - divide each bin's content by its (linear) bin width, so
+                  histograms with non-uniform binning show a comparable
+                  height per unit x instead of raw per-bin counts.
+    """
+
+    logx: bool = False
+    density: bool = False
+
+
+@dataclass
 class PanelCfg:
     type: str
     params: dict[str, Any]
@@ -71,6 +88,7 @@ class Config:
     ui: UICfg = field(default_factory=UICfg)
     decoder: str = "pure"
     config_dir: Path = field(default_factory=Path)
+    histogram_options: dict[str, HistogramDisplayCfg] = field(default_factory=dict)
 
 
 def _normalize_panel(raw: dict[str, Any]) -> PanelCfg:
@@ -128,6 +146,14 @@ def load_config(path: str | Path) -> Config:
 
     decoder = str(raw.get("decoder", "pure"))
 
+    histogram_options: dict[str, HistogramDisplayCfg] = {}
+    for name, opts in (raw.get("histogram_options") or {}).items():
+        opts = opts or {}
+        histogram_options[name] = HistogramDisplayCfg(
+            logx=bool(opts.get("logx", False)),
+            density=bool(opts.get("density", False)),
+        )
+
     u = raw.get("ui_effects") or {}
     raw_hour = u.get("shower_hour")
     shower_hour = int(raw_hour) if raw_hour is not None else None
@@ -143,4 +169,5 @@ def load_config(path: str | Path) -> Config:
         ui=ui,
         decoder=decoder,
         config_dir=config_dir,
+        histogram_options=histogram_options,
     )
