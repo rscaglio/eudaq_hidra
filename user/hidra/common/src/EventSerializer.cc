@@ -88,7 +88,7 @@ spill number (0xFFFFFFFF if not applicable) (32 bit) [7,8,9,10]
 eventTime1 (64 bit) [11..18]
 eventTime2 (64 bit) [19..16]
 reserved (16 bit) [17..18]
-reserved (8 bit) [19]
+trigger mask (8 bit) [19]
 Endianness (8 bit) [20]
 Blocks (payload)
 detEventEndMarker (16 bit)
@@ -97,7 +97,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 8;
+  const uint8_t DataFormatVersion = 9;
 
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
@@ -183,11 +183,11 @@ marker (16 bit)
     appendLE(buffer, DETECTOR_EVENT_MARKER);
     appendLE(buffer, static_cast<std::uint8_t>(detID));
     appendLE(buffer, static_cast<std::uint32_t>(sub_ev->GetTriggerN()));
-    appendLE(buffer, getTagOr<std::uint32_t>(*sub_ev, "spillNumber", 0xFFFFFFFF));
+    appendLE(buffer, getTagOr<std::uint32_t>(*sub_ev, "spillNumber", 0xFFFFFFFF, false));
     appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampBegin()));
     appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampEnd()));
     appendLE(buffer, reserved16);
-    appendLE(buffer, reserved8);
+    appendLE(buffer, getTagOr<std::uint8_t>(*sub_ev, "triggerMask", 0xFF, false));
     std::string endiannessTag = getTagOr(*sub_ev, "endianness", std::string("unknown"));
     uint8_t endianness = 0xFF;
     if (endiannessTag.find("LE") != std::string::npos) {

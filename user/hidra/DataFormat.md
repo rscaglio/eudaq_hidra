@@ -1,4 +1,4 @@
-# HIDRA Binary Event Format (v8)
+# HIDRA Binary Event Format (v9)
 
 The binary event format is produced by the `EventSerializer` utility.
 
@@ -100,7 +100,7 @@ Each detector payload is stored as:
 | 11       | uint64 | `eventTimeBegin` | Begin timestamp    |
 | 19       | uint64 | `eventTimeEnd`   | End timestamp      |
 | 27       | uint16 | `reserved`       | Reserved           |
-| 29       | uint8  | `reserved`       | Reserved           |
+| 29       | uint8  | `triggerMask`    | Trigegr mask       |
 | 30       | uint8  | `endianness`     | Endianness         |
 | 31       | byte[] | `payload`        | Detector payload   |
 | variable | uint16 | `endMarker`      | `0xDDDD`           |

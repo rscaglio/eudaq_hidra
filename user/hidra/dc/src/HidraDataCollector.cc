@@ -14,6 +14,7 @@
 #include <map>
 #include <numeric>
 #include <string>
+#include <sys/types.h>
 #include <vector>
 
 // user custom
@@ -100,15 +101,38 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
                     0); // "<detID>_size = 0"
   }
 
+  uint8_t trigMask = 0xFF; 
+  uint32_t spillNum = 0xFFFFFFFF;
+
   for (; it != pending.events_by_source.end(); ++it) {
     fullEvt->SetTag(std::to_string(it->first) + "_size",
                     it->second.event->GetTag("detectorDataSize")); // "<detID>_size = size"
     it->second.event->SetTag("Producer", it->second.ConnectionName);
     it->second.event->SetTag("detID", it->first);
+    uint8_t sourceTrigMask = hidra::utils::getTagOr<std::uint8_t>(*it->second.event, "triggerMask", trigMask, false);
+    uint32_t sourceSpillNum = hidra::utils::getTagOr<std::uint32_t>(*it->second.event, "spillNumber", spillNum, false);
+    if (trigMask != 0xFF && trigMask != sourceTrigMask) {
+      HIDRA_ERROR("Inconsistent trigger mask for detID {}: current subevent has {}, but previous have {}. Using {}",
+                 it->first,
+                 sourceTrigMask,
+                 trigMask,
+                 sourceTrigMask);
+    }
+    if (spillNum != 0xFFFFFFFF && spillNum != sourceSpillNum) {
+      HIDRA_ERROR("Inconsistent spill number for detID {}: current subevent has {}, but previous have {}. Using {}",
+                 it->first,
+                 sourceSpillNum,
+                 spillNum,
+                 sourceSpillNum);
+    }
+    trigMask = sourceTrigMask;
+    spillNum = sourceSpillNum;
     fullEvt->AddSubEvent(std::move(it->second.event));
     detectormask |= (1 << (it->first));
   }
 
+  fullEvt->SetTag("triggerMask", std::to_string(trigMask));
+  fullEvt->SetTag("spillNumber", std::to_string(spillNum));
   fullEvt->SetTag("detectorMask", std::to_string(detectormask));
 
   HIDRA_DEBUG("MERGED EVENT BUILT: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
