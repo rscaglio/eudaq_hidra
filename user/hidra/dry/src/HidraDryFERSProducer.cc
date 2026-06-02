@@ -253,6 +253,7 @@ void HidraDryFERSProducer::Mainloop() {
         // prepare sending
         current_evt->SetTag("detectorDataSize", std::to_string(event_size));
         current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
+        current_evt->SetTag("nativeTimestampBegin", std::to_string(min_timestamp));
         sleepUntilNext(evt_time_last_sent / 1000, current_evt->GetTimestampBegin() / 1000, real_time_last_sent);
         // send
         EUDAQ_INFO("Sending DryFERS evt " + std::to_string(ievt) + " (at block " + std::to_string(iblock) + ")-- " +
@@ -291,6 +292,7 @@ void HidraDryFERSProducer::Mainloop() {
       // prepare sending
       current_evt->SetTag("detectorDataSize", std::to_string(event_size));
       current_evt->SetTimestamp(min_timestamp, max_timestamp, true);
+      current_evt->SetTag("nativeTimestampBegin", std::to_string(min_timestamp));
       sleepUntilNext(evt_time_last_sent / 1000, current_evt->GetTimestampBegin() / 1000, real_time_last_sent);
       // send
       EUDAQ_INFO("Sending DryFFRS evt " + std::to_string(ievt) + " (at block " + std::to_string(iblock) + ")-- " +

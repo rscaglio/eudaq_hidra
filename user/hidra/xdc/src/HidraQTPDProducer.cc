@@ -668,6 +668,7 @@ private:
     event->SetTag("triggerMask", std::to_string(m_TriggerMask));
     event->SetTag("endianness", "BE32");
     event->SetTimestamp(m_evtTimeNs, m_evtTimeNs + 100ULL);
+    event->SetTag("nativeTimestampBegin", std::to_string(m_evtTimeNs));
     event->SetTag("detectorDataSize", std::to_string(raw.size()));
     SendEvent(std::move(event));
   }

@@ -1,8 +1,10 @@
 #include "EventSerializer.hh"
 #include "HidraUtils.hh"
 
+#include <cstdint>
 #include <fstream>
 #include <stdexcept>
+#include <sys/types.h>
 
 using hidra::utils::getTagOr;
 
@@ -72,7 +74,7 @@ spill number (32 bit) [21..24]
 eventTime (64 bit) [25..32]
 triggerMask (8 bit) [33]
 reserved (64 bit) [34..41]
-reserved (32 bit) [42..45]
+timeSpread_ns (32 bit) [42..45]
 DetectorMask (8 bit) [46]
 sizeDet0 (16 bit) [47,48]
 sizeDet1 (16 bit) [49,50]
@@ -97,7 +99,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 9;
+  const uint8_t DataFormatVersion = 10;
 
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
@@ -106,12 +108,12 @@ marker (16 bit)
   const std::uint16_t DETECTOR_EVENT_ENDMARKER = 0xDDDD;
   uint8_t placeholder8 = 0xFF;
   uint16_t placeholder16 = 0xFFFF;
-  uint32_t placeholder32 = 0xFFFFFFFF;
+  uint32_t placeholder32 = std::numeric_limits<uint32_t>::max();
+  uint64_t placeholder64 = std::numeric_limits<uint64_t>::max();
   uint8_t reserved8 = 0x0;
   uint16_t reserved16 = 0x0;
   uint32_t reserved32 = 0x0;
   uint64_t reserved64 = 0x0;
-  uint64_t placeholder64 = (placeholder32 << 31) | placeholder32;
 
   // specific for data format
   const int MAX_N_DETECTORS = 8;
@@ -132,7 +134,13 @@ marker (16 bit)
   appendLE(buffer, static_cast<std::uint64_t>(event.GetTimestampBegin()));
   appendLE(buffer, getTagOr<std::uint8_t>(event, "triggerMask", 0xFF));
   appendLE(buffer, reserved64); // reserved
-  appendLE(buffer, reserved32); // reserved
+  uint64_t timeSpread_ns = event.GetTimestampEnd() > event.GetTimestampBegin() ? (event.GetTimestampEnd() - event.GetTimestampBegin()) : placeholder64;
+  if (timeSpread_ns < placeholder32) {
+    timeSpread_ns = static_cast<uint32_t>(timeSpread_ns);
+  } else {
+    timeSpread_ns = placeholder32;
+  }
+  appendLE(buffer, static_cast<std::uint32_t>(timeSpread_ns)); // time spread
   int anchorpoint_detmask = buffer.size();
   appendLE(buffer, reserved8); // detector mask
 
@@ -183,9 +191,9 @@ marker (16 bit)
     appendLE(buffer, DETECTOR_EVENT_MARKER);
     appendLE(buffer, static_cast<std::uint8_t>(detID));
     appendLE(buffer, static_cast<std::uint32_t>(sub_ev->GetTriggerN()));
-    appendLE(buffer, getTagOr<std::uint32_t>(*sub_ev, "spillNumber", 0xFFFFFFFF, false));
+    appendLE(buffer, getTagOr<std::uint32_t>(*sub_ev, "spillNumber", placeholder32, false));
     appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampBegin()));
-    appendLE(buffer, static_cast<std::uint64_t>(sub_ev->GetTimestampEnd()));
+    appendLE(buffer, getTagOr<std::uint64_t>(*sub_ev, "nativeTimestampBegin", placeholder64));
     appendLE(buffer, reserved16);
     appendLE(buffer, getTagOr<std::uint8_t>(*sub_ev, "triggerMask", 0xFF, false));
     std::string endiannessTag = getTagOr(*sub_ev, "endianness", std::string("unknown"));
