@@ -28,6 +28,35 @@ euCliMonitor -n HidraHttpMonitor
   histogram-content lock for every received event.
 - `SummaryFiller.*` - run-level histograms (event count, events vs time).
 - `XDCFiller.*` - XDC ADC/TDC histograms.
+- `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
+
+## Event metadata
+
+Besides the detector payloads, each event carries metadata (trigger mask, spill
+number, timestamps, …) that is **not** in the binary blocks: the producers attach
+it as EUDAQ tags. `HidraMetaDecoder` (in `../dc`) reads it from the EUDAQ event
+into `HidraEvent::meta` (`HidraEventMeta`):
+
+- event-level, from the merged event: run / event / trigger number, begin/end
+  timestamps, `detector_mask`;
+- `trigger_mask` and `spill_number`, from the **XDC sub-event** (detID 1 real / 6
+  dry) where the producer sets them — the collector does not propagate them to the
+  merged event. The raw trigger mask is stored; `isPhysics()` / `isPedestal()`
+  derive physics vs pedestal (bit 0 / bit 1).
+
+`MetaFiller` turns this into histograms:
+
+| Histogram | Content |
+|-----------|---------|
+| `trigger_mask` | events per class: gate / physics / pedestal / both |
+| `detectors_present` | one labelled bin per detID (0..7), from the detector mask |
+| `events_per_spill` | events vs spill number (auto-extending axis) |
+| `dt_between_events` | inter-event time (begin−begin), log-binned 1 µs..10 s |
+| `spill_current` / `trigger_current` / `run_current` | latest value (single bin) |
+
+`dt_between_events` uses the merged-event begin timestamp, which is the
+collector's wall-clock arrival time (`hidra::utils::getTimens()`, nanoseconds), so
+it reflects software inter-arrival timing rather than hardware timestamps.
 
 ## HTTP server lifecycle (persistence across runs)
 
@@ -48,9 +77,10 @@ browsable after the STOP. The long-lived state is bundled in `MonitorContext`
 
 Because the server stays up, histograms are **reset in place** (`TH1::Reset()`),
 never re-created: the `THttpServer` keeps pointing at the same `TH1` objects, so
-their registered pointers stay valid. This implies the **set of histograms and
-their binning must be fixed** (independent of the run configuration); today the
-fillers book fixed histograms, so this holds.
+their registered pointers stay valid. This implies the histogram **objects** must
+not be re-created at runtime (their binning may still grow in place — e.g.
+`events_per_spill` uses an auto-extending axis); today the fillers book a fixed
+set of histograms, so this holds.
 
 ### Histogram reset semantics
 

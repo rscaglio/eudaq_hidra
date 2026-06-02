@@ -21,6 +21,12 @@ paths:
   worker thread
 - `HidraRootPayloadDecoders.*` - detector-specific payload decoders used by the
   ROOT writer
+- `HidraXdcDecoder.*` / `HidraFersDecoder.*` - byte decoders turning a detector
+  payload into a `HidraXdcEvent` / `HidraFersEvent`
+- `HidraMetaDecoder.*` - reads per-event metadata (trigger mask, spill,
+  timestamps, …) from the EUDAQ event into `HidraEventMeta`. `HidraEvent`
+  (`HidraEventMeta.hh`, `HidraXdcEvent.hh`, `HidraFersEvent.hh`) is the decoded
+  bundle consumed by the monitor; see `../monitor/README.md`.
 
 ## Architecture
 
