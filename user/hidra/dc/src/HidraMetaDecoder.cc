@@ -26,7 +26,9 @@ void HidraMetaDecoder::decode(const eudaq::Event& event, HidraEventMeta& meta) c
     if (!sub) {
       continue;
     }
-    const int det_id = hidra::utils::getTagOr<int>(*sub, "detID", static_cast<int>(index), false);
+    // Default to a sentinel (-1) so a sub-event without an explicit detID tag is never
+    // mistaken for XDC just because its index happens to be 1 or 6.
+    const int det_id = hidra::utils::getTagOr<int>(*sub, "detID", -1, false);
     const bool is_xdc = (det_id == 1 || det_id == 6);
     if (!is_xdc) {
       continue;
