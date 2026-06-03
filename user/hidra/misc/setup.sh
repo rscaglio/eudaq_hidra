@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# This script relies on bash features (arrays, [[ ]], $'...', BASH_SOURCE), so
+# it cannot run under a POSIX sh/dash (or fish). Fail early with a clear message
+# instead of a confusing parse/runtime error. The test itself is POSIX-safe.
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "setup.sh: please source this with bash (your current shell is not bash)." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 # Resolve the script directory and repository root dynamically.
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
@@ -54,7 +62,7 @@ supports_hidra_presets() {
 
 # Helper to create the build directory if needed, run CMake with the expected
 # options, and return to the caller's original directory.
-cmake_config() {
+hidra_cmake() {
     local original_dir=$(pwd)
     cd "$REPO_ROOT"
 
@@ -75,10 +83,15 @@ cmake_config() {
             -DEUDAQ_LIBRARY_BUILD_TTREE=OFF \
             -DUSER_HIDRA_BUILD=ON \
             -DUSER_HIDRA_DC_ROOT_OUTPUT=ON \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     fi
 
     cd "$original_dir"
+}
+
+# Back-compatibility alias for the old name.
+cmake_config() {
+    hidra_cmake "$@"
 }
 
 # Helper to build the code without manually jumping into the build directory.
@@ -101,7 +114,7 @@ hidra_build() {
         echo "CMake $cmake_version does not support HiDRA presets/workflow (required >= $HIDRA_REQUIRED_CMAKE_VERSION)."
         echo "Using the classic build/install fallback."
 
-        cmake_config
+        hidra_cmake
         cmake --build "$REPO_ROOT/build" -j 10
         cmake --build "$REPO_ROOT/build" --target install -j 10
     fi
@@ -109,8 +122,9 @@ hidra_build() {
     cd "$original_dir"
 }
 
+# Back-compatibility alias for the old name.
 build_hidra() {
-    hidra_build
+    hidra_build "$@"
 }
 
 runhidra(){
@@ -132,6 +146,109 @@ hidra_frontend() {
         return 1
     fi
     ( cd "$frontend_dir" && ./run.sh "$@" )
+}
+
+# Launch the frontend with the Flask dev server and hot-reload
+# (`app.py --debug`), for development. Needs the venv that `hidra_frontend`
+# (run.sh) creates on first launch; extra arguments are forwarded to app.py
+# (e.g. `hidra_frontend_debug --port 8060`).
+hidra_frontend_debug() {
+    local frontend_dir="$SCRIPT_DIR/../monitor/frontend"
+    local py="$frontend_dir/.venv/bin/python"
+    if [ ! -x "$py" ]; then
+        echo "hidra_frontend_debug: $py not found." >&2
+        echo "Run 'hidra_frontend' once first to create the venv and install dependencies." >&2
+        return 1
+    fi
+    ( cd "$frontend_dir" && "$py" app.py --debug "$@" )
+}
+
+# Stop a running HiDRA DAQ chain: terminate the EUDAQ processes started by the
+# run scripts (RunControl, collector, monitor, producers) and close the tmux
+# session hosting the PHP dashboard. Sends SIGTERM so EUDAQ can shut down
+# cleanly. Safe to run when nothing is up. Does NOT touch the Dash frontend
+# (stop that with Ctrl-C in its own shell).
+hidra_stop() {
+    local tmux_session="hidra_run_monitoring"
+    local patterns=(
+        "euRun -n HidraRunControl"
+        "euCliCollector -n HidraDataCollector"
+        "euCliMonitor -n HidraHttpMonitor"
+        "euCliProducer -n Hidra"
+    )
+    # Limit kills to the current user's processes (and match the full,
+    # fairly specific command lines) to avoid touching unrelated processes
+    # or other users' jobs on a shared machine.
+    local pat killed_any=0 uid
+    uid=$(id -u)
+    for pat in "${patterns[@]}"; do
+        if pkill -u "$uid" -f "$pat" 2>/dev/null; then
+            echo "  stopped: $pat"
+            killed_any=1
+        fi
+    done
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$tmux_session" 2>/dev/null; then
+        tmux kill-session -t "$tmux_session" && echo "  stopped tmux session: $tmux_session"
+        killed_any=1
+    fi
+    if [ "$killed_any" -eq 0 ]; then
+        echo "hidra_stop: no running HiDRA DAQ processes found."
+    fi
+}
+
+# Show which processes are listening on the HiDRA-related TCP ports. Without
+# root the process name may be hidden (shown as '?') for ports owned by
+# another user, but the LISTEN state is still reported.
+hidra_ports() {
+    local tool=""
+    if command -v ss >/dev/null 2>&1; then
+        tool=ss
+    elif command -v lsof >/dev/null 2>&1; then
+        tool=lsof
+    else
+        echo "hidra_ports: neither 'ss' nor 'lsof' is available" >&2
+        return 1
+    fi
+
+    local ports=("44000:RunControl" "9090:monitor HTTP" "8050:frontend" "8080:dashboard")
+    local entry port label proc line
+    printf '%-7s %-13s %s\n' "PORT" "SERVICE" "STATUS"
+    for entry in "${ports[@]}"; do
+        port="${entry%%:*}"
+        label="${entry#*:}"
+        proc=""
+        if [ "$tool" = ss ]; then
+            line=$(ss -ltnHp "( sport = :$port )" 2>/dev/null)
+            if [ -n "$line" ]; then
+                proc=$(printf '%s' "$line" | grep -oE '"[^"]+"' | head -1 | tr -d '"')
+                [ -z "$proc" ] && proc="?"
+            fi
+        else
+            proc=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $1; exit}')
+        fi
+        if [ -n "$proc" ]; then
+            printf '%-7s %-13s LISTEN (%s)\n' "$port" "$label" "$proc"
+        else
+            printf '%-7s %-13s free\n' "$port" "$label"
+        fi
+    done
+}
+
+# Follow (tail -f) the most recent .log file in run/logs/.
+hidra_logs() {
+    local logdir="$REPO_RUN/logs"
+    if [ ! -d "$logdir" ]; then
+        echo "hidra_logs: $logdir not found" >&2
+        return 1
+    fi
+    local latest
+    latest=$(ls -t "$logdir"/*.log 2>/dev/null | head -1)
+    if [ -z "$latest" ]; then
+        echo "hidra_logs: no .log files in $logdir" >&2
+        return 1
+    fi
+    echo "Following $latest  (Ctrl-C to stop)"
+    tail -f "$latest"
 }
 
 
@@ -287,14 +404,67 @@ check_vscode_hidra() {
 
 # Helper to clean the build directory and related output folders (lib, etc.).
 # It runs make_clean.sh from the repository root and returns to the caller's directory.
-cmake_clean() {
+hidra_cmake_clean() {
     local original_dir=$(pwd)
     cd "$REPO_ROOT"
     sh "$REPO_ROOT/make_clean.sh"
     cd "$original_dir"
 }
 
+# Back-compatibility alias for the old name.
+cmake_clean() {
+    hidra_cmake_clean "$@"
+}
+
 # Convenience aliases for quickly jumping to common directories.
-alias build_dir="cd $REPO_ROOT/build"
-alias hidra_run="cd $REPO_ROOT/user/hidra/run"
-alias hidra_dir="cd $REPO_ROOT/user/hidra"
+alias build_dir='cd "$REPO_ROOT/build"'
+alias hidra_run='cd "$REPO_ROOT/user/hidra/run"'
+alias hidra_dir='cd "$REPO_ROOT/user/hidra"'
+
+# Print a short, user-friendly summary of the commands this script provides.
+# Shown automatically when the script is sourced; run `hidra_help` to see it
+# again at any time.
+hidra_help() {
+    local B='' C='' D='' R=''
+    if [ -t 1 ]; then
+        B=$'\033[1m'; C=$'\033[36m'; D=$'\033[2m'; R=$'\033[0m'
+    fi
+
+    printf '%sHiDRA helpers loaded%s  (repo: %s)\n' "$B" "$R" "$REPO_ROOT"
+    printf 'Available commands:\n\n'
+
+    printf '  %sBuild & install%s\n' "$D" "$R"
+    printf '    %s%-20s%s configure the build (CMake presets, or classic fallback) %s(alias: cmake_config)%s\n' "$C" "hidra_cmake" "$R" "$D" "$R"
+    printf '    %s%-20s%s configure + build + install everything %s(alias: build_hidra)%s\n' "$C" "hidra_build" "$R" "$D" "$R"
+    printf '    %s%-20s%s remove build/ and installed outputs %s(alias: cmake_clean)%s\n' "$C" "hidra_cmake_clean" "$R" "$D" "$R"
+    printf '\n'
+
+    printf '  %sRun & monitor%s\n' "$D" "$R"
+    printf '    %s%-20s%s start a run: joint XDC+FERS2, or "dry" (no hardware)\n' "$C" "runhidra [dry]" "$R"
+    printf '    %s%-20s%s launch the Dash web monitor (args forwarded to run.sh)\n' "$C" "hidra_frontend" "$R"
+    printf '    %s%-20s%s launch the web monitor with Flask dev server + hot-reload\n' "$C" "hidra_frontend_debug" "$R"
+    printf '    %s%-20s%s stop the running DAQ chain (EUDAQ processes + tmux dashboard)\n' "$C" "hidra_stop" "$R"
+    printf '    %s%-20s%s show listeners on the HiDRA ports (44000/9090/8050/8080)\n' "$C" "hidra_ports" "$R"
+    printf '    %s%-20s%s tail -f the most recent run log (run/logs/)\n' "$C" "hidra_logs" "$R"
+    printf '\n'
+
+    printf '  %sVSCode / CMake presets%s\n' "$D" "$R"
+    printf '    %s%-20s%s create local CMakeUserPresets.json + .vscode settings\n' "$C" "setup_vscode_hidra" "$R"
+    printf '    %s%-20s%s check the local VSCode/CMake preset setup\n' "$C" "check_vscode_hidra" "$R"
+    printf '    %s%-20s%s remove the local presets/settings\n' "$C" "clean_vscode_hidra" "$R"
+    printf '\n'
+
+    printf '  %sShortcuts%s\n' "$D" "$R"
+    printf '    %s%-20s%s cd to user/hidra\n' "$C" "hidra_dir" "$R"
+    printf '    %s%-20s%s cd to the run/ directory\n' "$C" "hidra_run" "$R"
+    printf '    %s%-20s%s cd to the build/ directory\n' "$C" "build_dir" "$R"
+    printf '\n'
+
+    printf '    %s%-20s%s show this help again\n' "$C" "hidra_help" "$R"
+}
+
+# Show the summary when sourced into an interactive shell (skip it for
+# non-interactive use, e.g. a script that sources this only for the helpers).
+if [[ $- == *i* ]]; then
+    hidra_help
+fi
