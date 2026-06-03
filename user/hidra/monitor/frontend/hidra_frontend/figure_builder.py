@@ -142,12 +142,12 @@ def to_figure(
     y_title = _root_latex_to_unicode((obj.get("fYaxis") or {}).get("fTitle", "") or "")
 
     # A per-channel histogram has one bin per channel, so the hover should
-    # read "ch N" rather than the raw bin centre. A TProfile filled with
-    # Fill(channel, value) always is one; a plain TH1 is treated as one when
-    # its x-axis is explicitly titled "channel" (e.g. ADC_noise_pedestal).
-    per_channel = decoded is not None and (
-        decoded.typename == "TProfile" or x_title.strip().lower() == "channel"
-    )
+    # read "ch N" rather than the raw bin centre. This is driven explicitly
+    # by the x-axis title being "channel" (set by the backend on the
+    # channel-indexed TProfiles and on ADC_noise_pedestal) — we do NOT assume
+    # every TProfile is channel-indexed, so a profile vs. time / other
+    # quantity keeps its real x in the hover.
+    per_channel = decoded is not None and x_title.strip().lower() == "channel"
 
     # Build the live trace from the (successfully) decoded histogram.
     if decoded is not None:

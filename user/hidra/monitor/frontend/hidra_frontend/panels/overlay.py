@@ -24,6 +24,8 @@ needs its own decoder.
 
 from __future__ import annotations
 
+import logging
+
 from dash import dcc, html
 
 from .. import theme
@@ -31,6 +33,8 @@ from ..decoders import get_decoder
 from ..figure_builder import overlay_figure
 from .base import Panel
 from .graph_controls import controls_overlay
+
+logger = logging.getLogger(__name__)
 
 # Colour cycle for the overlaid series. The first (primary/robust) series
 # gets the accent blue; the rest are visually distinct.
@@ -42,8 +46,16 @@ class OverlayPanel(Panel):
         super().__init__(panel_id, params)
         self._decoder = get_decoder(params.get("decoder", "pure"))
         self._histos = list(params.get("histograms", []))
-        labels = params.get("labels")
-        self._labels = list(labels) if labels else list(self._histos)
+        # Pad/truncate labels to match the histograms instead of letting a
+        # later zip() silently drop series on a misconfigured `labels`: warn
+        # on a length mismatch and fall back to the histogram name.
+        labels = params.get("labels") or []
+        if labels and len(labels) != len(self._histos):
+            logger.warning(
+                "overlay panel %s: %d labels for %d histograms; padding with names",
+                panel_id, len(labels), len(self._histos),
+            )
+        self._labels = [labels[i] if i < len(labels) else name for i, name in enumerate(self._histos)]
         self._per_channel = bool(params.get("per_channel", False))
 
     def _title(self) -> str:

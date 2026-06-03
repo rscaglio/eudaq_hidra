@@ -161,8 +161,10 @@ def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
             # TProfile: mean = sum(weight*y) / sum(weight).
             if idx < len(entries) and entries[idx] > 0:
                 means[channel] = sumw[idx] / entries[idx]
-        elif sumw[idx]:
-            # Plain TH1 fallback: the bin content is already the value.
+        else:
+            # Plain TH1 fallback: the bin content is the value as-is. Keep it
+            # even when 0.0 (a genuine zero, e.g. zero noise) — a truthiness
+            # check here would drop legitimate zero-valued channels.
             means[channel] = float(sumw[idx])
 
     return means

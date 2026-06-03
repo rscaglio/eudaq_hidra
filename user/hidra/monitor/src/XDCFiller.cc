@@ -32,23 +32,29 @@ XDCFiller::XDCFiller(HistogramRegistry& reg,
     HIDRA_ERROR("XDCFiller constructed with n_tdc_channels=0.");
     n_tdc_channels = 1;
   }
-  m_profile_adc =
-      reg.Add(std::make_unique<TProfile>("ADC_mean", "Mean of ADC values", n_adc_channels, 0, n_adc_channels));
+  // The ";channel;<y>" axis titles mark these profiles as channel-indexed:
+  // the frontend uses the "channel" x-axis title to label the hover with the
+  // channel number (rather than assuming every TProfile is per-channel).
+  m_profile_adc = reg.Add(std::make_unique<TProfile>(
+      "ADC_mean", "Mean of ADC values;channel;mean ADC", n_adc_channels, 0, n_adc_channels));
   m_hist_adc_inclusive = reg.Add(std::make_unique<TH1D>("ADC_inclusive", "Inclusive ADC values", 4096, 0, 4096));
-  m_profile_adc_physics = reg.Add(
-      std::make_unique<TProfile>("ADC_mean_physics", "Mean of ADC values (physics)", n_adc_channels, 0, n_adc_channels));
+  m_profile_adc_physics = reg.Add(std::make_unique<TProfile>(
+      "ADC_mean_physics", "Mean of ADC values (physics);channel;mean ADC", n_adc_channels, 0, n_adc_channels));
   m_profile_adc_pedestal = reg.Add(std::make_unique<TProfile>(
-      "ADC_mean_pedestal", "Mean of ADC values (pedestal)", n_adc_channels, 0, n_adc_channels));
+      "ADC_mean_pedestal", "Mean of ADC values (pedestal);channel;mean ADC", n_adc_channels, 0, n_adc_channels));
   m_hist_adc_inclusive_physics =
       reg.Add(std::make_unique<TH1D>("ADC_inclusive_physics", "Inclusive ADC values (physics)", 4096, 0, 4096));
   m_hist_adc_inclusive_pedestal =
       reg.Add(std::make_unique<TH1D>("ADC_inclusive_pedestal", "Inclusive ADC values (pedestal)", 4096, 0, 4096));
-  m_profile_adc_saturation = reg.Add(
-      std::make_unique<TProfile>("ADC_saturation", "Saturation fraction per ADC channel", n_adc_channels, 0, n_adc_channels));
+  m_profile_adc_saturation = reg.Add(std::make_unique<TProfile>(
+      "ADC_saturation", "Saturation fraction per ADC channel;channel;saturation fraction", n_adc_channels, 0,
+      n_adc_channels));
   m_profile_adc_saturation_physics = reg.Add(std::make_unique<TProfile>(
-      "ADC_saturation_physics", "Saturation fraction per ADC channel (physics)", n_adc_channels, 0, n_adc_channels));
+      "ADC_saturation_physics", "Saturation fraction per ADC channel (physics);channel;saturation fraction",
+      n_adc_channels, 0, n_adc_channels));
   m_profile_adc_saturation_pedestal = reg.Add(std::make_unique<TProfile>(
-      "ADC_saturation_pedestal", "Saturation fraction per ADC channel (pedestal)", n_adc_channels, 0, n_adc_channels));
+      "ADC_saturation_pedestal", "Saturation fraction per ADC channel (pedestal);channel;saturation fraction",
+      n_adc_channels, 0, n_adc_channels));
   // Per-channel pedestal noise, two estimators. One bin per channel; the
   // contents are set by UpdatePedestalNoise(), not Fill()'d. The "channel"
   // x-axis title lets the frontend label the hover with the channel number.
@@ -58,11 +64,12 @@ XDCFiller::XDCFiller(HistogramRegistry& reg,
   m_hist_adc_noise_std_pedestal = reg.Add(std::make_unique<TH1D>(
       "ADC_noise_std_pedestal", "Pedestal noise (std dev);channel;noise [ADC counts]",
       n_adc_channels, 0, n_adc_channels));
-  m_profile_tdc =
-      reg.Add(std::make_unique<TProfile>("TDC_mean", "Mean of TDC values", n_tdc_channels, 0, n_tdc_channels));
+  m_profile_tdc = reg.Add(std::make_unique<TProfile>(
+      "TDC_mean", "Mean of TDC values;channel;mean TDC", n_tdc_channels, 0, n_tdc_channels));
   m_hist_tdc_inclusive = reg.Add(std::make_unique<TH1D>("TDC_inclusive", "Inclusive TDC values", 4096, 0, 4096));
-  m_profile_tdc_saturation = reg.Add(
-      std::make_unique<TProfile>("TDC_saturation", "Saturation fraction per TDC channel", n_tdc_channels, 0, n_tdc_channels));
+  m_profile_tdc_saturation = reg.Add(std::make_unique<TProfile>(
+      "TDC_saturation", "Saturation fraction per TDC channel;channel;saturation fraction", n_tdc_channels, 0,
+      n_tdc_channels));
 
   for (unsigned int i = 0; i < n_adc_channels; ++i) {
     TH1D* hist = reg.Add(std::make_unique<TH1D>(hidra::utils::format("ADC_channel_{}", i).c_str(),
@@ -168,8 +175,9 @@ void XDCFiller::UpdatePedestalNoise() {
     double iqr_sigma = 0.0;
     double std_sigma = 0.0;
     // The estimators need a populated distribution; leave the noise at 0 for
-    // channels with no pedestal entries yet.
-    if (h->GetEntries() > 0 && h->Integral() > 0) {
+    // channels with no pedestal entries yet. GetEntries() is the cheap guard;
+    // GetQuantiles (below) reports via nq whether the quantiles are usable.
+    if (h->GetEntries() > 0) {
       const int nq = h->GetQuantiles(2, quants, probs);
       if (nq == 2) {
         const double iqr = quants[1] - quants[0];
