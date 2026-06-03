@@ -1,6 +1,12 @@
-if(DEFINED CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD EQUAL 14)
+# The HiDRA code (notably the monitor) uses std facilities that require
+# C++17 or newer. The C++ standard is normally driven by ROOT's own build
+# standard upstream in cmake/Platform.cmake, which may select C++14. Raise
+# it to 17 whenever it is unset or below 17, while leaving any higher
+# standard (C++20/23) untouched.
+if(NOT CMAKE_CXX_STANDARD OR CMAKE_CXX_STANDARD LESS 17)
   set(CMAKE_CXX_STANDARD 17)
 endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
 ##-- OPT: Compile HIDRA?
