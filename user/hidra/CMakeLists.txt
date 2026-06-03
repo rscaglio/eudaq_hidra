@@ -1,14 +1,3 @@
-# The HiDRA code (notably the monitor) uses std facilities that require
-# C++17 or newer. The C++ standard is normally driven by ROOT's own build
-# standard upstream in cmake/Platform.cmake, which may select C++14. Raise
-# it to 17 whenever it is unset or below 17, while leaving any higher
-# standard (C++20/23) untouched.
-if(NOT CMAKE_CXX_STANDARD OR CMAKE_CXX_STANDARD LESS 17)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-
 ##-- OPT: Compile HIDRA?
 option(USER_HIDRA_BUILD "Build HiDRa DAQ system" OFF)
 
@@ -176,6 +165,29 @@ if(USER_HIDRA_MONITOR_BUILD)
 else()
 	message(STATUS "user/hidra Monitor component is NOT to be built (USER_HIDRA_MONITOR_BUILD=OFF)")
 endif()
+
+# HiDRA requires at least C++17: the monitor, dc and common use
+# std::shared_mutex, std::string_view and std::filesystem, which are not
+# available under C++14. Express this as a per-target minimum compile feature
+# rather than a directory-wide CMAKE_CXX_STANDARD, so the requirement stays
+# localized to HiDRA's own targets and propagates to anything linking them.
+# cxx_std_17 only raises the floor — a higher standard selected upstream for
+# ROOT (C++20/23 in cmake/Platform.cmake) is kept. The if(TARGET) guards skip
+# components whose USER_HIDRA_*_BUILD option is OFF.
+foreach(_hidra_target
+		${EUDAQ_MODULE}
+		${EUDAQ_MODULE}_common
+		${EUDAQ_MODULE}_fers
+		${EUDAQ_MODULE}_fers2
+		${EUDAQ_MODULE}_xdc
+		${EUDAQ_MODULE}_dry
+		${EUDAQ_MODULE}_dc
+		${EUDAQ_MODULE}_monitor
+		hidraLog)
+	if(TARGET ${_hidra_target})
+		target_compile_features(${_hidra_target} PUBLIC cxx_std_17)
+	endif()
+endforeach()
 
 install(TARGETS
   ${EUDAQ_MODULE}
