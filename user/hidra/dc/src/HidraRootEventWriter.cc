@@ -124,7 +124,7 @@ struct HidraRootEventWriter::Impl {
     spill_number = hidra::utils::getTagOr<std::uint32_t>(event, "spillNumber", 0xFFFFFFFF);
     detector_mask = hidra::utils::getTagOr<std::uint8_t>(event, "detectorMask", 0xFF);
     trigger_mask = hidra::utils::getTagOr<std::uint8_t>(event, "triggerMask", 0xFF);
-    event_flags = hidra::utils::getTagOr<std::uint32_t>(event, "eventFlags", 0);
+    // event_flags = hidra::utils::getTagOr<std::uint32_t>(event, "eventFlags", 0); TODO: to be implemented
     n_detectors = event.GetNumSubEvent();
   }
 

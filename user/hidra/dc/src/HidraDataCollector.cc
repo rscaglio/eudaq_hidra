@@ -92,6 +92,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   auto fullEvt = eudaq::Event::MakeUnique("MergedEvent");
   fullEvt->SetRunN(GetRunNumber());
   fullEvt->SetTriggerN(pending.trigger_number);
+  fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
   
   uint8_t detectormask = 0x0;
 
@@ -117,7 +118,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
     ts_end = std::max(ts_end, it->second.event->GetTimestampBegin());
     uint8_t sourceTrigMask = hidra::utils::getTagOr<std::uint8_t>(*it->second.event, "triggerMask", trigMask, false);
     uint32_t sourceSpillNum = hidra::utils::getTagOr<std::uint32_t>(*it->second.event, "spillNumber", spillNum, false);
-    if (trigMask != sourceTrigMask) {
+    if (it != pending.events_by_source.begin() && trigMask != sourceTrigMask) {
       HIDRA_ERROR("Evt {}: Inconsistent trigger mask for detID {}: current subevent has {}, but previous have {}. Using {}",
                   pending.trigger_number,
                   it->first,
@@ -125,7 +126,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
                   trigMask,
                   sourceTrigMask);
     }
-    if (spillNum != sourceSpillNum) {
+    if (it != pending.events_by_source.begin() && spillNum != sourceSpillNum) {
       HIDRA_ERROR("Evt {}: Inconsistent spill number for detID {}: current subevent has {}, but previous have {}. Using {}",
                   pending.trigger_number,
                   it->first,
