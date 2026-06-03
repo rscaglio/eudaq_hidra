@@ -147,6 +147,12 @@ overlay:
   search_dir: reference           # where to look for .root files
   default_file: null
 
+histogram_options:                # per-histogram display options, keyed by
+                                  # histogram name; applies on every tab.
+  dt_between_events:
+    logx: true                    # logarithmic x-axis (needs positive edges)
+    density: true                 # divide each bin by its width
+
 ui_effects:
   shower_hour: 0                  # local hour (0-23) for the daily "cosmic
                                   # shower" animation; null disables the
@@ -169,6 +175,44 @@ tabs:
 Edit `config.yaml`, find the tab, append the histogram name to the
 `histograms:` list of one of its panels. Save and reload the browser
 — no restart needed if you re-run `python app.py` after the edit.
+
+### Per-histogram display options (log-x, density)
+
+Some histograms need more than the default linear bar chart. Add an
+entry under the top-level `histogram_options:` map, keyed by histogram
+name — it applies wherever that histogram is shown:
+
+```yaml
+histogram_options:
+  dt_between_events:
+    logx: true      # logarithmic x-axis
+    density: true   # divide each bin by its (linear) width
+```
+
+- `logx` switches the x-axis to a log scale. The bars are laid out for
+  it (centred on each bin's geometric mean, width in decades), so a
+  non-uniform/log binning renders correctly instead of being squashed
+  against the left edge. Only applied when **every** bin edge is
+  positive; otherwise it silently falls back to linear.
+- `density` divides each bin content by its bin width, so a histogram
+  with non-uniform bins shows a comparable height per unit x instead of
+  raw per-bin counts. The y-axis is relabelled accordingly (e.g.
+  `events / µs`).
+
+Both default to `false`, so histograms without an entry are unchanged.
+The canonical example is `dt_between_events` (log-binned inter-event
+time from the backend's `MetaFiller`).
+
+### Axis titles and units
+
+Axis titles come straight from the ROOT histogram (the
+`"title;x-title;y-title"` string the backend passes when booking it) —
+the frontend reads `fXaxis.fTitle` / `fYaxis.fTitle` from the payload
+and renders them, translating the common ROOT TLatex tokens to Unicode
+(`#mu`→`µ`, `#Delta`→`Δ`, …). So to add/fix a unit, set it on the
+**backend** histogram title; nothing is hard-coded in the frontend.
+Histograms booked without axis titles (most ADC/TDC ones) simply show
+none.
 
 ### Add a new tab
 
