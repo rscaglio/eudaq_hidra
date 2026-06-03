@@ -131,11 +131,31 @@ def to_figure(
     # plot doesn't silently drop bins.
     apply_logx = logx and decoded is not None and decoded.edges.size > 0 and bool(np.all(decoded.edges > 0))
 
+    # Axis titles (with units) come straight from the ROOT histogram, which
+    # stores them as "Title;x-title;y-title" — already split into
+    # fXaxis.fTitle / fYaxis.fTitle by ROOT at construction. Histograms with
+    # no axis title (most ADC/TDC ones) leave these empty and are unchanged.
+    # obj_dict is non-None here (guarded by the early returns above); normalize
+    # defensively so the .get() chain is safe regardless.
+    obj = obj_dict or {}
+    x_title = _root_latex_to_unicode((obj.get("fXaxis") or {}).get("fTitle", "") or "")
+    y_title = _root_latex_to_unicode((obj.get("fYaxis") or {}).get("fTitle", "") or "")
+
+    # A per-channel histogram has one bin per channel, so the hover should
+    # read "ch N" rather than the raw bin centre. This is driven explicitly
+    # by the x-axis title being "channel" (set by the backend on the
+    # channel-indexed TProfiles and on ADC_noise_pedestal) — we do NOT assume
+    # every TProfile is channel-indexed, so a profile vs. time / other
+    # quantity keeps its real x in the hover.
+    per_channel = decoded is not None and x_title.strip().lower() == "channel"
+
     # Build the live trace from the (successfully) decoded histogram.
     if decoded is not None:
         try:
             with Phase(f"trace_build.{decoded.typename[:3]}"):
-                trace, extra_layout = _build_trace(decoded, color=theme.PRIMARY, density=density, logx=apply_logx)
+                trace, extra_layout = _build_trace(
+                    decoded, color=theme.PRIMARY, density=density, logx=apply_logx, per_channel=per_channel
+                )
             if trace is not None:
                 traces.append(trace)
                 layout.update(extra_layout)
@@ -166,15 +186,8 @@ def to_figure(
     if apply_logx:
         layout["xaxis"]["type"] = "log"
 
-    # Axis titles (with units) come straight from the ROOT histogram, which
-    # stores them as "Title;x-title;y-title" — already split into
-    # fXaxis.fTitle / fYaxis.fTitle by ROOT at construction. Histograms with
-    # no axis title (most ADC/TDC ones) leave these empty and are unchanged.
-    # obj_dict is non-None here (guarded by the early returns above); normalize
-    # defensively so the .get() chain is safe regardless.
-    obj = obj_dict or {}
-    x_title = _root_latex_to_unicode((obj.get("fXaxis") or {}).get("fTitle", "") or "")
-    y_title = _root_latex_to_unicode((obj.get("fYaxis") or {}).get("fTitle", "") or "")
+    # Apply the axis titles computed above (kept here so density can rewrite
+    # the y label using the x unit).
     if x_title:
         layout["xaxis"]["title"] = x_title
 
@@ -193,6 +206,93 @@ def to_figure(
     return go.Figure(data=traces, layout=layout)
 
 
+def overlay_figure(
+    decoder: Decoder,
+    specs: list[tuple[Optional[dict], str, str]],
+    title: str,
+    per_channel: bool = False,
+    line_shape: str = "hvh",
+    mode: str = "lines",
+) -> go.Figure:
+    """Render several histograms superimposed on a single figure.
+
+    `specs` is a list of `(payload, color, label)`: each payload is the
+    raw TBufferJSON dict the backend returned for that histogram (or
+    `None` if it was missing on the server). Every successfully decoded
+    histogram becomes one `go.Scatter` trace; the legend is shown so the
+    user can click an entry to hide/show it (all visible by default).
+
+    * `line_shape="hvh"` (default) draws step lines, so several overlaid
+      *distributions* stay readable where overlaid bars would not — used
+      by the channel selector's total/physics/pedestal overlay.
+    * `per_channel` + `mode="lines+markers"` + `line_shape="linear"` is
+      for *per-channel* comparisons (x = channel), e.g. the IQR vs std
+      pedestal-noise overlay: the hover then reads "ch N" and names the
+      series.
+
+    Decode/render failures for one spec are logged and skipped rather
+    than failing the whole figure.
+    """
+    layout = theme.base_figure_layout(title)
+    layout["showlegend"] = True
+    layout["legend"] = dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11))
+
+    traces: list = []
+    x_title = ""
+    y_title = ""
+    for rank, (payload, color, label) in enumerate(specs):
+        if not payload or "_typename" not in payload:
+            continue
+        try:
+            with Phase("decode.overlay"):
+                decoded = decoder.decode(payload)
+        except DecoderError as exc:
+            logger.warning("overlay decode of %s unsupported: %s", label, exc)
+            continue
+        except Exception:
+            logger.exception("overlay decode of %s failed", label)
+            continue
+
+        edges = decoded.edges
+        if edges.size < 2:
+            continue
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        y = decoded.counts.astype(float)
+        trace_kwargs: dict = dict(
+            x=centers, y=y, mode=mode,
+            line=dict(color=color, shape=line_shape),
+            name=label,
+            # Keep the legend in spec order regardless of draw order below.
+            legendrank=rank,
+        )
+        if per_channel:
+            # x is a channel index: read it in the hover and name the series
+            # (each trace carries its own label literally).
+            trace_kwargs["customdata"] = np.arange(len(centers))
+            trace_kwargs["hovertemplate"] = f"{label}<br>ch %{{customdata}}<br>%{{y:.4g}}<extra></extra>"
+        traces.append(go.Scatter(**trace_kwargs))
+
+        # Keep the first non-empty axis titles we come across (all series
+        # share the same binning/units).
+        if not x_title:
+            x_title = _root_latex_to_unicode((payload.get("fXaxis") or {}).get("fTitle", "") or "")
+        if not y_title:
+            y_title = _root_latex_to_unicode((payload.get("fYaxis") or {}).get("fTitle", "") or "")
+
+    if not traces:
+        layout["annotations"] = [dict(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))]
+        return go.Figure(layout=layout)
+
+    if x_title:
+        layout["xaxis"]["title"] = x_title
+    if y_title:
+        layout["yaxis"]["title"] = y_title
+    # Draw order is data order (later = on top). Reverse so the first spec
+    # (the primary series, e.g. IQR) is drawn last and stays visible on top
+    # of the others; legendrank keeps the legend in the original spec order.
+    return go.Figure(data=list(reversed(traces)), layout=layout)
+
+
 def _build_trace(
     decoded: DecodedHist,
     color: str,
@@ -200,6 +300,7 @@ def _build_trace(
     label_suffix: str = "",
     density: bool = False,
     logx: bool = False,
+    per_channel: bool = False,
 ) -> tuple[Optional[go.BaseTraceType], dict]:
     """Build one trace for a decoded histogram.
 
@@ -253,11 +354,22 @@ def _build_trace(
                 ),
                 {},
             )
+        # Per-channel histograms (each bin is a channel) surface the channel
+        # number in the hover instead of the raw bin centre. Plain value
+        # histograms (e.g. ADC_inclusive, whose x is an ADC count) keep
+        # Plotly's default x/y hover.
+        hover: dict = {}
+        if per_channel:
+            hover = dict(
+                customdata=np.arange(len(centers)),
+                hovertemplate="ch %{customdata}<br>%{y:.4g}<extra></extra>",
+            )
         return (
             go.Bar(
                 x=centers, y=y, width=bar_widths,
                 marker=dict(color=color, line=dict(width=0)),
                 name=label,
+                **hover,
             ),
             {"bargap": 0},
         )

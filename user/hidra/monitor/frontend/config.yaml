@@ -65,11 +65,12 @@ tabs:
         count_histogram: event_count
         smoothing: 0.9  # alpha for exponential smoothing of the sparkline; 1 = no smoothing
       # Detector map: every module drawn at its (row, column) position,
-      # coloured by mean ADC. Two figures: S channels and C channels.
-      # `link_tab` makes the modules clickable: clicking one opens that
-      # tab's channel selector on the clicked channel.
+      # coloured by mean ADC of the *physics* events. Two figures: S
+      # channels and C channels. `link_tab` makes the modules clickable:
+      # clicking one opens that tab's channel selector on the clicked channel.
       - type: detector
-        histogram: ADC_mean
+        histogram: ADC_mean_physics
+        label: "mean ADC (physics)"
         height: 550px  # optional per-panel parameter, default is 320px
         link_tab: adc_channels
       # Per-event metadata histograms (filled by MetaFiller on the backend):
@@ -82,15 +83,17 @@ tabs:
         cols: 2
         histograms: [trigger_mask, detectors_present, events_per_spill, dt_between_events]
 
+  # Main ADC views show the physics events only; the pedestal lives in the
+  # dedicated "ADC noise" tab and the per-channel comparison in "ADC channels".
   - id: xdc
     label: ADC
     panels:
       - type: histograms
         cols: 2
-        histograms: [ADC_inclusive]
+        histograms: [ADC_inclusive_physics]
       - type: histograms
         cols: 2
-        histograms: [ADC_mean]
+        histograms: [ADC_mean_physics]
 
   - id: tdc
     label: TDC
@@ -110,17 +113,51 @@ tabs:
   - id: adc_channels
     label: ADC channels
     panels:
+      # `show_trigger_split` overlays the inclusive histogram with its
+      # physics/pedestal copies of the selected channel in one plot. Use the
+      # Plotly legend to hide/show each series (all visible by default).
       - type: channel_selector
         template: "ADC_channel_{ch}"
+        show_trigger_split: true
 
   - id: adc_saturation
     label: ADC Saturation
     panels:
       - type: histograms
         cols: 1
-        histograms: [ADC_saturation]
+        histograms: [ADC_saturation_physics]
       - type: detector
-        histogram: ADC_saturation
-        label: "sat. fraction"
+        histogram: ADC_saturation_physics
+        label: "sat. fraction (physics)"
+        height: 550px
+        link_tab: adc_channels
+
+  # Pedestal-only views: the per-channel mean and the robust noise.
+  # ADC_noise_pedestal is computed on the backend as IQR/1.349 of each
+  # channel's pedestal distribution (robust to outliers, unlike the std
+  # dev), exposed as one value per channel.
+  - id: adc_noise
+    label: ADC noise
+    panels:
+      - type: histograms
+        cols: 1
+        histograms: [ADC_mean_pedestal]
+      - type: detector
+        histogram: ADC_mean_pedestal
+        label: "mean ADC (pedestal)"
+        height: 550px
+        link_tab: adc_channels
+      # Per-channel noise, both estimators overlaid: robust IQR/1.349 and the
+      # (outlier-sensitive) std dev. Toggle either via the legend.
+      - type: overlay
+        title: "Pedestal noise per channel"
+        per_channel: true
+        histograms: [ADC_noise_pedestal, ADC_noise_std_pedestal]
+        labels: ["IQR/1.349", "std"]
+      # The heatmap uses the robust estimator only.
+      - type: detector
+        histogram: ADC_noise_pedestal
+        title_tag: noise
+        label: "noise (IQR/1.349)"
         height: 550px
         link_tab: adc_channels

@@ -29,7 +29,8 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int prescale,
     hidra::HidraXdcDecoder xdc_dec,
     hidra::HidraFersDecoder fers_dec,
-    int n_adc_channels)
+    int n_adc_channels,
+    int noise_update_interval)
     : publisher(registry, port, pump_interval_ms),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
@@ -37,7 +38,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
       event_prescale(prescale) {
 
   chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
-  chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100));
+  chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100, 3800, 3800, noise_update_interval));
   chain.Add(std::make_unique<MetaFiller>(registry));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
@@ -93,6 +94,11 @@ void HidraHttpMonitor::DoInitialise() {
     if (m_event_prescale == 0) {
       HIDRA_WARN("EVENT_PRESCALE=0 is invalid, forcing EVENT_PRESCALE=1");
       m_event_prescale = 1;
+    }
+    m_noise_update_interval = ini->Get("PEDESTAL_NOISE_UPDATE_EVENTS", 200);
+    if (m_noise_update_interval < 1) {
+      HIDRA_WARN("PEDESTAL_NOISE_UPDATE_EVENTS={} is invalid, forcing 1", m_noise_update_interval);
+      m_noise_update_interval = 1;
     }
     // FileNamer pattern for the ROOT file written at end-of-run. Set empty to disable saving.
     m_histo_output_pattern = ini->Get("HISTO_OUTPUT_PATTERN", m_histo_output_pattern);
@@ -156,7 +162,7 @@ void HidraHttpMonitor::DoConfigure() {
     // First configure: build the long-lived monitoring context. This starts the HTTP server with empty histograms,
     // so the GUI is reachable from now on and stays up across run start/stop.
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
-                                             std::move(fers_decoder), n_adc_channels);
+                                             std::move(fers_decoder), n_adc_channels, m_noise_update_interval);
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap

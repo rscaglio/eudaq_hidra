@@ -73,6 +73,24 @@ class DetectorPanel(Panel):
     def _value_label(self) -> str:
         return self.params.get("label", "mean ADC")
 
+    def _title_suffix(self) -> str:
+        """Trigger-type qualifier for the title, derived from the histogram
+        name (e.g. ``ADC_mean_physics`` -> `` (physics)``). Empty for the
+        inclusive histograms so their title is unchanged."""
+        name = self._hist_name()
+        if name.endswith("_physics"):
+            return " (physics)"
+        if name.endswith("_pedestal"):
+            return " (pedestal)"
+        return ""
+
+    def _title(self, pmt_type: str) -> str:
+        # Optional `title_tag` disambiguates two maps of the same histogram
+        # family in one tab (e.g. mean vs noise, both on pedestal data).
+        tag = self.params.get("title_tag")
+        tag = f" — {tag}" if tag else ""
+        return f"Detector — {pmt_type} channels{tag}{self._title_suffix()}"
+
     def histogram_names(self) -> list[str]:
         return [self._hist_name()]
 
@@ -89,7 +107,7 @@ class DetectorPanel(Panel):
         slots = [
             dcc.Graph(
                 id={"type": "panel-graph", "panel": self.panel_id, "index": i},
-                figure=theme.placeholder_figure(f"Detector — {ptype} channels"),
+                figure=theme.placeholder_figure(self._title(ptype)),
                 style={"flex": "1", "minWidth": "0", "height": height},
                 className=graph_class,
                 config={"displayModeBar": False},
@@ -107,17 +125,20 @@ class DetectorPanel(Panel):
 
     def render(self, figs, payloads, client_state):
         payload = payloads.get(self._hist_name())
-        means = _channel_means(payload)
+        values = _channel_means(payload)
         geom = self._geom()
-        return [_detector_figure(ptype, means, geom, self._value_label()) for ptype in PMT_TYPES]
+        label = self._value_label()
+        return [_detector_figure(ptype, values, geom, label, self._title(ptype)) for ptype in PMT_TYPES]
 
 
 def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
-    """channel index -> mean value, read straight from the TProfile buffers.
+    """channel index -> per-channel value, read straight from the buffers.
 
-    Returns None when the payload is missing/unusable (so the figure can
-    show a "missing" placeholder). For a channel with zero entries the
-    mean is undefined and the channel is simply absent from the dict.
+    For a `TProfile` this is the bin mean (`fArray/fBinEntries`); for a
+    plain per-channel `TH1` (e.g. `ADC_noise_pedestal`) it is the bin
+    content. Returns None when the payload is missing/unusable (so the
+    figure can show a "missing" placeholder). Channels with no entries /
+    zero content are simply absent from the dict.
     """
     if not payload or "_typename" not in payload:
         return None
@@ -140,8 +161,10 @@ def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
             # TProfile: mean = sum(weight*y) / sum(weight).
             if idx < len(entries) and entries[idx] > 0:
                 means[channel] = sumw[idx] / entries[idx]
-        elif sumw[idx]:
-            # Plain TH1 fallback: the bin content is already the value.
+        else:
+            # Plain TH1 fallback: the bin content is the value as-is. Keep it
+            # even when 0.0 (a genuine zero, e.g. zero noise) — a truthiness
+            # check here would drop legitimate zero-valued channels.
             means[channel] = float(sumw[idx])
 
     return means
@@ -190,16 +213,19 @@ def _build_geometry(info: dict[int, dict]) -> Optional[dict]:
 
 def _detector_figure(
     pmt_type: str,
-    means: Optional[dict[int, float]],
+    values: Optional[dict[int, float]],
     geom: Optional[dict],
     value_label: str = "mean ADC",
+    title: str = "",
 ) -> go.Figure:
     """One figure for a PMT type: a single Heatmap over the (row, column)
-    grid, each cell coloured by that module's mean ADC.
+    grid, each cell coloured by that module's per-channel value (mean ADC
+    or noise).
 
     `geom` is the precomputed static layout (see `_build_geometry`); only
-    the `z` colours are rebuilt here, per poll."""
-    title = f"Detector — {pmt_type} channels"
+    the `z` colours are rebuilt here, per poll. `title` is the full figure
+    title (the caller tags it with the trigger type / a `title_tag`)."""
+    title = title or f"Detector — {pmt_type} channels"
     # Build layout + trace as plain data and construct the go.Figure once
     # at the end — building two heatmaps per poll this way is much cheaper
     # than go.Figure()+update_layout() (Plotly validation dominates).
@@ -209,7 +235,7 @@ def _detector_figure(
         layout["annotations"] = [dict(text="no module mapping", showarrow=False, font=dict(color=theme.WARN, size=14))]
         return go.Figure(layout=layout)
 
-    if means is None:
+    if values is None:
         layout["title"] = f"{title} (missing)"
         layout["annotations"] = [dict(text="missing on server", showarrow=False, font=dict(color=theme.WARN, size=14))]
         return go.Figure(layout=layout)
@@ -221,14 +247,14 @@ def _detector_figure(
     # Only `z` varies poll-to-poll; the text/customdata grids and cell
     # placements come straight from the cached geometry.
     z: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
-    values: list[float] = []
+    present_values: list[float] = []
     for ri, ci, channel in cell_info["cells"]:
-        value = means.get(channel)
+        value = values.get(channel)
         z[ri][ci] = value
         if value is not None:
-            values.append(value)
+            present_values.append(value)
 
-    cmin, cmax = (min(values), max(values)) if values else (0.0, 1.0)
+    cmin, cmax = (min(present_values), max(present_values)) if present_values else (0.0, 1.0)
     if cmin == cmax:
         cmax = cmin + 1.0
 

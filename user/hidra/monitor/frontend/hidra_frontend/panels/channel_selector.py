@@ -36,11 +36,22 @@ from typing import Optional
 from dash import Dash, Input, Output, dcc, html
 
 from .. import theme
+from ..decoders import get_decoder
+from ..figure_builder import overlay_figure
 from ..mapping import default_mapping
 from .base import Panel
 from .graph_controls import controls_overlay
 
 DEFAULT_TEMPLATE = "ADC_channel_{ch}"
+
+# When `show_trigger_split` is on, the panel overlays these three series of
+# the selected channel: the inclusive histogram plus its physics/pedestal
+# copies. Each tuple is (name suffix, legend label, colour).
+TRIGGER_SPLIT_SERIES = [
+    ("", "total", theme.PRIMARY),
+    ("_physics", "physics", theme.SECONDARY),
+    ("_pedestal", "pedestal", theme.REFERENCE),
+]
 
 
 def _template_regex(template: str) -> re.Pattern:
@@ -59,6 +70,12 @@ class ChannelSelectorPanel(Panel):
         self._regex = _template_regex(self._template)
         self._names: list[str] = []
         self._selected: Optional[str] = None
+        # When on, the single graph slot shows the inclusive histogram and
+        # its physics/pedestal copies overlaid (one step line each). The
+        # panel then builds its own figure from the raw payloads, so it
+        # needs its own decoder (like DetectorPanel).
+        self._split = bool(params.get("show_trigger_split", False))
+        self._decoder = get_decoder(params.get("decoder", "pure")) if self._split else None
 
     def _discover(self, available: list[str]) -> list[str]:
         matched: list[tuple[int, str]] = []
@@ -112,7 +129,18 @@ class ChannelSelectorPanel(Panel):
     # ---- Panel API -------------------------------------------------------
 
     def histogram_names(self) -> list[str]:
-        return [self._selected] if self._selected else []
+        if not self._selected:
+            return []
+        if self._split:
+            # Fetch the inclusive histogram plus its physics/pedestal copies
+            # for the selected channel; they are overlaid in one slot.
+            return [self._selected + suffix for suffix, _, _ in TRIGGER_SPLIT_SERIES]
+        return [self._selected]
+
+    def figure_names(self) -> list[str]:
+        # In split mode the panel builds its own overlaid figure from the
+        # raw payloads, so it doesn't use the framework's per-name figures.
+        return [] if self._split else self.histogram_names()
 
     def control_indices(self) -> list[int]:
         # Single 1D bar histogram in slot 0.
@@ -159,6 +187,15 @@ class ChannelSelectorPanel(Panel):
     def render(self, figs, payloads, client_state):
         if not self._selected:
             return [theme.placeholder_figure("no channel selected")]
+        if self._split:
+            # Overlay the inclusive / physics / pedestal series of the
+            # selected channel into a single figure. The Plotly legend acts
+            # as the per-series on/off toggle (all shown by default).
+            specs = [
+                (payloads.get(self._selected + suffix), color, label)
+                for suffix, label, color in TRIGGER_SPLIT_SERIES
+            ]
+            return [overlay_figure(self._decoder, specs, self._selected)]
         return [figs.get(self._selected, theme.placeholder_figure(self._selected))]
 
     def register_callbacks(self, app: Dash) -> None:

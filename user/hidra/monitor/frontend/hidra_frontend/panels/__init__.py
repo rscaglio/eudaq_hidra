@@ -17,6 +17,7 @@ from .channel_selector import ChannelSelectorPanel
 from .detector import DetectorPanel
 from .histogram_grid import HistogramGridPanel
 from .metric import MetricPanel
+from .overlay import OverlayPanel
 from .rate import RatePanel
 
 PANEL_TYPES: dict[str, type[Panel]] = {
@@ -24,6 +25,7 @@ PANEL_TYPES: dict[str, type[Panel]] = {
     "metric": MetricPanel,
     "channel_selector": ChannelSelectorPanel,
     "detector": DetectorPanel,
+    "overlay": OverlayPanel,
     "rate": RatePanel,
 }
 

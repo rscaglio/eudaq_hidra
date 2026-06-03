@@ -124,7 +124,7 @@ private:
 
     /** Build the context, register fillers and start the HTTP server. */
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
-                   hidra::HidraFersDecoder fers_dec, int n_adc_channels);
+                   hidra::HidraFersDecoder fers_dec, int n_adc_channels, int noise_update_interval);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();
@@ -134,6 +134,8 @@ private:
   int m_port{9090};
   int m_pump_interval_ms{20}; /**< Pump interval in milliseconds (~50 Hz default). */
   int m_event_prescale{1}; /**< Process 1 event every N events (N>=1). */
+  /** Recompute the per-channel pedestal noise every N pedestal events (N>=1). */
+  int m_noise_update_interval{200};
   /** FileNamer pattern for the histograms saved at end-of-run. Empty disables saving. */
   std::string m_histo_output_pattern{"out_data/monitor_run$6R_$12D$X"};
 
