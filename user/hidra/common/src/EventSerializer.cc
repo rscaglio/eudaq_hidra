@@ -144,8 +144,8 @@ marker (16 bit)
   int anchorpoint_detmask = buffer.size();
   appendLE(buffer, reserved8); // detector mask
 
-  int NSources = std::stoi(event.GetTag("N_SOURCES"));
-
+  uint32_t NSources = getTagOr<std::uint32_t>(event, "N_SOURCES", 0);
+ 
   int anchorpoint_detsize = buffer.size();
   for (int is = 0; is < MAX_N_DETECTORS; is++) {
     appendLE(buffer, reserved16); // data size for the subdetector
