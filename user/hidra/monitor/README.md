@@ -27,7 +27,17 @@ euCliMonitor -n HidraHttpMonitor
 - `FillerChain.*` - ordered list of `IHistogramFiller`s, called under the
   histogram-content lock for every received event.
 - `SummaryFiller.*` - run-level histograms (event count, events vs time).
-- `XDCFiller.*` - XDC ADC/TDC histograms.
+- `XDCFiller.*` - XDC ADC/TDC histograms. The ADC views (`ADC_mean`,
+  `ADC_inclusive`, `ADC_channel_<N>`, `ADC_saturation`) are additionally
+  filled split by trigger type into `*_physics` / `*_pedestal` copies
+  (selected per event via `meta.isPhysics()` / `isPedestal()`); TDC stays
+  inclusive only. It also publishes the per-channel pedestal noise (one
+  bin per channel) with two estimators: `ADC_noise_pedestal` = `IQR/1.349`
+  (robust: equals 1σ for a Gaussian but insensitive to outlier tails) and
+  `ADC_noise_std_pedestal` = standard deviation. Both are recomputed
+  together from the per-channel pedestal histograms every
+  `PEDESTAL_NOISE_UPDATE_EVENTS` pedestal events (config key in the
+  monitor `.ini`, default 200).
 - `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
 
 ## Event metadata
@@ -129,6 +139,7 @@ Init configuration (`[Monitor.HidraHttpMonitor]` in the `.ini`), read in
 | `HTTP_PORT` | `9090` | TCP port of the HTTP server. |
 | `PUMP_INTERVAL_MS` | `20` | Period of the pump thread draining the HTTP queue (clamped to >= 5 ms). |
 | `EVENT_PRESCALE` | `1` | Process 1 event every N (>= 1) to reduce load. |
+| `PEDESTAL_NOISE_UPDATE_EVENTS` | `200` | Recompute the per-channel pedestal noise (`ADC_noise_pedestal` / `ADC_noise_std_pedestal`) every N (>= 1) pedestal events. Lower = more responsive, higher = cheaper. |
 | `HISTO_OUTPUT_PATTERN` | `out_data/monitor_run$6R_$12D$X` | `FileNamer` pattern for the end-of-run ROOT file. `$R` run number, `$D` timestamp, `$X` extension (`.root`). Empty disables saving. |
 
 Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in

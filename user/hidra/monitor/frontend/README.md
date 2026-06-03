@@ -244,6 +244,37 @@ Append an entry under `tabs:` in `config.yaml`:
   Params: `template: "ADC_channel_{ch}"` (default). To pin an explicit
   set instead of auto-discovery, add `range: [lo, hi]` or a `names`
   list. The selected channel updates the plot on the next poll tick.
+  With `show_trigger_split: true` the slot instead overlays the selected
+  channel's inclusive histogram together with its `_physics` and
+  `_pedestal` copies (filled by `XDCFiller` from the trigger mask) as
+  three step lines in one plot. Click a legend entry to hide/show a
+  series (all visible by default); missing series are simply skipped.
+
+- `detector` — a 2D calorimeter map: one cell per module at its (row,
+  column) position, coloured by a per-channel value. Emits two heatmaps
+  (S and C PMTs). The value is read from a `TProfile` (the bin mean) or a
+  plain per-channel `TH1` (the bin content, e.g. `ADC_noise_pedestal`).
+  Params: `histogram: ADC_mean` (default); `label:` colorbar/hover label;
+  `title_tag:` extra word in the title to disambiguate two maps of the
+  same histogram family in one tab (e.g. `noise`); `height:`; `link_tab:`
+  makes modules clickable, opening that tab's `channel_selector` on the
+  clicked channel.
+
+- `overlay` — a fixed list of histograms superimposed in one graph (one
+  line trace each, legend toggles them). Params: `histograms: [...]`;
+  `labels: [...]` (optional); `title:` (optional); `per_channel: true`
+  when x is a channel index (gives the "ch N" hover and a marker per
+  point). Used for the pedestal-noise estimator comparison; for
+  overlaying the total/physics/pedestal of one *selected* channel use
+  `channel_selector` with `show_trigger_split` instead.
+
+The per-channel **noise** is computed on the backend, not the frontend.
+Two estimators are published, one value per channel: `ADC_noise_pedestal`
+= `IQR/1.349` (robust to outliers; on a Gaussian it equals 1σ) and
+`ADC_noise_std_pedestal` = standard deviation (outlier-sensitive). The
+"ADC noise" tab overlays both per channel (`overlay` panel) and maps the
+robust one (`detector` panel). The backend refresh cadence is set by
+`PEDESTAL_NOISE_UPDATE_EVENTS` in the monitor `.ini`.
 
 ### Add a custom panel (custom layout / widgets)
 
