@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# This script relies on bash features (arrays, [[ ]], $'...', BASH_SOURCE), so
+# it cannot run under a POSIX sh/dash (or fish). Fail early with a clear message
+# instead of a confusing parse/runtime error. The test itself is POSIX-safe.
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "setup.sh: please source this with bash (your current shell is not bash)." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 # Resolve the script directory and repository root dynamically.
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
@@ -168,9 +176,13 @@ hidra_stop() {
         "euCliMonitor -n HidraHttpMonitor"
         "euCliProducer -n Hidra"
     )
-    local pat killed_any=0
+    # Limit kills to the current user's processes (and match the full,
+    # fairly specific command lines) to avoid touching unrelated processes
+    # or other users' jobs on a shared machine.
+    local pat killed_any=0 uid
+    uid=$(id -u)
     for pat in "${patterns[@]}"; do
-        if pkill -f "$pat" 2>/dev/null; then
+        if pkill -u "$uid" -f "$pat" 2>/dev/null; then
             echo "  stopped: $pat"
             killed_any=1
         fi
@@ -405,9 +417,9 @@ cmake_clean() {
 }
 
 # Convenience aliases for quickly jumping to common directories.
-alias build_dir="cd $REPO_ROOT/build"
-alias hidra_run="cd $REPO_ROOT/user/hidra/run"
-alias hidra_dir="cd $REPO_ROOT/user/hidra"
+alias build_dir='cd "$REPO_ROOT/build"'
+alias hidra_run='cd "$REPO_ROOT/user/hidra/run"'
+alias hidra_dir='cd "$REPO_ROOT/user/hidra"'
 
 # Print a short, user-friendly summary of the commands this script provides.
 # Shown automatically when the script is sourced; run `hidra_help` to see it
