@@ -10,6 +10,7 @@ fi
 
 # Resolve the script directory and repository root dynamically.
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
+# Export REPO_ROOT so it can be used by other scripts that source this one, e.g. the run scripts.
 export REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
 REPO_RUN=$(realpath "$SCRIPT_DIR/../run/")
 
