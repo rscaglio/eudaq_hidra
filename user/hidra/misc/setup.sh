@@ -10,7 +10,7 @@ fi
 
 # Resolve the script directory and repository root dynamically.
 SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
-REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
+export REPO_ROOT=$(realpath "$SCRIPT_DIR/../../../")
 REPO_RUN=$(realpath "$SCRIPT_DIR/../run/")
 
 HIDRA_REQUIRED_CMAKE_VERSION="3.25.1"
