@@ -40,7 +40,7 @@
 #include "HistogramRegistry.hh"
 
 #include <HidraXdcDecoder.hh>
-#include <HidraFersDecoder.hh>
+#include <IFersDecoder.hh>
 #include <HidraMetaDecoder.hh>
 
 #include <eudaq/Factory.hh>
@@ -104,7 +104,8 @@ private:
 
     /** Decoders carrying run/config-dependent state. Swapped by DoConfigure() under m_state_mutex. */
     hidra::HidraXdcDecoder xdc_decoder;
-    hidra::HidraFersDecoder fers_decoder;
+    /** Real or random FERS decoder, selected at configure time (FERS_DECODER). */
+    std::unique_ptr<hidra::IFersDecoder> fers_decoder;
 
     /** Stateless decoder that extracts per-event metadata (trigger mask, spill, …) from the EUDAQ event. */
     hidra::HidraMetaDecoder meta_decoder;
@@ -124,7 +125,8 @@ private:
 
     /** Build the context, register fillers and start the HTTP server. */
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
-                   hidra::HidraFersDecoder fers_dec, int n_adc_channels, int noise_update_interval);
+                   std::unique_ptr<hidra::IFersDecoder> fers_dec, int n_adc_channels, int noise_update_interval,
+                   int fers_nboards, int fers_value_max, int fers_channel_nbins, int fers_saturation_threshold);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();
