@@ -173,7 +173,8 @@ Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in
 | `FERS_NBOARDS` | `20` | Number of FERS boards (64 channels each); sizes the FERS histograms (only consumed on the first configure). |
 | `FERS_VALUE_MAX` | `4096` | HG/LG ADC full scale (12-bit) — upper edge of the FERS distributions. |
 | `FERS_CHANNEL_NBINS` | `1024` | Bins for the per-channel HG/LG distributions over `[0, FERS_VALUE_MAX)` (1024 → 4 ADC/bin). |
-| `FERS_SATURATION_THRESHOLD` | `3800` | A channel is counted as saturated when its HG/LG value exceeds this (feeds `FERS_HG_saturation` / `FERS_LG_saturation`). |
+| `FERS_SATURATION_THRESHOLD` | `3800` | A channel is counted as saturated when its HG/LG value exceeds this (feeds `FERS_HG_saturation` / `FERS_LG_saturation`). Clamped to `[0, FERS_VALUE_MAX)`. |
+| `FERS_PER_CHANNEL_DISTRIBUTIONS` | `1` | `1` books the per-channel HG/LG distributions (`FERS_{HG,LG}_channel_<N>_*`, needed for the frontend channel dropdown); `0` skips them to cut memory / startup / THttpServer load. Means, saturation, inclusive and per-board histograms are unaffected. |
 
 ## Threading & locking model
 

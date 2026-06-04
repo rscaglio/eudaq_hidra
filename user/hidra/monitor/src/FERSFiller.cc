@@ -13,12 +13,14 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
                        unsigned int channels_per_board,
                        int value_max,
                        int channel_nbins,
-                       int saturation_threshold)
+                       int saturation_threshold,
+                       bool per_channel_distributions)
     : IHistogramFiller("FERSFiller"),
       m_n_boards(n_boards),
       m_channels_per_board(channels_per_board),
       m_n_channels(0),
-      m_saturation_threshold(saturation_threshold) {
+      m_saturation_threshold(saturation_threshold),
+      m_per_channel(per_channel_distributions) {
   if (m_n_boards == 0) {
     HIDRA_WARN("FERSFiller n_boards=0 is invalid, forcing 1.");
     m_n_boards = 1;
@@ -34,6 +36,11 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
   if (value_max < 1) {
     HIDRA_WARN("FERSFiller value_max={} is invalid, forcing 4096.", value_max);
     value_max = 4096;
+  }
+  if (saturation_threshold < 0 || saturation_threshold >= value_max) {
+    HIDRA_WARN("FERSFiller saturation_threshold={} outside [0,{}); clamping.", saturation_threshold, value_max);
+    saturation_threshold = std::clamp(saturation_threshold, 0, value_max - 1);
+    m_saturation_threshold = saturation_threshold;
   }
   m_n_channels = m_n_boards * m_channels_per_board;
 
@@ -76,8 +83,13 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
           channel_nbins, 0, value_max)));
     }
   };
-  book_channels("HG", m_hg_channels_physics, m_hg_channels_pedestal);
-  book_channels("LG", m_lg_channels_physics, m_lg_channels_pedestal);
+  // The per-channel distributions dominate the histogram count/memory; skip them
+  // entirely when disabled (the per-channel vectors stay empty and Fill guards on
+  // m_per_channel).
+  if (m_per_channel) {
+    book_channels("HG", m_hg_channels_physics, m_hg_channels_pedestal);
+    book_channels("LG", m_lg_channels_physics, m_lg_channels_pedestal);
+  }
 
   // Per-channel saturation fraction (TProfile of a 0/1 indicator). Total and
   // physics only — pedestal events don't saturate. The ";channel;" x-axis title
@@ -128,11 +140,15 @@ void FERSFiller::Fill(const HidraEvent& event) {
       if (is_physics) {
         m_hg_mean_physics->Fill(i, hg);
         m_hg_inclusive_physics->Fill(hg);
-        m_hg_channels_physics[i]->Fill(hg);
+        if (m_per_channel) {
+          m_hg_channels_physics[i]->Fill(hg);
+        }
       }
       if (is_pedestal) {
         m_hg_mean_pedestal->Fill(i, hg);
-        m_hg_channels_pedestal[i]->Fill(hg);
+        if (m_per_channel) {
+          m_hg_channels_pedestal[i]->Fill(hg);
+        }
       }
       const int saturated = hg > m_saturation_threshold ? 1 : 0;
       m_hg_saturation->Fill(i, saturated);
@@ -151,11 +167,15 @@ void FERSFiller::Fill(const HidraEvent& event) {
       if (is_physics) {
         m_lg_mean_physics->Fill(i, lg);
         m_lg_inclusive_physics->Fill(lg);
-        m_lg_channels_physics[i]->Fill(lg);
+        if (m_per_channel) {
+          m_lg_channels_physics[i]->Fill(lg);
+        }
       }
       if (is_pedestal) {
         m_lg_mean_pedestal->Fill(i, lg);
-        m_lg_channels_pedestal[i]->Fill(lg);
+        if (m_per_channel) {
+          m_lg_channels_pedestal[i]->Fill(lg);
+        }
       }
       const int saturated = lg > m_saturation_threshold ? 1 : 0;
       m_lg_saturation->Fill(i, saturated);

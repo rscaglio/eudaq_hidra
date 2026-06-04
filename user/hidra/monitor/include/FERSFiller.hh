@@ -19,6 +19,7 @@
  *   - per-channel HG and LG distributions (TH1I, one per channel, for the
  *     frontend channel dropdown), split physics/pedestal only (no standalone
  *     "total" copy, to save memory — physics vs pedestal is the useful overlay);
+ *     optional, disabled when `per_channel_distributions` is false;
  *   - per-channel saturation fraction HG and LG (TProfile of a 0/1 indicator,
  *     x = channel), total and physics only (pedestal events don't saturate): a
  *     channel is saturated when its value exceeds a configurable threshold;
@@ -39,7 +40,8 @@ public:
                       unsigned int channels_per_board = 64,
                       int value_max = 4096,
                       int channel_nbins = 1024,
-                      int saturation_threshold = 3800);
+                      int saturation_threshold = 3800,
+                      bool per_channel_distributions = true);
   void Fill(const HidraEvent&) override;
 
 private:
@@ -50,6 +52,9 @@ private:
   unsigned int m_channels_per_board;
   unsigned int m_n_channels;
   double m_saturation_threshold;
+  // When false, the per-channel TH1I distributions are neither booked nor filled
+  // (the per-channel vectors stay empty) — saves memory/startup for routine ops.
+  bool m_per_channel;
 
   // Per-channel mean (x = channel). The ";channel;" x-axis title marks these as
   // channel-indexed so the frontend labels the hover with the channel number.
