@@ -164,6 +164,7 @@ See [fers2/README.md](fers2/README.md)
 
 ## Data version change log
 
+- `v11` (2026, Jun 05): adding event flags as 32-bit word in the header 
 - `v10` (2026, Jun 03): document detector `nativeEvtTime` as the serialized `nativeTimestampBegin` tag and clarify event timestamp fields
 - `v8` (2026, May 22): adding data qualifier as `uint32` inside each FERS payload block
 - `v7` (2026, May 20): adding two more bytes as marker (`0xAAAA`) at the beginning of each FERS Board payload
