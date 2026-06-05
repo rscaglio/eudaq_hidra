@@ -38,6 +38,27 @@ euCliMonitor -n HidraHttpMonitor
   together from the per-channel pedestal histograms every
   `PEDESTAL_NOISE_UPDATE_EVENTS` pedestal events (config key in the
   monitor `.ini`, default 200).
+- `FERSFiller.*` - FERS histograms (`FERS_NBOARDS` boards × 64 channels). For
+  both gains (`HG`, `LG`) it publishes: the per-channel mean (`FERS_HG_mean` /
+  `FERS_LG_mean`, `TProfile` indexed by channel) split into `*_physics` /
+  `*_pedestal` copies via the trigger mask; an inclusive physics distribution
+  (`FERS_HG_inclusive_physics`, `FERS_LG_inclusive_physics`); and per-channel
+  distributions `FERS_HG_channel_<N>_physics` / `_pedestal` (and `FERS_LG_…`)
+  for the frontend channel dropdown — only the physics/pedestal copies are kept
+  (no "total"), and they are `TH1I` (integer bin counts, half the memory of
+  `TH1D`), binned `FERS_CHANNEL_NBINS` over `[0, FERS_VALUE_MAX)`. It also fills
+  the per-channel saturation fraction `FERS_HG_saturation` /
+  `FERS_LG_saturation` (and `*_physics`; no pedestal copy — pedestal events don't
+  saturate), a `TProfile` of a 0/1 indicator that is 1 when the value exceeds
+  `FERS_SATURATION_THRESHOLD`. Per board (`TProfile` indexed by board) it also
+  publishes the mean over the board's channels for each gain
+  (`FERS_HG_board_mean` / `FERS_LG_board_mean`) and the fraction of events in
+  which every HG channel of the board reads zero (`FERS_HG_board_allzero`, a
+  board present but producing no signal). Finally, `FERS_board_time_offset`
+  (`TProfile` indexed by board): each board's
+  `rel_tsamp_us` minus the **median** over the boards present in the event, so a
+  board out of time sync stands out. The data is consumed from `HidraEvent::fers`
+  regardless of which FERS decoder produced it (see `FERS_DECODER` below).
 - `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
 
 ## Event metadata
@@ -148,6 +169,12 @@ Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `VME_CRATE_1` | (empty) | `geo:module` map describing the XDC VME crate, passed to the XDC decoder. |
+| `FERS_DECODER` | `real` | FERS decoder selection: `real` decodes the FERS payload; `random` ignores the input and generates fake per-channel data (**TEST ONLY**, to exercise the FERS histograms without real FERS data). |
+| `FERS_NBOARDS` | `20` | Number of FERS boards (64 channels each); sizes the FERS histograms (only consumed on the first configure). |
+| `FERS_VALUE_MAX` | `4096` | HG/LG ADC full scale (12-bit) — upper edge of the FERS distributions. |
+| `FERS_CHANNEL_NBINS` | `1024` | Bins for the per-channel HG/LG distributions over `[0, FERS_VALUE_MAX)` (1024 → 4 ADC/bin). |
+| `FERS_SATURATION_THRESHOLD` | `3800` | A channel is counted as saturated when its HG/LG value exceeds this (feeds `FERS_HG_saturation` / `FERS_LG_saturation`). Clamped to `[0, FERS_VALUE_MAX)`. |
+| `FERS_PER_CHANNEL_DISTRIBUTIONS` | `1` | `1` books the per-channel HG/LG distributions (`FERS_{HG,LG}_channel_<N>_*`, needed for the frontend channel dropdown); `0` skips them to cut memory / startup / THttpServer load. Means, saturation, inclusive and per-board histograms are unaffected. |
 
 ## Threading & locking model
 

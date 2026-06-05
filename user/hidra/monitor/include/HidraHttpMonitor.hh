@@ -40,7 +40,7 @@
 #include "HistogramRegistry.hh"
 
 #include <HidraXdcDecoder.hh>
-#include <HidraFersDecoder.hh>
+#include <IFersDecoder.hh>
 #include <HidraMetaDecoder.hh>
 
 #include <eudaq/Factory.hh>
@@ -104,13 +104,23 @@ private:
 
     /** Decoders carrying run/config-dependent state. Swapped by DoConfigure() under m_state_mutex. */
     hidra::HidraXdcDecoder xdc_decoder;
-    hidra::HidraFersDecoder fers_decoder;
+    /** Real or random FERS decoder, selected at configure time (FERS_DECODER). */
+    std::unique_ptr<hidra::IFersDecoder> fers_decoder;
 
     /** Stateless decoder that extracts per-event metadata (trigger mask, spill, …) from the EUDAQ event. */
     hidra::HidraMetaDecoder meta_decoder;
 
     DurationAccumulator duration_xdc_decode{"decode_xdc"};
     DurationAccumulator duration_fers_decode{"decode_fers"};
+
+    /**
+     * FERS histogram sizing this context was built with. The FERS histograms are
+     * sized once (here, at construction); these are kept so a reconfigure can
+     * rebuild the FERS decoder to match, instead of re-reading possibly-changed
+     * config values that no longer match the booked histograms.
+     */
+    int fers_nboards{20};
+    int fers_value_max{4096};
 
     int event_prescale{1};
     std::atomic<uint64_t> event_counter{0};
@@ -124,7 +134,9 @@ private:
 
     /** Build the context, register fillers and start the HTTP server. */
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
-                   hidra::HidraFersDecoder fers_dec, int n_adc_channels, int noise_update_interval);
+                   std::unique_ptr<hidra::IFersDecoder> fers_dec, int n_adc_channels, int noise_update_interval,
+                   int fers_nboards, int fers_value_max, int fers_channel_nbins, int fers_saturation_threshold,
+                   bool fers_per_channel_distributions);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();

@@ -4,9 +4,13 @@
 
 #include "SummaryFiller.hh"
 #include "XDCFiller.hh"
+#include "FERSFiller.hh"
 #include "MetaFiller.hh"
 #include "HidraUtils.hh"
 #include "ScopedTimer.hh"
+
+#include <HidraFersDecoder.hh>
+#include <HidraFersRandomDecoder.hh>
 
 #include <eudaq/Event.hh>
 #include <eudaq/Factory.hh>
@@ -28,17 +32,27 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int pump_interval_ms,
     int prescale,
     hidra::HidraXdcDecoder xdc_dec,
-    hidra::HidraFersDecoder fers_dec,
+    std::unique_ptr<hidra::IFersDecoder> fers_dec,
     int n_adc_channels,
-    int noise_update_interval)
+    int noise_update_interval,
+    int fers_nboards,
+    int fers_value_max,
+    int fers_channel_nbins,
+    int fers_saturation_threshold,
+    bool fers_per_channel_distributions)
     : publisher(registry, port, pump_interval_ms),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
+      fers_nboards(fers_nboards),
+      fers_value_max(fers_value_max),
       event_prescale(prescale) {
 
   chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
   chain.Add(std::make_unique<XDCFiller>(registry, n_adc_channels, 100, 3800, 3800, noise_update_interval));
+  chain.Add(std::make_unique<FERSFiller>(registry, static_cast<unsigned int>(fers_nboards), 64u, fers_value_max,
+                                         fers_channel_nbins, fers_saturation_threshold,
+                                         fers_per_channel_distributions));
   chain.Add(std::make_unique<MetaFiller>(registry));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
@@ -152,17 +166,57 @@ void HidraHttpMonitor::DoConfigure() {
   }
 
   hidra::HidraXdcDecoder xdc_decoder(vme_geo_map);
-  hidra::HidraFersDecoder fers_decoder;
   // Capture the channel count before moving the decoder: the XDCFiller histograms are sized from it. As the fillers are
   // built once (the histogram set is fixed for the life of the server), this is only consumed on the first configure.
   const int n_adc_channels = xdc_decoder.NADCChannels();
 
+  // FERS decoder selection and histogram sizing live in the run config, read and passed through here just like the XDC
+  // VME_CRATE_1 → n_adc_channels above (so the monitor holds no FERS-specific state). FERS_DECODER picks the real decoder
+  // or the random test generator; FERS_NBOARDS / FERS_VALUE_MAX / FERS_CHANNEL_NBINS / FERS_SATURATION_THRESHOLD /
+  // FERS_PER_CHANNEL_DISTRIBUTIONS size and shape the FERS histograms (only used on the first configure, when the filler
+  // set is built).
+  const std::string fers_decoder_kind = conf->Get("FERS_DECODER", std::string("real"));
+  const bool fers_random = (fers_decoder_kind == "random");
+  if (!fers_random && fers_decoder_kind != "real") {
+    HIDRA_WARN("FERS_DECODER='{}' is unknown (expected 'real' or 'random'); using the real decoder.", fers_decoder_kind);
+  }
+  int cfg_nboards = conf->Get("FERS_NBOARDS", 20);
+  const int cfg_value_max = conf->Get("FERS_VALUE_MAX", 4096);
+  const int fers_channel_nbins = conf->Get("FERS_CHANNEL_NBINS", 1024);
+  const int fers_saturation_threshold = conf->Get("FERS_SATURATION_THRESHOLD", 3800);
+  const bool fers_per_channel = conf->Get("FERS_PER_CHANNEL_DISTRIBUTIONS", 1) != 0;
+  if (cfg_nboards < 1) {
+    HIDRA_WARN("FERS_NBOARDS={} is invalid, forcing 20.", cfg_nboards);
+    cfg_nboards = 20;
+  }
+
   std::unique_lock<std::shared_mutex> lock(m_state_mutex);
+
+  // The FERS histograms are sized once (first configure). On a reconfigure reuse the sizing the histograms were built
+  // with, so the rebuilt decoder stays consistent with them (re-reading changed FERS_NBOARDS / FERS_VALUE_MAX would
+  // otherwise make the random decoder produce a channel count / range the booked histograms can't hold).
+  const int eff_nboards = m_ctx ? m_ctx->fers_nboards : cfg_nboards;
+  const int eff_value_max = m_ctx ? m_ctx->fers_value_max : cfg_value_max;
+  if (m_ctx && (cfg_nboards != eff_nboards || cfg_value_max != eff_value_max)) {
+    HIDRA_WARN("FERS sizing change ignored on reconfigure (histograms already sized); keeping nboards={}, value_max={}.",
+               eff_nboards, eff_value_max);
+  }
+  std::unique_ptr<hidra::IFersDecoder> fers_decoder;
+  if (fers_random) {
+    HIDRA_WARN("FERS_DECODER=random: the monitor will histogram synthetic FERS data (TEST ONLY).");
+    fers_decoder =
+        std::make_unique<hidra::HidraFersRandomDecoder>(static_cast<unsigned int>(eff_nboards), 64u, eff_value_max);
+  } else {
+    fers_decoder = std::make_unique<hidra::HidraFersDecoder>();
+  }
+
   if (!m_ctx) {
     // First configure: build the long-lived monitoring context. This starts the HTTP server with empty histograms,
     // so the GUI is reachable from now on and stays up across run start/stop.
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
-                                             std::move(fers_decoder), n_adc_channels, m_noise_update_interval);
+                                             std::move(fers_decoder), n_adc_channels, m_noise_update_interval,
+                                             cfg_nboards, cfg_value_max, fers_channel_nbins, fers_saturation_threshold,
+                                             fers_per_channel);
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap
@@ -279,6 +333,7 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
   // Per-event metadata (trigger mask, spill, timestamps, …) comes from the EUDAQ event/tags, not the binary payload.
   m_ctx->meta_decoder.decode(*ev, decoded.meta);
 
+  std::vector<std::uint8_t> fers_payload;
   for (size_t index = 0; index < ev->GetNumSubEvent(); ++index) {
     eudaq::EventSPC subevent = ev->GetSubEvent(index); // no copy, just a shared pointer copy of the subevent handle
     if (!subevent) {
@@ -303,9 +358,17 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
       ScopedTimer t(m_ctx->duration_xdc_decode);
       m_ctx->xdc_decoder.decode(detector_payload, decoded.xdc);
     } else if (det_id == 2) {
-      ScopedTimer t(m_ctx->duration_fers_decode);
-      m_ctx->fers_decoder.decode(detector_payload, decoded.fers);
+      // Defer FERS decoding until after the loop (see below).
+      fers_payload = std::move(detector_payload);
     }
+  }
+
+  // FERS is decoded once, after the sub-event loop. The real decoder runs on the captured payload (empty when no FERS
+  // sub-event was present → all-sentinel vectors, a no-op for the filler), while the random test decoder ignores the
+  // payload and always produces data, so the chain is exercised even in the dry chain (no FERS sub-event).
+  {
+    ScopedTimer t(m_ctx->duration_fers_decode);
+    m_ctx->fers_decoder->decode(fers_payload, decoded.fers);
   }
 
   // --- Dispatch — inside the histogram lock --------------------------
