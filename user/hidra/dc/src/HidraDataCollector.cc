@@ -155,6 +155,12 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
                m_pending_events.size());
   }
 
+  uint32_t mergedEventFlags = pending.flags;
+  // TODO make OR with per-event flags
+  hidra::utils::SetEventFlagMask(*fullEvt, mergedEventFlags);
+
+
+
   return fullEvt;
 }
 
@@ -564,6 +570,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
                 source,
                 detectorID,
                 trigger_number);
+    pending.flags |= hidra::utils::HidraEventFlags::DuplicatedTrigger;
     // TODO : this is severe.. handle it!
   }
 
@@ -655,6 +662,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
                     refDetectorID,
                     deltaT,
                     expectedDeltaT);
+        pending.flags |= hidra::utils::HidraEventFlags::TimestampMismatch;
       }
     }
   }

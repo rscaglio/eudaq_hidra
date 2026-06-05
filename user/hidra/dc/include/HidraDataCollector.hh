@@ -1,10 +1,12 @@
 #include "TimeAlignmentCalibrator.hh"
 #include "TransportBase.hh"
+#include "HidraUtils.hh"
 #include "HidraMergedBinaryWriter.hh"
 #include "HidraRootEventWriter.hh"
 #include <eudaq/DataCollector.hh>
 #include <eudaq/Factory.hh>
 
+#include <cstdint>
 #include <memory>
 #include <map>
 #include <string>
@@ -25,6 +27,7 @@ class HidraDataCollector : public eudaq::DataCollector {
     uint64_t trigger_number;
     std::map<int, SourceEvent> events_by_source; // access through detID: events_by_source[x]
     uint64_t first_seen_ns;
+    std::uint32_t flags = hidra::utils::HidraEventFlags::None;
   };
 
 public:
