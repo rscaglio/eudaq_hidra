@@ -92,11 +92,5 @@ class OverlayPanel(Panel):
             (payloads.get(name), _COLORS[i % len(_COLORS)], label)
             for i, (name, label) in enumerate(zip(self._histos, self._labels))
         ]
-        if self._per_channel:
-            fig = overlay_figure(
-                self._decoder, specs, self._title(),
-                per_channel=True, line_shape="linear", mode="lines+markers",
-            )
-        else:
-            fig = overlay_figure(self._decoder, specs, self._title())
+        fig = overlay_figure(self._decoder, specs, self._title(), per_channel=self._per_channel)
         return [fig]

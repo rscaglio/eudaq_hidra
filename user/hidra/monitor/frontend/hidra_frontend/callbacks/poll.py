@@ -147,7 +147,12 @@ def register(
             figures_out: list = []
             with Phase("poll.panel_render"):
                 for panel in panels:
-                    figures_out.extend(panel.render(figs_by_name, data, client_state))
+                    # Time each panel's render separately (nested under
+                    # poll.panel_render) so the summary shows which panel type
+                    # dominates — e.g. detector/fers_board build their heatmaps
+                    # here, outside the `to_figure_one` path.
+                    with Phase(panel.__class__.__name__):
+                        figures_out.extend(panel.render(figs_by_name, data, client_state))
 
             # Race guard. When the user switches tab quickly, a poll
             # triggered for the previous tab may still be running when

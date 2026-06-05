@@ -79,6 +79,7 @@ def to_figure(
 
     logx = bool(options.logx) if options else False
     density = bool(options.density) if options else False
+    show_flow = bool(options.show_flow) if options else False
 
     # Decode early so we can use the histogram's own title, if available.
     # A failed decode must NOT silently fall through to an empty plot
@@ -101,6 +102,15 @@ def to_figure(
 
     # Pick the title: the decoded histogram's own title when valid, else the name.
     plot_title = decoded.title if decoded and hasattr(decoded, "title") and decoded.title else name
+
+    # For 1D histograms (TH1*, not TProfile or 2D) append the total entry count
+    # — ROOT's fEntries, which counts every Fill including over/underflow — to
+    # the title. TProfile/TH2 are excluded: their "entries" mean something else
+    # (per-bin samples / 2D), so we keep their title unchanged.
+    if decoded is not None and decoded.typename.startswith("TH1"):
+        entries = (obj_dict or {}).get("fEntries")
+        if entries is not None:
+            plot_title = f"{plot_title}  (entries: {int(entries):,})"
 
     # Accumulate traces + layout tweaks as plain data, then build the
     # go.Figure in a single shot at the end. Constructing once with
@@ -148,17 +158,31 @@ def to_figure(
     # every TProfile is channel-indexed, so a profile vs. time / other
     # quantity keeps its real x in the hover.
     per_channel = decoded is not None and x_title.strip().lower() == "channel"
+    # For a per-channel histogram, optionally also surface the board number and
+    # the channel within the board in the hover (e.g. FERS: 64 channels/board).
+    channels_per_board = int(options.channels_per_board) if options else 0
 
     # Build the live trace from the (successfully) decoded histogram.
     if decoded is not None:
         try:
             with Phase(f"trace_build.{decoded.typename[:3]}"):
                 trace, extra_layout = _build_trace(
-                    decoded, color=theme.PRIMARY, density=density, logx=apply_logx, per_channel=per_channel
+                    decoded, color=theme.PRIMARY, density=density, logx=apply_logx,
+                    per_channel=per_channel, channels_per_board=channels_per_board,
                 )
             if trace is not None:
                 traces.append(trace)
                 layout.update(extra_layout)
+                # Optional underflow/overflow bars at the edges (e.g. the
+                # "no trigger mask" events). Skipped on a log x-axis, where a
+                # bar at/below the lower edge can't be placed.
+                if show_flow and not apply_logx:
+                    flow = _flow_trace(decoded)
+                    if flow is not None:
+                        traces.append(flow)
+                        # Distinct x positions, but keep them from being
+                        # grouped/narrowed against the main bars.
+                        layout["barmode"] = "overlay"
             else:
                 annotations.append(dict(text=f"Unknown type: {decoded.typename}", showarrow=False, font=dict(size=14)))
         except Exception as exc:
@@ -211,8 +235,6 @@ def overlay_figure(
     specs: list[tuple[Optional[dict], str, str]],
     title: str,
     per_channel: bool = False,
-    line_shape: str = "hvh",
-    mode: str = "lines",
 ) -> go.Figure:
     """Render several histograms superimposed on a single figure.
 
@@ -222,13 +244,13 @@ def overlay_figure(
     histogram becomes one `go.Scatter` trace; the legend is shown so the
     user can click an entry to hide/show it (all visible by default).
 
-    * `line_shape="hvh"` (default) draws step lines, so several overlaid
-      *distributions* stay readable where overlaid bars would not — used
-      by the channel selector's total/physics/pedestal overlay.
-    * `per_channel` + `mode="lines+markers"` + `line_shape="linear"` is
-      for *per-channel* comparisons (x = channel), e.g. the IQR vs std
-      pedestal-noise overlay: the hover then reads "ch N" and names the
-      series.
+    * Default (distributions): an **edge-aligned step line** — the step
+      boundaries sit on the ROOT bin edges, so several overlaid spectra
+      stay readable where overlaid bars would not. Used by the channel
+      selector's total/physics/pedestal overlay.
+    * `per_channel=True` (per-channel comparison, x = channel): a
+      `lines+markers` trace, one marker per channel, with a "ch N" hover
+      that names the series — e.g. the IQR vs std pedestal-noise overlay.
 
     Decode/render failures for one spec are logged and skipped rather
     than failing the whole figure.
@@ -256,20 +278,41 @@ def overlay_figure(
         edges = decoded.edges
         if edges.size < 2:
             continue
-        centers = 0.5 * (edges[:-1] + edges[1:])
         y = decoded.counts.astype(float)
+        # For distribution overlays (e.g. the channel selector's total/physics/
+        # pedestal) show each series' total entry count — ROOT's fEntries, incl.
+        # over/underflow — in the legend. Skipped for the per-channel comparison,
+        # where "entries" would just be the number of channels.
+        legend_label = label
+        if not per_channel:
+            entries = payload.get("fEntries")
+            if entries is not None:
+                legend_label = f"{label}  ({int(entries):,})"
         trace_kwargs: dict = dict(
-            x=centers, y=y, mode=mode,
-            line=dict(color=color, shape=line_shape),
-            name=label,
+            line=dict(color=color),
+            name=legend_label,
             # Keep the legend in spec order regardless of draw order below.
             legendrank=rank,
         )
         if per_channel:
-            # x is a channel index: read it in the hover and name the series
-            # (each trace carries its own label literally).
-            trace_kwargs["customdata"] = np.arange(len(centers))
-            trace_kwargs["hovertemplate"] = f"{label}<br>ch %{{customdata}}<br>%{{y:.4g}}<extra></extra>"
+            # x is a channel index: one marker per channel, "ch N" hover that
+            # names the series (each trace carries its own label literally).
+            centers = 0.5 * (edges[:-1] + edges[1:])
+            trace_kwargs.update(
+                x=centers, y=y, mode="lines+markers",
+                customdata=np.arange(len(centers)),
+                hovertemplate=f"{label}<br>ch %{{customdata}}<br>%{{y:.4g}}<extra></extra>",
+            )
+            trace_kwargs["line"]["shape"] = "linear"
+        else:
+            # Edge-aligned step: hold each bin's height across its full width
+            # [edge_i, edge_{i+1}]. With x = edges and y repeating its last
+            # value, line_shape "hv" makes the step transitions fall on the
+            # bin edges (using centers would shift them by half a bin).
+            trace_kwargs.update(
+                x=edges, y=np.append(y, y[-1]), mode="lines",
+            )
+            trace_kwargs["line"]["shape"] = "hv"
         traces.append(go.Scatter(**trace_kwargs))
 
         # Keep the first non-empty axis titles we come across (all series
@@ -301,6 +344,7 @@ def _build_trace(
     density: bool = False,
     logx: bool = False,
     per_channel: bool = False,
+    channels_per_board: int = 0,
 ) -> tuple[Optional[go.BaseTraceType], dict]:
     """Build one trace for a decoded histogram.
 
@@ -360,10 +404,24 @@ def _build_trace(
         # Plotly's default x/y hover.
         hover: dict = {}
         if per_channel:
-            hover = dict(
-                customdata=np.arange(len(centers)),
-                hovertemplate="ch %{customdata}<br>%{y:.4g}<extra></extra>",
-            )
+            channels = np.arange(len(centers))
+            if channels_per_board > 0:
+                # Also show board number and channel-within-board. customdata
+                # columns: [global channel, board, local channel].
+                board, local = np.divmod(channels, channels_per_board)
+                hover = dict(
+                    customdata=np.stack([channels, board, local], axis=-1),
+                    hovertemplate=(
+                        "ch %{customdata[0]}<br>"
+                        "board %{customdata[1]} · ch %{customdata[2]}<br>"
+                        "%{y:.4g}<extra></extra>"
+                    ),
+                )
+            else:
+                hover = dict(
+                    customdata=channels,
+                    hovertemplate="ch %{customdata}<br>%{y:.4g}<extra></extra>",
+                )
         return (
             go.Bar(
                 x=centers, y=y, width=bar_widths,
@@ -376,3 +434,30 @@ def _build_trace(
 
     # TH2 / TProfile2D and anything else: not implemented yet.
     return None, {}
+
+
+def _flow_trace(decoded: DecodedHist) -> Optional[go.Bar]:
+    """A small bar trace for ROOT's underflow/overflow bins, drawn just outside
+    the histogram range (one extra bar on each side). Only the non-empty side(s)
+    are shown; returns None when both are empty."""
+    edges = decoded.edges
+    if edges.size < 2:
+        return None
+    w0 = edges[1] - edges[0]
+    wn = edges[-1] - edges[-2]
+    points = []  # (center, value, width, label)
+    if decoded.underflow:
+        points.append((edges[0] - 0.5 * w0, float(decoded.underflow), w0, "underflow"))
+    if decoded.overflow:
+        points.append((edges[-1] + 0.5 * wn, float(decoded.overflow), wn, "overflow"))
+    if not points:
+        return None
+    xs, ys, widths, labels = zip(*points)
+    return go.Bar(
+        x=list(xs), y=list(ys), width=list(widths),
+        marker=dict(color=theme.WARN, line=dict(width=0)),
+        name="under/overflow",
+        text=list(labels),
+        hovertemplate="%{text}<br>%{y:.4g}<extra></extra>",
+        showlegend=False,
+    )

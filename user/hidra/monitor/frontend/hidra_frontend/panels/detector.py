@@ -137,8 +137,11 @@ def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
     For a `TProfile` this is the bin mean (`fArray/fBinEntries`); for a
     plain per-channel `TH1` (e.g. `ADC_noise_pedestal`) it is the bin
     content. Returns None when the payload is missing/unusable (so the
-    figure can show a "missing" placeholder). Channels with no entries /
-    zero content are simply absent from the dict.
+    figure can show a "missing" placeholder).
+
+    A `TProfile` channel with no entries is absent from the dict (its mean
+    is undefined). A `TH1` keeps every in-range bin, including a genuine
+    `0.0` (so e.g. a zero-noise channel still renders).
     """
     if not payload or "_typename" not in payload:
         return None

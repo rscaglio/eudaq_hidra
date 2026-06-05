@@ -34,6 +34,12 @@ overlay:
   search_dir: reference
   default_file: null
 
+# FERS detector properties (hardware, not per-plot). Defined once here and
+# used by all FERS views: the board-map geometry, the channel-selector board
+# labels, and the per-channel `board_hover`.
+fers:
+  channels_per_board: 64
+
 # Per-histogram display options, keyed by histogram name. They apply
 # wherever that histogram is shown (any tab/panel). Both default to false.
 #   logx    - logarithmic x-axis (only when all bin edges are positive).
@@ -43,6 +49,17 @@ histogram_options:
   dt_between_events:
     logx: true
     density: true
+  # Show the underflow bar so the "no trigger mask" events (mask < 0, ROOT
+  # underflow) are visible and the bars sum to the title's entry count.
+  trigger_mask:
+    show_flow: true
+  # FERS per-channel saturation: also show board number + channel-within-board
+  # in the hover, on top of the global channel index (board size = the FERS
+  # constant, see hidra_frontend/fers.py).
+  FERS_HG_saturation_physics:
+    board_hover: true
+  FERS_LG_saturation_physics:
+    board_hover: true
 
 # Ambient UI effects (the "cosmic-ray shower" particle animation). The
 # animation is always available on demand via a triple-click on the title;
@@ -161,3 +178,80 @@ tabs:
         label: "noise (IQR/1.349)"
         height: 550px
         link_tab: adc_channels
+
+  # ---- FERS --------------------------------------------------------------
+  # The FERS board map (`fers_board`) draws one heatmap per board, tiled on a
+  # `columns`-wide grid (2 boards per row): each board shows its 64 channels
+  # in a 16x4 block. All boards share a common colour scale. `n_boards` fixes
+  # the number of heatmaps (default 20 = backend FERS_NBOARDS); `height` is
+  # per board. `mode_toggle` adds a physics/pedestal radio and fetches only
+  # the shown variant. Clicking a cell opens the FERS channel selector of the
+  # same gain on that channel.
+  - id: fers_hg
+    label: FERS HG
+    panels:
+      - type: fers_board
+        histogram: FERS_HG_mean
+        label: "mean HG"
+        n_boards: 20
+        columns: 2
+        height: 180px
+        mode_toggle: true
+        link_tab: fers_channels
+      - type: histograms
+        cols: 1
+        histograms: [FERS_HG_inclusive_physics]
+
+  - id: fers_lg
+    label: FERS LG
+    panels:
+      - type: fers_board
+        histogram: FERS_LG_mean
+        label: "mean LG"
+        n_boards: 20
+        columns: 2
+        height: 180px
+        mode_toggle: true
+        link_tab: fers_channels
+      - type: histograms
+        cols: 1
+        histograms: [FERS_LG_inclusive_physics]
+
+  # Per-channel FERS distributions: one channel at a time, with a *single*
+  # dropdown driving both gain plots (HG and LG of the same channel, side by
+  # side). The backend exposes only the `_physics` / `_pedestal` copies per
+  # channel (no inclusive "total"), so discovery keys on `_physics` and the
+  # overlay shows those two series.
+  - id: fers_channels
+    label: FERS channels
+    panels:
+      - type: channel_selector
+        templates: ["FERS_HG_channel_{ch}", "FERS_LG_channel_{ch}"]
+        discover_suffix: "_physics"
+        split_suffixes: ["_physics", "_pedestal"]
+        board_labels: true   # label as "board B · ch L" (no calo mapping)
+        show_trigger_split: true
+
+  - id: fers_saturation
+    label: FERS saturation
+    panels:
+      - type: histograms
+        cols: 2
+        histograms: [FERS_HG_saturation_physics, FERS_LG_saturation_physics]
+      - type: fers_board
+        histogram: FERS_HG_saturation_physics
+        label: "sat. fraction (physics)"
+        n_boards: 20
+        columns: 2
+        height: 180px
+        link_tab: fers_channels
+
+  # Per-board quantities (x = board, one bar per board): mean over the board's
+  # channels, the all-zero (dead board) fraction, and each board's time offset
+  # vs the median (board-time compatibility).
+  - id: fers_boards
+    label: FERS boards
+    panels:
+      - type: histograms
+        cols: 2
+        histograms: [FERS_HG_board_mean, FERS_LG_board_mean, FERS_HG_board_allzero, FERS_board_time_offset]

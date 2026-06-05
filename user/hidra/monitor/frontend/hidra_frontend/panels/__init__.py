@@ -15,6 +15,7 @@ from __future__ import annotations
 from .base import Panel
 from .channel_selector import ChannelSelectorPanel
 from .detector import DetectorPanel
+from .fers_board import FERSBoardPanel
 from .histogram_grid import HistogramGridPanel
 from .metric import MetricPanel
 from .overlay import OverlayPanel
@@ -25,6 +26,7 @@ PANEL_TYPES: dict[str, type[Panel]] = {
     "metric": MetricPanel,
     "channel_selector": ChannelSelectorPanel,
     "detector": DetectorPanel,
+    "fers_board": FERSBoardPanel,
     "overlay": OverlayPanel,
     "rate": RatePanel,
 }

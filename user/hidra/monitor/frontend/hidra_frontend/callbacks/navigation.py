@@ -27,24 +27,33 @@ from dash import ALL, Dash, Input, Output, ctx, no_update
 from ..panels.base import Panel
 from ..panels.channel_selector import ChannelSelectorPanel
 from ..panels.detector import DetectorPanel
+from ..panels.fers_board import FERSBoardPanel
 
 logger = logging.getLogger(__name__)
 
+# Panel types whose cells carry a channel index as Plotly customdata and can
+# link to a channel selector. The calo `DetectorPanel` and the synthetic
+# `FERSBoardPanel` share the same click contract.
+_CLICKABLE_MAPS = (DetectorPanel, FERSBoardPanel)
+
 
 def register(app: Dash, panels_by_tab: dict[str, list[Panel]]) -> None:
-    # panel_id of a clickable detector -> (target tab id, its selector panel).
+    # panel_id of a clickable map -> (target tab id, its selector panel).
     nav: dict[str, tuple[str, ChannelSelectorPanel]] = {}
     for panels in panels_by_tab.values():
         for panel in panels:
-            if not isinstance(panel, DetectorPanel):
+            if not isinstance(panel, _CLICKABLE_MAPS):
                 continue
             target = panel.link_tab()
             if not target:
                 continue
-            selector = _find_channel_selector(panels_by_tab.get(target, []))
+            # Pair the map with the selector of the same gain when it exposes
+            # one (FERS HG/LG), else the first selector in the target tab.
+            gain = panel.gain_tag() if hasattr(panel, "gain_tag") else None
+            selector = _find_channel_selector(panels_by_tab.get(target, []), gain)
             if selector is None:
                 logger.warning(
-                    "detector panel %s has link_tab=%r but that tab has no "
+                    "map panel %s has link_tab=%r but that tab has no matching "
                     "channel_selector panel; clicks will be ignored",
                     panel.panel_id, target,
                 )
@@ -80,8 +89,10 @@ def register(app: Dash, panels_by_tab: dict[str, list[Panel]]) -> None:
         return target_tab
 
 
-def _find_channel_selector(panels: list[Panel]) -> ChannelSelectorPanel | None:
-    for panel in panels:
-        if isinstance(panel, ChannelSelectorPanel):
-            return panel
-    return None
+def _find_channel_selector(panels: list[Panel], gain: str | None = None) -> ChannelSelectorPanel | None:
+    selectors = [p for p in panels if isinstance(p, ChannelSelectorPanel)]
+    if gain is not None:
+        for sel in selectors:
+            if sel.gain_tag() == gain:
+                return sel
+    return selectors[0] if selectors else None

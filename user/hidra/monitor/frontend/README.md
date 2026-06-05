@@ -86,7 +86,9 @@ python app.py --debug
 
 You will see the usual "development server" warning — that's by
 design; use `./run.sh` instead unless you actually need the
-auto-reloader.
+auto-reloader. The reloader also watches the active `config.yaml` (via
+`extra_files`), so editing the declared layout restarts the app too — not
+just Python edits.
 
 The backend must already be running and reachable on the URL set in
 `config.yaml` (default `http://localhost:9090`).
@@ -147,6 +149,10 @@ overlay:
   search_dir: reference           # where to look for .root files
   default_file: null
 
+fers:                             # FERS detector properties (hardware, not
+                                  # per-plot); used by all FERS views.
+  channels_per_board: 64          # fixed by the FERS board
+
 histogram_options:                # per-histogram display options, keyed by
                                   # histogram name; applies on every tab.
   dt_between_events:
@@ -198,8 +204,23 @@ histogram_options:
   with non-uniform bins shows a comparable height per unit x instead of
   raw per-bin counts. The y-axis is relabelled accordingly (e.g.
   `events / µs`).
+- `board_hover: true` enriches the hover of a **per-channel** histogram
+  (one whose x-axis title is `channel`, e.g. the FERS saturation
+  profiles) to also show the board number and the channel within the
+  board, on top of the global channel index — e.g. `ch 70 · board 1 ·
+  ch 6`. The board size comes from the top-level `fers:` config section
+  (`channels_per_board`), not repeated here — it's a property of the
+  detector, not of the plot.
 
-Both default to `false`, so histograms without an entry are unchanged.
+- `show_flow: true` draws ROOT's underflow/overflow bins as extra bars
+  just outside the histogram range (only the non-empty side is shown),
+  with an `underflow`/`overflow` hover. Use it where out-of-range entries
+  are meaningful — e.g. `trigger_mask`, whose underflow holds the events
+  with no decoded trigger mask, so the bars then sum to the title's entry
+  count.
+
+`logx`/`density`/`board_hover`/`show_flow` all default to `false`, so
+histograms without an entry are unchanged.
 The canonical example is `dt_between_events` (log-binned inter-event
 time from the backend's `MetaFiller`).
 
@@ -213,6 +234,16 @@ and renders them, translating the common ROOT TLatex tokens to Unicode
 **backend** histogram title; nothing is hard-coded in the frontend.
 Histograms booked without axis titles (most ADC/TDC ones) simply show
 none.
+
+For **1D histograms** (`TH1*`) the plot title also gets the live total
+entry count appended — `(entries: N)`, where `N` is ROOT's `fEntries`
+(every `Fill`, including over/underflow). `TProfile` and 2D histograms
+are excluded (their "entries" mean per-bin samples / 2D counts), so their
+title is left unchanged. In a **distribution overlay** (the channel
+selector's total/physics/pedestal step lines, ADC and FERS) the count
+goes on each series' legend entry instead — e.g. `physics  (15,000)` —
+so the three counts are visible at once; the per-channel comparison
+overlay (e.g. the noise estimators) keeps plain labels.
 
 ### Add a new tab
 
@@ -249,6 +280,23 @@ Append an entry under `tabs:` in `config.yaml`:
   `_pedestal` copies (filled by `XDCFiller` from the trigger mask) as
   three step lines in one plot. Click a legend entry to hide/show a
   series (all visible by default); missing series are simply skipped.
+  Three params adapt it when the backend uses a different naming scheme:
+  `discover_suffix:` makes auto-discovery match `template + suffix` and
+  rebuild the base name (e.g. `"_physics"` when there is no bare
+  per-channel histogram, as for FERS); `split_suffixes:` overrides which
+  series `show_trigger_split` overlays (e.g. `["_physics", "_pedestal"]`
+  for FERS, which has no inclusive per-channel "total"); `templates:` (a
+  list, in place of `template`) drives **several** per-channel plots of the
+  *same* channel from one dropdown, stacked vertically — e.g.
+  `["FERS_HG_channel_{ch}", "FERS_LG_channel_{ch}"]` to switch HG and LG
+  together. All default to the ADC behaviour (single template; bare-name
+  discovery; total + physics + pedestal).
+  Dropdown labels: by default the channel number is enriched with the calo
+  module name from the ADC mapping (e.g. `ch 5 · M105S`); set
+  `board_labels: true` to instead label as `board B · ch L` (board size from
+  the top-level `fers:` config section) and skip the calo mapping — used by
+  FERS, whose channel indices would otherwise pick up unrelated ADC module
+  names.
 
 - `detector` — a 2D calorimeter map: one cell per module at its (row,
   column) position, coloured by a per-channel value. Emits two heatmaps
@@ -259,6 +307,25 @@ Append an entry under `tabs:` in `config.yaml`:
   same histogram family in one tab (e.g. `noise`); `height:`; `link_tab:`
   makes modules clickable, opening that tab's `channel_selector` on the
   clicked channel.
+
+- `fers_board` — the FERS counterpart of `detector`, with a **synthetic**
+  geometry (no calo mapping): it draws **one heatmap per board**, tiled on a
+  `columns:`-wide grid (default 2 boards per row). Each board shows its
+  `channels_per_board` channels (default 64) in a `board_cell_rows` ×
+  `board_cell_cols` block (default 16 × 4). All boards share a common colour
+  scale (global min/max over the channels with data) so they are directly
+  comparable. The number of boards is `n_boards:` (default 20, matching the
+  backend `FERS_NBOARDS`; one graph slot per board is created at layout time,
+  so set this if the backend uses a different count). The value comes from a
+  `TProfile` (bin mean) or a per-channel `TH1` (bin content, e.g. a
+  saturation fraction). Params: `histogram:`; `label:`/`title_tag:`;
+  `height:` (**per board**); `columns:` (boards per row); `link_tab:` opens
+  that tab's `channel_selector` of the **same gain** (HG/LG, parsed from the
+  histogram name) on the clicked channel. With `mode_toggle: true` the panel
+  shows a **physics/pedestal** radio and appends the active suffix to
+  `histogram` (so `histogram: FERS_HG_mean` → `_physics` / `_pedestal`),
+  fetching **only the shown variant** from the backend; without it,
+  `histogram` is used verbatim (e.g. `FERS_HG_saturation_physics`).
 
 - `overlay` — a fixed list of histograms superimposed in one graph (one
   line trace each, legend toggles them). Params: `histograms: [...]`;
@@ -357,7 +424,7 @@ pure decoder doesn't understand a new histogram type yet.
 | Status bar: "cannot reach backend" | Backend not running, wrong URL, firewall | `curl http://localhost:9090/h.json` and check `backend.url` in `config.yaml`. |
 | A graph shows "missing on server" | Histogram name in `config.yaml` doesn't match what the backend exposes | `curl http://localhost:9090/h.json` to see the real names. |
 | "decode error" annotation | Decoder raised an exception | Look at the python log; try `decoder: pyroot` as a fallback. |
-| Dashboard is sluggish at 100 ms polling | Too many large histograms per poll | Increase the polling period; or check the perf summary in the log (printed every 20 polls) — `poll.to_figure_one` is usually the bottleneck. |
+| Dashboard is sluggish at 100 ms polling | Too many large histograms per poll | Increase the polling period; or check the perf summary in the log (printed every 20 polls) — usually `poll.to_figure_one`, or `poll.panel_render > <PanelClass>` for heatmap panels (`detector`, `fers_board`). |
 | Browser tab flashes white when switching | You're on an older version without `placeholder_figure` | Pull the latest, or check that `theme.placeholder_figure(name)` is used as the initial `dcc.Graph.figure`. |
 | `InvalidCallbackReturnValue` in the log | Race between tab switch and a still-in-flight poll | Already guarded in `poll.py` (`expected vs len(figures_out)`). If it reappears, leave the dashboard up for 1 s and the next poll fixes it. |
 | Overlay dropdown is empty | `reference/` doesn't exist or is empty | Create the directory and drop a `.root` file in it. Then click **Refresh files**. |
@@ -366,27 +433,39 @@ pure decoder doesn't understand a new histogram type yet.
 
 The poll callback is the only hot path. It does, in order:
 
-1. `client.fetch_multi(names)` — one `POST /multi.json` batched
-   request. Cost: ~15 ms for 6 histograms, dominated by the
-   backend's `PUMP_INTERVAL_MS` (default 20 ms — that's the floor).
-2. `decoder.decode(payload)` — ~0.2 ms / histogram with the pure
-   decoder, ~2 ms / histogram with the pyroot decoder.
-3. `_add_trace(fig, decoded, ...)` — ~1-3 ms / histogram (Plotly
-   figure construction).
-4. Overlay lookup — ~0.1 ms / histogram (cached after the first
-   read of each file).
+1. `poll.fetch_multi` — one `POST /multi.json` batched request. Cost:
+   ~15 ms for 6 histograms, dominated by the backend's
+   `PUMP_INTERVAL_MS` (default 20 ms — that's the floor). Only the
+   histograms the active tab actually shows are requested.
+2. `poll.to_figure_all` — for the histograms some panel renders from the
+   pre-built `figs` dict (grid, channel_selector non-split): decode
+   (`decode.live`, ~0.2 ms/hist pure / ~2 ms pyroot), Plotly trace build
+   (`trace_build.*`, ~1-3 ms/hist) and overlay lookup (~0.1 ms/hist,
+   cached).
+3. `poll.panel_render` — each panel's `render()`, **timed per panel
+   class** (nested under `poll.panel_render`). Panels that build their own
+   figures from the raw payload live here, *not* in `to_figure_one`:
+   `detector` and `fers_board` (one `go.Heatmap` per board — a FERS tab
+   with 20 boards builds 20 heatmaps/poll, so this is often the dominant
+   phase on those tabs) and `channel_selector` in split mode (its
+   `decode.overlay` shows up nested here).
+4. `poll.apply_controls` — log-y / reset-zoom bookkeeping, ~0.1 ms.
 
-Total at the default config (6 histograms, no overlay) is ~70 ms
-per poll. With the default polling rate of 500 ms there's plenty
-of headroom.
+Everything the poll does is inside `poll.total`, so the children always
+sum to it. Total at the default summary config (6 histograms, no overlay)
+is ~70 ms per poll; the FERS board tabs add the per-board heatmap cost
+under `poll.panel_render`. With the default polling rate of 500 ms there's
+plenty of headroom.
 
-The phase timer prints a summary every 20 polls to the python log:
+The phase timer prints a summary tree every 20 polls to the python log:
 
 ```
 === perf summary (window = last 20 polls) ===
-  poll.total              total= 1450.0 ms  n=20  mean= 72.500 ms
-  poll.to_figure_all      total= 1100.0 ms  n=20  mean= 55.000 ms
-  poll.fetch_multi        total=  300.0 ms  n=20  mean= 15.000 ms
+  poll.total                total= 1450.0 ms  n=20  mean= 72.500 ms
+  ├─ poll.to_figure_all     total= 1100.0 ms  n=20  mean= 55.000 ms  ( 75.9%)
+  ├─ poll.panel_render      total=  250.0 ms  n=20  mean= 12.500 ms  ( 17.2%)
+  │  └─ FERSBoardPanel      total=  240.0 ms  n=20  mean= 12.000 ms  ( 96.0%)
+  ├─ poll.fetch_multi       total=  300.0 ms  n=20  mean= 15.000 ms  ( 20.7%)
   ...
 ```
 

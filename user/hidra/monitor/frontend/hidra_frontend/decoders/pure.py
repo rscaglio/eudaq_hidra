@@ -45,6 +45,9 @@ class PureDecoder(Decoder):
             edges=_edges_from_xaxis(d["fXaxis"], n),
             counts=counts,
             errors=errors,
+            # fArray layout: [underflow, bin_1, ..., bin_n, overflow].
+            underflow=float(arr[0]) if arr.size else 0.0,
+            overflow=float(arr[n + 1]) if arr.size > n + 1 else 0.0,
         )
 
     def _decode_tprofile(self, d: dict) -> DecodedHist:
