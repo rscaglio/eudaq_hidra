@@ -39,7 +39,8 @@ The event may contain up to 8 detector subevents.
 | 21     | uint32    | `spillNumber`    | Spill number                |
 | 25     | uint64    | `eventTime`      | Merged event begin timestamp, ns |
 | 33     | uint8     | `triggerMask`    | Trigger mask                |
-| 34     | uint64    | `reserved64`     | Reserved                    |
+| 34     | uint32    | `reserved32`     | Reserved                    |
+| 38     | uint32    | `eventFlags`     | Bit flags                   |
 | 42     | uint32    | `timeSpread`     | Time spread among subevents, ns |
 | 46     | uint8     | `detectorMask`   | Active detectors bitmap     |
 | 47     | uint16[8] | `detectorSize[]` | Detector size metadata      |
@@ -91,6 +92,10 @@ Index 0 is assigned when the collector is run in `single producer` mode.
 
 Example: `detectorMask = 0b00000110` means that detectors with `detID = 1` and `detID = 2` are present in the event. The corresponding detector event data blocks follow after the Header endMarker, ordered by increasing `detID`.
 
+### Event flags
+
+At most 24 bits used to flag events in specific cases. Events with no warning should have the bitmap `= 0x0`.
+This is still work in progress, for the bit meaning see the `HidraEventFlags` struct in `HidraUtils.hh`
 
 
 ## Detector Event
