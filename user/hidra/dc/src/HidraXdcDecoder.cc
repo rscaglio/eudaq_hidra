@@ -92,7 +92,11 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
 
       int nchan = W.cnt();
       const auto module_it = m_vme_geo_map.find(W.geo());
-      const std::string module_type = module_it == m_vme_geo_map.end() ? "unknown" : module_it->second;
+      if (module_it == m_vme_geo_map.end()) {
+        HIDRA_ERROR("No XDC module configured for crate {} geo {}. Aborting", W.crate(), W.geo());
+        return;
+      }
+      const std::string& module_type = module_it->second;
 
       expected_word_mask = 0b000;
       for (int ichan = 0; ichan < nchan; ++ichan) {
@@ -102,8 +106,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           return;
         }
         word = *it;
-        if (module_type == "unknown" || module_type == "V792" || module_type == "V792N" ||
-            module_type == "V862") { // Like this, V792 is the default
+        if (module_type == "V792" || module_type == "V792N" || module_type == "V862") {
           V792Word V{word};
           if (V.type() != expected_word_mask) {
             HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Channel Word. Aborting", word, V.type());
@@ -114,9 +117,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
             return;
           }
           const int module_channel = module_type == "V792N" ? V.v792n_channel() : V.channel();
-          int encoded_channel = (module_type == "unknown")
-                                    ? module_channel
-                                    : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), module_channel);
+          int encoded_channel = hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), module_channel);
           if (encoded_channel < 0 || encoded_channel >= m_n_adc_channels) {
             HIDRA_ERROR(
                 "Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, m_n_adc_channels);
@@ -125,7 +126,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
             ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
           }
 
-        } // if 792 or 862 or unknown
+        } // if 792, 792N or 862
         else {
           HIDRA_ERROR("Unknown XDC module type {} for crate {} geo {}. Cannot decode channel word. Aborting",
                       module_type,
