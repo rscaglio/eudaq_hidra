@@ -117,7 +117,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
         }
         word = *it;
 
-        /// QDCs (aks ADCs) ///////////////////////
+        /// QDCs (aka ADCs) ///////////////////////
         if (module_type == "V792" || module_type == "V792N" || module_type == "V862") {
           V792Word V{word};
           if (V.type() != expected_word_mask) {
