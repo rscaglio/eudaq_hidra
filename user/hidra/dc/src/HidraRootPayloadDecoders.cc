@@ -63,20 +63,16 @@ HidraXdcPayloadDecoder::HidraXdcPayloadDecoder(std::map<int, std::string> vme_ge
     : m_xdc_decoder(std::move(vme_geo_map)) {}
 
 std::vector<std::string> HidraGenericPayloadDecoder::BranchNames() const {
-  return {"payload_bytes", "timestamp_span_ns"};
+  return {"payload_bytes"};
 }
 
 void HidraGenericPayloadDecoder::Decode(const RootDetectorPayload& detector,
                                         std::vector<RootQuantity>& quantities,
                                         RootBranchValues& branches) const {
   AddQuantity(quantities, "payload_bytes", static_cast<double>(detector.payload.size()), "B");
-  const auto span_ns = (detector.event_time_end >= detector.event_time_begin)
-                           ? static_cast<double>(detector.event_time_end - detector.event_time_begin)
-                           : 0.0;
-  AddQuantity(quantities, "timestamp_span", span_ns, "ns");
 
   AddBranchValue(branches, "payload_bytes", static_cast<double>(detector.payload.size()));
-  AddBranchValue(branches, "timestamp_span_ns", span_ns);
+  
 }
 
 bool HidraXdcPayloadDecoder::Matches(const RootDetectorPayload& detector) const {

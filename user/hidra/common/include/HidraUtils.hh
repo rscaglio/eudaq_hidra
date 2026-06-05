@@ -4,19 +4,58 @@
 #include <cstdint>
 #include <fmt/core.h>
 
-#include <type_traits>
 #include <limits>
+#include <map>
 #include <string>
+#include <type_traits>
+#include <vector>
 
 #include <eudaq/Event.hh>
 #include <eudaq/Logger.hh>
 
 namespace hidra::utils {
 
+struct HidraEventFlags {
+  static constexpr std::uint32_t None = 0;
+
+  // avoid the first 8 bits used by Event class
+  static constexpr std::uint32_t FERSMisaligned = 1u << 1;
+  // keep a few reserved for FERS 
+  // keep a few reserved for XDC 
+  // keep a few more 
+  static constexpr std::uint32_t TimestampMismatch = 1u << 16;
+  static constexpr std::uint32_t TimingCalibrationPending = 1u << 17;
+  static constexpr std::uint32_t DuplicatedTrigger = 1u << 18;
+  // max allowed is 24 to keep the flags within 32 bits (since Event class uses the first 8 bits)
+};
+
+inline void SetEventFlag(eudaq::Event& event, std::uint32_t flag) {
+  event.SetFlagBit(flag << 8); // shift to keep the first 8 bits for Event class
+}
+
+inline void ClearEventFlag(eudaq::Event& event, std::uint32_t flag) {
+  event.ClearFlagBit(flag << 8); // shift to keep the first 8 bits for Event class
+}
+
+inline bool HasEventFlag(const eudaq::Event& event, std::uint32_t flag) {
+  return event.IsFlagBit(flag << 8); // shift to keep the first 8 bits for Event class
+}
+
+inline void SetEventFlagMask(eudaq::Event& event, std::uint32_t flags) {
+  event.SetFlag(flags << 8); // shift to keep the first 8 bits for Event class
+}
+
+inline std::uint32_t GetEventFlagMask(const eudaq::Event& event) {
+  return event.GetFlag() >> 8; // shift to ignore the first 8 bits used by Event class
+}
+
+
 const std::map<std::string, std::map<std::string, int>> VMESpec{
-  {"V792", {{"nchannels", 32}, {"dummy", 0}}},
-  {"V792N", {{"nchannels", 16}, {"dummy", 0}}},
-  {"V862", {{"nchannels", 32}, {"dummy", 0}}}
+  {"V792",  {{"nchannels", 32}, {"dummy", 0}, {"is_qdc", 1}}},
+  {"V792N", {{"nchannels", 16}, {"dummy", 0}, {"is_qdc", 1}}},
+  {"V862",  {{"nchannels", 32}, {"dummy", 0}, {"is_qdc", 1}}},
+  {"V775",  {{"nchannels", 32}, {"dummy", 0}, {"is_qdc", 0}}},
+  {"V775N", {{"nchannels", 16}, {"dummy", 0}, {"is_qdc", 0}}}
 };
 
 std::uint64_t getTimeus();
@@ -30,8 +69,10 @@ std::pair<long long, long long> ComputeMeanAndStdDev(const std::vector<long long
 
 
 int computeADCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel);
+int computeTDCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel);
 
 int computeMaxADCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
+int computeMaxTDCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
 
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
 #if FMT_VERSION >= 80000

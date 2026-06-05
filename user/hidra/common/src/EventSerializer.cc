@@ -73,7 +73,8 @@ event number (32 bit) [17..20]
 spill number (32 bit) [21..24]
 eventTime (64 bit) [25..32]
 triggerMask (8 bit) [33]
-reserved (64 bit) [34..41]
+reserved (32 bit) [34..37]
+eventFlags (32 bit) [38..45]
 timeSpread_ns (32 bit) [42..45]
 DetectorMask (8 bit) [46]
 sizeDet0 (16 bit) [47,48]
@@ -99,7 +100,7 @@ EVENT TRAILER
 marker (16 bit)
   */
 
-  const uint8_t DataFormatVersion = 10;
+  const uint8_t DataFormatVersion = 11;
 
   const std::uint16_t EVENT_MARKER = 0xB0BF;
   const std::uint16_t EVENT_HEADER_ENDMARKER = 0xBBBB;
@@ -133,7 +134,8 @@ marker (16 bit)
   appendLE(buffer, getTagOr<std::uint32_t>(event, "spillNumber", 0xFFFFFFFF));
   appendLE(buffer, static_cast<std::uint64_t>(event.GetTimestampBegin()));
   appendLE(buffer, getTagOr<std::uint8_t>(event, "triggerMask", 0xFF));
-  appendLE(buffer, reserved64); // reserved
+  appendLE(buffer, reserved32); // reserved
+  appendLE(buffer, static_cast<uint32_t>(hidra::utils::GetEventFlagMask(event))); // event flags
   uint64_t timeSpread_ns = event.GetTimestampEnd() > event.GetTimestampBegin() ? (event.GetTimestampEnd() - event.GetTimestampBegin()) : placeholder64;
   if (timeSpread_ns < placeholder32) {
     timeSpread_ns = static_cast<uint32_t>(timeSpread_ns);

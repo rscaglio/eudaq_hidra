@@ -90,6 +90,7 @@ struct HidraRootEventWriter::Impl {
   int run_number = 0;
   std::uint32_t event_number = 0;
   std::uint64_t event_time = 0;
+  std::uint32_t time_span = 0;
   std::uint32_t spill_number = 0;
   std::uint8_t detector_mask = 0;
   std::uint8_t trigger_mask = 0;
@@ -121,10 +122,11 @@ struct HidraRootEventWriter::Impl {
     run_number = event.GetRunN();
     event_number = static_cast<std::uint32_t>(event.GetTriggerN());
     event_time = event.GetTimestampBegin();
+    time_span = event.GetTimestampEnd() > event.GetTimestampBegin() ? static_cast<std::uint32_t>(event.GetTimestampEnd() - event.GetTimestampBegin()) : 0;
     spill_number = hidra::utils::getTagOr<std::uint32_t>(event, "spillNumber", 0xFFFFFFFF);
     detector_mask = hidra::utils::getTagOr<std::uint8_t>(event, "detectorMask", 0xFF);
     trigger_mask = hidra::utils::getTagOr<std::uint8_t>(event, "triggerMask", 0xFF);
-    // event_flags = hidra::utils::getTagOr<std::uint32_t>(event, "eventFlags", 0); TODO: to be implemented
+    event_flags = hidra::utils::GetEventFlagMask(event);
     n_detectors = event.GetNumSubEvent();
   }
 
@@ -221,6 +223,7 @@ struct HidraRootEventWriter::Impl {
       tree->Branch("run", &run_number, "run/I");
       tree->Branch("event", &event_number, "event/i");
       tree->Branch("event_time", &event_time, "event_time/l");
+      tree->Branch("time_span", &time_span, "time_span/i");
       tree->Branch("spill_number", &spill_number, "spill_number/i");
       tree->Branch("detector_mask", &detector_mask, "detector_mask/b");
       tree->Branch("trigger_mask", &trigger_mask, "trigger_mask/b");

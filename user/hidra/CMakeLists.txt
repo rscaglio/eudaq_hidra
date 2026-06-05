@@ -5,6 +5,7 @@ option(USER_HIDRA_BUILD "Build HiDRa DAQ system" OFF)
 option(USER_HIDRA_FERS_BUILD "Build HiDRa FERS component" OFF)
 option(USER_HIDRA_FERS2_BUILD "Build HiDRa FERS2 component" ON)
 option(USER_HIDRA_XDC_BUILD "Build HiDRa XDC component" ON)
+option(USER_HIDRA_TRACKER_BUILD "Build HiDRa Tracker component" ON)
 option(USER_HIDRA_DRY_BUILD "Build HiDRa Dry component" ON)
 option(USER_HIDRA_DAQ_BUILD "Build HiDRa DAQ component" ON)
 option(USER_HIDRA_MONITOR_BUILD "Build HiDRa Monitor component" ON)
@@ -139,6 +140,15 @@ else()
 	message(STATUS "user/hidra XDC component is NOT to be built (USER_HIDRA_XDC_BUILD=OFF)")
 endif()
 
+if(USER_HIDRA_TRACKER_BUILD)
+	message(STATUS "user/hidra Tracker component is to be built (USER_HIDRA_TRACKER_BUILD=ON)")
+
+	add_subdirectory(tracker)
+	target_link_libraries(${EUDAQ_MODULE} PUBLIC ${EUDAQ_MODULE}_tracker)
+else()
+	message(STATUS "user/hidra Tracker component is NOT to be built (USER_HIDRA_TRACKER_BUILD=OFF)")
+endif()
+
 
 if(USER_HIDRA_DRY_BUILD)
 	message(STATUS "user/hidra dry-run component is to be built (USER_HIDRA_DRY_BUILD=ON)")
@@ -180,6 +190,7 @@ foreach(_hidra_target
 		${EUDAQ_MODULE}_fers
 		${EUDAQ_MODULE}_fers2
 		${EUDAQ_MODULE}_xdc
+		${EUDAQ_MODULE}_tracker
 		${EUDAQ_MODULE}_dry
 		${EUDAQ_MODULE}_dc
 		${EUDAQ_MODULE}_monitor
