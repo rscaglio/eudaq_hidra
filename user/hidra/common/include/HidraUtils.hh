@@ -14,9 +14,11 @@
 namespace hidra::utils {
 
 const std::map<std::string, std::map<std::string, int>> VMESpec{
-  {"V792", {{"nchannels", 32}, {"dummy", 0}}},
-  {"V792N", {{"nchannels", 16}, {"dummy", 0}}},
-  {"V862", {{"nchannels", 32}, {"dummy", 0}}}
+  {"V792",  {{"nchannels", 32}, {"dummy", 0}, {"is_qdc", 1}}},
+  {"V792N", {{"nchannels", 16}, {"dummy", 0}, {"is_qdc", 1}}},
+  {"V862",  {{"nchannels", 32}, {"dummy", 0}, {"is_qdc", 1}}},
+  {"V775",  {{"nchannels", 32}, {"dummy", 0}, {"is_qdc", 0}}},
+  {"V775N", {{"nchannels", 16}, {"dummy", 0}, {"is_qdc", 0}}}
 };
 
 std::uint64_t getTimeus();
@@ -30,8 +32,10 @@ std::pair<long long, long long> ComputeMeanAndStdDev(const std::vector<long long
 
 
 int computeADCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel);
+int computeTDCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel);
 
 int computeMaxADCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
+int computeMaxTDCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
 
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
 #if FMT_VERSION >= 80000

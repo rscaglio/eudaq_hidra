@@ -83,12 +83,47 @@ int computeADCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int 
       return channel;
     }
 
+    const auto is_qdc_it = spec->second.find("is_qdc");
+    if (is_qdc_it == spec->second.end() || is_qdc_it->second == 0) {
+      continue; // if the module is not a QDC, it does not contribute to the ADC channel index
+    }
+
     const auto nchannels = spec->second.find("nchannels");
 
     channel_index += nchannels->second;
   }
 
   HIDRA_ERROR("Geo {} not found in VME map. Cannot compute ADC channel index. Returning channel {}", geo, channel);
+  return channel;
+}
+
+int computeTDCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int geo, int channel) {
+  int channel_index = channel;
+
+  for (const auto& pair : vme_geo_map) {
+    int module_geo = pair.first;
+    const std::string& module_type = pair.second;
+    if (module_geo == geo) {
+      return channel_index;
+    }
+
+    const auto spec = hidra::utils::VMESpec.find(module_type);
+    if (spec == hidra::utils::VMESpec.end()) {
+      HIDRA_ERROR("Unknown VME module type {} for geo {}. Cannot compute TDC channel index. Returning channel {}", module_type, module_geo, channel);
+      return channel;
+    }
+
+    const auto is_qdc_it = spec->second.find("is_qdc");
+    if (is_qdc_it == spec->second.end() || is_qdc_it->second == 1) {
+      continue; // if the module is a QDC, it does not contribute to the TDC channel index
+    }
+
+    const auto nchannels = spec->second.find("nchannels");
+
+    channel_index += nchannels->second;
+  }
+
+  HIDRA_ERROR("Geo {} not found in VME map. Cannot compute TDC channel index. Returning channel {}", geo, channel);
   return channel;
 }
 
@@ -106,6 +141,39 @@ int computeMaxADCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map
     if (spec == hidra::utils::VMESpec.end()) {
       HIDRA_ERROR("Unknown VME module type {}. Cannot compute max ADC channel index. Returning 1500", module_type);
       return 1500;
+    }
+
+    const auto is_qdc_it = spec->second.find("is_qdc");
+      if (is_qdc_it == spec->second.end() || is_qdc_it->second == 0) {
+        continue; // if the module is not a QDC, it does not contribute to the ADC channel index
+    }
+
+    const auto nchannels = spec->second.find("nchannels");
+    max_channel += nchannels->second;
+  }
+
+  return max_channel;
+}
+
+int computeMaxTDCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map) {
+  int max_channel = 0;
+
+  if (vme_geo_map.empty()) {
+    HIDRA_ERROR("VME geo map is empty. Cannot compute max TDC channel index. Returning 1500");
+    return 1500;
+  }
+
+  for (const auto& pair : vme_geo_map) {
+    const std::string& module_type = pair.second;
+    const auto spec = hidra::utils::VMESpec.find(module_type);
+    if (spec == hidra::utils::VMESpec.end()) {
+      HIDRA_ERROR("Unknown VME module type {}. Cannot compute max TDC channel index. Returning 1500", module_type);
+      return 1500;
+    }
+
+    const auto is_qdc_it = spec->second.find("is_qdc");
+      if (is_qdc_it == spec->second.end() || is_qdc_it->second == 1) {
+        continue; // if the module is a QDC, it does not contribute to the TDC channel index
     }
 
     const auto nchannels = spec->second.find("nchannels");
