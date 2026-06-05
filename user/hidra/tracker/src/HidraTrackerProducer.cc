@@ -4,6 +4,7 @@
 #include <eudaq/Logger.hh>
 #include <eudaq/Producer.hh>
 
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -257,7 +258,13 @@ private:
       SendRow(headers, values, line, file, line_number);
     }
 
-    EUDAQ_INFO("Processed tracker file " + file.string());
+    if(m_events_sent == (line_number - 1)) {
+      EUDAQ_INFO("Finished processing tracker file " + file.filename().string() + " with " + std::to_string(line_number - 1) + " data");
+    } else {
+      EUDAQ_WARN("Mismatch between processed rows of file " + file.filename().string() + " with " + std::to_string(line_number - 1) + " lines and " + std::to_string(m_events_sent) + " events sent");
+    }
+  
+    
   }
 
   void ValidateHeaders(const std::vector<std::string>& headers, const std::filesystem::path& file) const {
@@ -305,6 +312,7 @@ private:
     event->AddBlock(0, raw_row);
     SendEvent(std::move(event));
     ++m_events_sent;
+    EUDAQ_DEBUG("Event number: " + std::to_string(m_events_sent) + " sent from the Tracker Producer to the Data Collector");
   }
 
   void StopWorker() {
