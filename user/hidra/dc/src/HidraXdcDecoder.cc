@@ -15,17 +15,18 @@ struct ADCHeaderWord {
 
 struct ADCTrailerWord {
   uint32_t raw;
-  uint32_t evt_cnt() const { return raw & 0x7FFFFF; }
+  uint32_t evt_cnt() const { return raw & 0xFFFFFF; }
   uint8_t type() const { return (raw >> 24) & 0x7; }
   uint8_t geo() const { return (raw >> 27) & 0x1F; }
 };
 
 struct V792Word {
   uint32_t raw;
-  uint16_t value() const { return raw & 0x7FF; }
+  uint16_t value() const { return raw & 0xFFF; }
   uint8_t ov() const { return (raw >> 12) & 0x1; }
   uint8_t un() const { return (raw >> 13) & 0x1; }
   uint8_t channel() const { return (raw >> 16) & 0x1F; }
+  uint8_t v792n_channel() const { return (raw >> 17) & 0xF; }
   uint8_t type() const { return (raw >> 24) & 0x7; }
   uint8_t geo() const { return (raw >> 27) & 0x1F; }
 };
@@ -101,7 +102,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           return;
         }
         word = *it;
-        if (module_type == "unknown" || module_type == "V792" ||
+        if (module_type == "unknown" || module_type == "V792" || module_type == "V792N" ||
             module_type == "V862") { // Like this, V792 is the default
           V792Word V{word};
           if (V.type() != expected_word_mask) {
@@ -112,9 +113,10 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
             HIDRA_ERROR("Mismatched geo in XDC words: header geo {} vs channel geo {}. Aborting", W.geo(), V.geo());
             return;
           }
+          const int module_channel = module_type == "V792N" ? V.v792n_channel() : V.channel();
           int encoded_channel = (module_type == "unknown")
-                                    ? V.channel()
-                                    : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), V.channel());
+                                    ? module_channel
+                                    : hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), module_channel);
           if (encoded_channel < 0 || encoded_channel >= m_n_adc_channels) {
             HIDRA_ERROR(
                 "Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, m_n_adc_channels);
