@@ -695,7 +695,7 @@ private:
   }
 
   void SendEORE() {
-    auto eore = eudaq::Event::MakeUnique("CAENQTPRaw");
+    auto eore = eudaq::Event::MakeUnique("CAENQTPDRaw");
     eore->SetEORE();
     eore->SetRunN(static_cast<uint32_t>(m_runNumber));
     eore->SetTag("EventsSent", std::to_string(m_evt));
