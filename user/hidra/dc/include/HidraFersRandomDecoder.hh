@@ -33,7 +33,10 @@ private:
   unsigned int m_channels_per_board;
   int m_value_max;
   // decode() is logically const but advances the RNG / event counter, so both
-  // are mutable.
+  // are mutable. NOT thread-safe: a single instance must be used from one thread
+  // at a time. In the monitor it is only called from DoReceive (the single
+  // T_recv thread), so no synchronisation is needed; do not share one instance
+  // across threads without external locking.
   mutable std::mt19937 m_rng;
   mutable std::uint64_t m_trigger_id{0};
 };

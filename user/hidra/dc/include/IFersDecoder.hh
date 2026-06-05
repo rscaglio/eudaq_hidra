@@ -18,7 +18,7 @@ namespace hidra {
  *     exercised without real FERS data.
  *
  * This abstraction (and the random implementation) exist only for the monitor,
- * which picks one at configure time (FERS_DECODER in the .ini) and calls
+ * which picks one at configure time (FERS_DECODER in the run .conf) and calls
  * decode() once per event. With the real decoder and no FERS sub-event the
  * payload is empty and decode() yields all-sentinel vectors (the filler skips
  * them); the random decoder ignores the payload and always produces data.
