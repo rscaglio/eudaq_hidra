@@ -38,6 +38,7 @@ euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
 euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
 
+
 euCliProducer -n HidraDryFERSProducer -t DryFERSProducer &
 euCliProducer -n HidraDryXDCProducer -t DryXDCProducer &
 
