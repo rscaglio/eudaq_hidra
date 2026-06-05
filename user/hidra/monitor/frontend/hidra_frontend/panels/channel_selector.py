@@ -79,7 +79,11 @@ class ChannelSelectorPanel(Panel):
         templates = params.get("templates")
         if not templates:
             templates = [params.get("template", DEFAULT_TEMPLATE)]
-        self._templates = list(templates)
+        elif isinstance(templates, str):
+            # A single template written without YAML list syntax: treat it as a
+            # one-element list, not a sequence of characters.
+            templates = [templates]
+        self._templates = [str(t) for t in templates]
         self._template = self._templates[0]
         self._regex = _template_regex(self._template)
         # Auto-discovery matches `template + discover_suffix` and rebuilds the

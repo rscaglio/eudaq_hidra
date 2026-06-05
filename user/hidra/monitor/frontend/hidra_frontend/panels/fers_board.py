@@ -160,7 +160,7 @@ class FERSBoardPanel(Panel):
         return html.Div(
             style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "8px"},
             children=[
-                html.Span("Trigger:", style={"color": theme.FG, "fontSize": "13px"}),
+                html.Span("Mode:", style={"color": theme.FG, "fontSize": "13px"}),
                 dcc.RadioItems(
                     id={"type": "fers-board-mode", "panel": self.panel_id},
                     options=[{"label": m, "value": m} for m in _MODES],

@@ -89,15 +89,13 @@ def main(argv: list[str] | None = None) -> int:
     dev_app = build_app(args.config)
     log = logging.getLogger("hidra_frontend")
     log.info("dashboard listening on http://%s:%d (Flask dev server)", args.host, args.port)
-    # The Werkzeug reloader only watches imported Python modules by default, so
-    # editing config.yaml (declared layout) would not trigger a restart. Add it
-    # to `extra_files` so a config change reloads the app too (debug only).
-    dev_app.run(
-        host=args.host,
-        port=args.port,
-        debug=args.debug,
-        extra_files=[os.path.abspath(args.config)],
-    )
+    run_kwargs = dict(host=args.host, port=args.port, debug=args.debug)
+    if args.debug:
+        # The Werkzeug reloader (active only with --debug) watches imported
+        # Python modules but not config.yaml. Add it to `extra_files` so a
+        # change to the declared layout reloads the app too.
+        run_kwargs["extra_files"] = [os.path.abspath(args.config)]
+    dev_app.run(**run_kwargs)
     return 0
 
 
