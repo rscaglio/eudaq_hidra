@@ -1,5 +1,8 @@
 # Hidra QTPD Producer
 
+[!WARNING]
+This document is partially out of date. It is kept as a reference for developers. A version aligned with the current code will be prepared as soon as the code will be finalized.
+
 This document describes the current implementation in
 `user/hidra/xdc/src/HidraQTPDProducer.cc`.
 
