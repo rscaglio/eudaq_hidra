@@ -19,6 +19,7 @@ public:
 private:
   std::map<int, std::string> m_vme_geo_map;
   int m_n_adc_channels;
+  int m_n_tdc_channels;
 };
 
 } // namespace hidra

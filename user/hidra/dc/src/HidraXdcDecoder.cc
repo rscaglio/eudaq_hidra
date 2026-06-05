@@ -31,11 +31,24 @@ struct V792Word {
   uint8_t geo() const { return (raw >> 27) & 0x1F; }
 };
 
+struct V775Word {
+  uint32_t raw;
+  uint16_t value() const { return raw & 0xFFF; }
+  uint8_t ov() const { return (raw >> 12) & 0x1; }
+  uint8_t un() const { return (raw >> 13) & 0x1; }
+  uint8_t vd() const { return (raw >> 14) & 0x1; }
+  uint8_t channel() const { return (raw >> 16) & 0x1F; }
+  uint8_t v775n_channel() const { return (raw >> 17) & 0xF; }
+  uint8_t type() const { return (raw >> 24) & 0x7; }
+  uint8_t geo() const { return (raw >> 27) & 0x1F; }
+};
+
 HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map)
     : m_vme_geo_map(std::move(vme_geo_map)) {
 
   m_n_adc_channels = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map);
-  HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels based on VME geo map", m_n_adc_channels);
+  m_n_tdc_channels = hidra::utils::computeMaxTDCchannelFromGeoMap(m_vme_geo_map);
+  HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels and {} TDC channels based on VME geo map", m_n_adc_channels, m_n_tdc_channels);
 }
 
 void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent& event) const {
@@ -63,8 +76,8 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
 
   std::vector<double> ADCvalues(m_n_adc_channels, -1);
   std::vector<double> ADCflags(m_n_adc_channels, -1);
-  std::vector<double> TDCvalues(1500, -1);
-  std::vector<double> TDCflags(1500, -1);
+  std::vector<double> TDCvalues(m_n_tdc_channels, -1);
+  std::vector<double> TDCflags(m_n_tdc_channels, -1);
 
   uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
 
@@ -83,10 +96,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       ADCHeaderWord W{word};
 
       if (W.type() != expected_word_mask) {
-        HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Header Word. Aborting {}",
-                    word,
-                    W.type(),
-                    word & 0xFE000000);
+        HIDRA_ERROR("Unexpected XDC word type: {:08X} - type {}. Should be Header Word {}. Aborting", word, W.type(), expected_word_mask);
         return;
       }
 
@@ -106,10 +116,12 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           return;
         }
         word = *it;
+
+        /// QDCs (aka ADCs) ///////////////////////
         if (module_type == "V792" || module_type == "V792N" || module_type == "V862") {
           V792Word V{word};
           if (V.type() != expected_word_mask) {
-            HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Channel Word. Aborting", word, V.type());
+            HIDRA_ERROR("Unexpected XDC word type: {:08X} - type {}. Should be Channel Word {}. Aborting", word, V.type(), expected_word_mask);
             return;
           }
           if (V.geo() != W.geo()) {
@@ -127,6 +139,27 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           }
 
         } // if 792, 792N or 862
+        ///// TDCs /////////////////////
+        else if (module_type == "V775" || module_type == "V775N") {
+          V775Word V{word};
+          if (V.type() != expected_word_mask) {
+            HIDRA_ERROR("Unexpected XDC word type: {:08X} - type {}. Should be Channel Word {}. Aborting", word, V.type(), expected_word_mask);
+            return;
+          }
+          if (V.geo() != W.geo()) {
+            HIDRA_ERROR("Mismatched geo in XDC words: header geo {} vs channel geo {}. Aborting", W.geo(), V.geo());
+            return;
+          }
+          const int module_channel = module_type == "V775N" ? V.v775n_channel() : V.channel();
+          int encoded_channel = hidra::utils::computeTDCchannelFromGeo(m_vme_geo_map, V.geo(), module_channel);
+          if (encoded_channel < 0 || encoded_channel >= m_n_tdc_channels) {
+            HIDRA_ERROR(
+                "Encoded TDC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, m_n_tdc_channels);
+          } else {
+            TDCvalues[encoded_channel] = V.value();
+            TDCflags[encoded_channel] = (V.ov() << 2) | (V.un() << 1) | V.vd();
+          }
+        } // if 775 or 775N
         else {
           HIDRA_ERROR("Unknown XDC module type {} for crate {} geo {}. Cannot decode channel word. Aborting",
                       module_type,
@@ -148,7 +181,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
 
       ADCTrailerWord T{word};
       if (T.type() != expected_word_mask) {
-        HIDRA_ERROR("Unexpected XDC word type: {:08X} type {}. Should be Trailer Word. Aborting", word, T.type());
+        HIDRA_ERROR("Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", word, T.type(), expected_word_mask);
         return;
       }
     }
