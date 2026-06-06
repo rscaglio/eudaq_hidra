@@ -124,9 +124,13 @@ class ChannelSelectorPanel(Panel):
         self._decoder = get_decoder(params.get("decoder", "pure")) if self._split else None
 
     @staticmethod
-    def _build_split_series(suffixes: Optional[list[str]]) -> list[tuple[str, str, str]]:
+    def _build_split_series(suffixes) -> list[tuple[str, str, str]]:
         if not suffixes:
             return TRIGGER_SPLIT_SERIES
+        if isinstance(suffixes, str):
+            # A single suffix written without YAML list syntax: treat it as a
+            # one-element list, not a sequence of characters.
+            suffixes = [suffixes]
         series: list[tuple[str, str, str]] = []
         for suffix in suffixes:
             label, color = _SPLIT_SUFFIX_INFO.get(suffix, (suffix.lstrip("_") or "total", theme.PRIMARY))

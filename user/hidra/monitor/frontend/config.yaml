@@ -54,8 +54,8 @@ histogram_options:
   trigger_mask:
     show_flow: true
   # FERS per-channel saturation: also show board number + channel-within-board
-  # in the hover, on top of the global channel index (board size = the FERS
-  # constant, see hidra_frontend/fers.py).
+  # in the hover, on top of the global channel index (board size from the
+  # top-level `fers:` section, parsed in hidra_frontend/config.py).
   FERS_HG_saturation_physics:
     board_hover: true
   FERS_LG_saturation_physics:

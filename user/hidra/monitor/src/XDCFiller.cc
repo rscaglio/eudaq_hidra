@@ -32,6 +32,9 @@ XDCFiller::XDCFiller(HistogramRegistry& reg,
     HIDRA_ERROR("XDCFiller constructed with n_tdc_channels=0.");
     n_tdc_channels = 1;
   }
+  // Store the normalized channel count (after the n_adc_channels==0 clamp
+  // above) — the same value used to book the histograms, so the bounds checks
+  // in Fill()/UpdatePedestalNoise() match the booked binning.
   m_n_adc_channels = n_adc_channels;
   // The ";channel;<y>" axis titles mark these profiles as channel-indexed:
   // the frontend uses the "channel" x-axis title to label the hover with the

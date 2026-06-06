@@ -34,7 +34,7 @@ private:
   TProfile* m_profile_adc_saturation_physics;
   TProfile* m_profile_adc_saturation_pedestal;
 
-  // Per-channel distributions as one TH2D per trigger copy (x = channel,
+  // Per-channel distributions as one TH2I per trigger copy (x = channel,
   // y = ADC), total/physics/pedestal. One TH2 instead of one TH1 per channel
   // keeps the registered-object count tiny so THttpServer stays responsive; the
   // frontend reads one channel via a server-side ProjectionY (issue #138). The
