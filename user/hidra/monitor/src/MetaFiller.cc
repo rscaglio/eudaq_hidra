@@ -68,10 +68,10 @@ void MetaFiller::Reset() {
 void MetaFiller::Fill(const HidraEvent& ev) {
   const HidraEventMeta& meta = ev.meta;
 
-  const int mask = meta.trigger_mask;
-  if (mask >= 0 && mask < 4) {
-    m_h_trigger_mask->Fill(mask);
-  }
+  // Fill unconditionally so the total matches the processed-event count: a
+  // missing trigger mask (mask < 0) lands in ROOT's underflow bin and an
+  // unexpected out-of-range value (>= 4) in overflow, instead of being dropped.
+  m_h_trigger_mask->Fill(meta.trigger_mask);
 
   if (meta.detector_mask >= 0) {
     for (int det = 0; det < 8; ++det) {

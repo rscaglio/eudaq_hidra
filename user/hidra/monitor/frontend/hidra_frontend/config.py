@@ -60,10 +60,38 @@ class HistogramDisplayCfg:
     * `density` - divide each bin's content by its (linear) bin width, so
                   histograms with non-uniform binning show a comparable
                   height per unit x instead of raw per-bin counts.
+    * `board_hover` - for a per-channel histogram (x-axis title "channel"),
+                  also show the board number and the channel within the board
+                  in the hover. The board size comes from the top-level `fers:`
+                  config section, not repeated here. Resolved into
+                  `channels_per_board` below (0 = off) for the generic renderer.
+    * `show_flow` - draw ROOT's underflow/overflow bins as extra bars at the
+                  edges of a 1D bar chart, so out-of-range entries (e.g. the
+                  "no trigger mask" events in the underflow) are visible and
+                  the bars sum to the title's entry count.
     """
 
     logx: bool = False
     density: bool = False
+    show_flow: bool = False
+    # Resolved board size for the per-channel hover (0 = no board hover). Set
+    # from the `board_hover` YAML flag using the `fers:` section; kept as a
+    # plain int so figure_builder stays detector-agnostic.
+    channels_per_board: int = 0
+
+
+@dataclass
+class FersCfg:
+    """FERS detector properties (top-level `fers:` section of config.yaml).
+
+    These describe the hardware, not any one plot, so they live here once
+    instead of being repeated per panel/histogram. `channels_per_board` is
+    fixed by the FERS board (64) but kept configurable for a possible future
+    variant; it feeds the board geometry (`fers_board`), the channel-selector
+    board labels, and the per-channel `board_hover`.
+    """
+
+    channels_per_board: int = 64
 
 
 @dataclass
@@ -89,6 +117,7 @@ class Config:
     decoder: str = "pure"
     config_dir: Path = field(default_factory=Path)
     histogram_options: dict[str, HistogramDisplayCfg] = field(default_factory=dict)
+    fers: FersCfg = field(default_factory=FersCfg)
 
 
 def _normalize_panel(raw: dict[str, Any]) -> PanelCfg:
@@ -146,12 +175,17 @@ def load_config(path: str | Path) -> Config:
 
     decoder = str(raw.get("decoder", "pure"))
 
+    fers_raw = raw.get("fers") or {}
+    fers_cfg = FersCfg(channels_per_board=int(fers_raw.get("channels_per_board", FersCfg.channels_per_board)))
+
     histogram_options: dict[str, HistogramDisplayCfg] = {}
     for name, opts in (raw.get("histogram_options") or {}).items():
         opts = opts or {}
         histogram_options[name] = HistogramDisplayCfg(
             logx=bool(opts.get("logx", False)),
             density=bool(opts.get("density", False)),
+            channels_per_board=(fers_cfg.channels_per_board if opts.get("board_hover") else 0),
+            show_flow=bool(opts.get("show_flow", False)),
         )
 
     u = raw.get("ui_effects") or {}
@@ -170,4 +204,5 @@ def load_config(path: str | Path) -> Config:
         decoder=decoder,
         config_dir=config_dir,
         histogram_options=histogram_options,
+        fers=fers_cfg,
     )

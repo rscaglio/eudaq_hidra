@@ -24,6 +24,10 @@ class DecodedHist:
     edges: np.ndarray = field(default_factory=lambda: np.empty(0))
     counts: np.ndarray = field(default_factory=lambda: np.empty(0))
     errors: Optional[np.ndarray] = None
+    # Out-of-range bin contents (ROOT's underflow/overflow), for display when
+    # a panel opts into showing them. Default 0 when a decoder doesn't set them.
+    underflow: float = 0.0
+    overflow: float = 0.0
     # 2D fields (filled only for TH2 / TProfile2D)
     x_edges: Optional[np.ndarray] = None
     y_edges: Optional[np.ndarray] = None

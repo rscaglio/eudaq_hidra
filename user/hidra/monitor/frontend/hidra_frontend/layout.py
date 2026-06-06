@@ -45,6 +45,14 @@ def build_panels(
             params = panel_cfg.params
             if panel_cfg.type == "channel_selector" and not params.get("names"):
                 params = {**params, "available_histograms": available}
+            # FERS board size is a detector property (the `fers:` config
+            # section), not a per-panel value: inject it where panels need it
+            # instead of repeating the number in each panel's config.
+            needs_board_size = panel_cfg.type == "fers_board" or (
+                panel_cfg.type == "channel_selector" and params.get("board_labels")
+            )
+            if needs_board_size and "channels_per_board" not in params:
+                params = {**params, "channels_per_board": config.fers.channels_per_board}
             panels.append(build_panel(panel_id, panel_cfg.type, params))
         by_tab[tab.id] = panels
     return by_tab
