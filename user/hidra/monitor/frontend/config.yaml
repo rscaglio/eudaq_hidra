@@ -122,19 +122,19 @@ tabs:
         cols: 2
         histograms: [TDC_mean]
 
-  # Per-channel ADC inspection: one histogram at a time, with a dropdown
-  # to pick the channel. Channels are auto-discovered from the backend
-  # (every ADC_channel_<N> it exposes), so the list always matches the
-  # current VME geo map. To pin an explicit set instead, add a
-  # `range: [lo, hi]` next to `template`.
+  # Per-channel ADC inspection: one channel at a time, with a dropdown. The
+  # per-channel data lives in one TH2 per trigger copy (`ADC_dist*`, x=channel,
+  # y=ADC); a single channel is fetched as a server-side ProjectionY (issue
+  # #138). The channel count comes from the TH2 x axis (GetNbinsX), so it always
+  # matches the current VME geo map.
   - id: adc_channels
     label: ADC channels
     panels:
-      # `show_trigger_split` overlays the inclusive histogram with its
-      # physics/pedestal copies of the selected channel in one plot. Use the
-      # Plotly legend to hide/show each series (all visible by default).
+      # `show_trigger_split` overlays the selected channel's total / physics /
+      # pedestal copies in one plot. Use the Plotly legend to hide/show each.
       - type: channel_selector
-        template: "ADC_channel_{ch}"
+        projection_templates: ["ADC_dist"]
+        split_suffixes: ["", "_physics", "_pedestal"]
         show_trigger_split: true
 
   - id: adc_saturation
@@ -218,16 +218,15 @@ tabs:
         histograms: [FERS_LG_inclusive_physics]
 
   # Per-channel FERS distributions: one channel at a time, with a *single*
-  # dropdown driving both gain plots (HG and LG of the same channel, side by
-  # side). The backend exposes only the `_physics` / `_pedestal` copies per
-  # channel (no inclusive "total"), so discovery keys on `_physics` and the
-  # overlay shows those two series.
+  # dropdown driving both gain plots (HG and LG of the same channel, stacked).
+  # The per-channel data lives in one TH2 per gain/trigger (`FERS_*_dist_*`,
+  # x=channel, y=ADC); a single channel is fetched as a server-side ProjectionY
+  # (see issue #138), overlaying the physics and pedestal copies.
   - id: fers_channels
     label: FERS channels
     panels:
       - type: channel_selector
-        templates: ["FERS_HG_channel_{ch}", "FERS_LG_channel_{ch}"]
-        discover_suffix: "_physics"
+        projection_templates: ["FERS_HG_dist", "FERS_LG_dist"]
         split_suffixes: ["_physics", "_pedestal"]
         board_labels: true   # label as "board B · ch L" (no calo mapping)
         show_trigger_split: true

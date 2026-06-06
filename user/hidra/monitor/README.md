@@ -28,14 +28,21 @@ euCliMonitor -n HidraHttpMonitor
   histogram-content lock for every received event.
 - `SummaryFiller.*` - run-level histograms (event count, events vs time).
 - `XDCFiller.*` - XDC ADC/TDC histograms. The ADC views (`ADC_mean`,
-  `ADC_inclusive`, `ADC_channel_<N>`, `ADC_saturation`) are additionally
-  filled split by trigger type into `*_physics` / `*_pedestal` copies
-  (selected per event via `meta.isPhysics()` / `isPedestal()`); TDC stays
-  inclusive only. It also publishes the per-channel pedestal noise (one
+  `ADC_inclusive`, `ADC_saturation`) are additionally filled split by trigger
+  type into `*_physics` / `*_pedestal` copies (selected per event via
+  `meta.isPhysics()` / `isPedestal()`); TDC stays inclusive only. The
+  per-channel ADC distributions are one `TH2I` per trigger copy (`ADC_dist`,
+  `ADC_dist_physics`, `ADC_dist_pedestal`; x = channel, y = ADC) — a single
+  `TH2` instead of one `TH1` per channel keeps the registered-object count
+  small so `THttpServer` stays responsive, and the frontend reads one channel
+  via a server-side `ProjectionY` (issue #138). The TDC per-channel
+  distributions (`TDC_channel_<N>`) are still one `TH1` each (not shown in the
+  frontend). It also publishes the per-channel pedestal noise (one
   bin per channel) with two estimators: `ADC_noise_pedestal` = `IQR/1.349`
   (robust: equals 1σ for a Gaussian but insensitive to outlier tails) and
-  `ADC_noise_std_pedestal` = standard deviation. Both are recomputed
-  together from the per-channel pedestal histograms every
+  `ADC_noise_std_pedestal` = standard deviation. Both are recomputed together
+  from each channel's pedestal column of `ADC_dist_pedestal` (`ProjectionY`)
+  every
   `PEDESTAL_NOISE_UPDATE_EVENTS` pedestal events (config key in the
   monitor `.ini`, default 200).
 - `FERSFiller.*` - FERS histograms (`FERS_NBOARDS` boards × 64 channels). For
@@ -43,10 +50,14 @@ euCliMonitor -n HidraHttpMonitor
   `FERS_LG_mean`, `TProfile` indexed by channel) split into `*_physics` /
   `*_pedestal` copies via the trigger mask; an inclusive physics distribution
   (`FERS_HG_inclusive_physics`, `FERS_LG_inclusive_physics`); and per-channel
-  distributions `FERS_HG_channel_<N>_physics` / `_pedestal` (and `FERS_LG_…`)
-  for the frontend channel dropdown — only the physics/pedestal copies are kept
-  (no "total"), and they are `TH1I` (integer bin counts, half the memory of
-  `TH1D`), binned `FERS_CHANNEL_NBINS` over `[0, FERS_VALUE_MAX)`. It also fills
+  distributions as one `TH2I` per gain/trigger (`FERS_HG_dist_physics` /
+  `_pedestal`, and `FERS_LG_…`), x = channel, y = ADC — only the
+  physics/pedestal copies are kept (no "total"), binned `FERS_CHANNEL_NBINS` on
+  the y axis over `[0, FERS_VALUE_MAX)`. A single `TH2` (instead of one `TH1I`
+  per channel) keeps the registered-object count tiny so `THttpServer` stays
+  responsive; the frontend reads one channel via a **server-side `ProjectionY`**
+  (the publisher allows `ProjectionX`/`ProjectionY` on every `TH2`, keeping all
+  other methods denied — see #138). It also fills
   the per-channel saturation fraction `FERS_HG_saturation` /
   `FERS_LG_saturation` (and `*_physics`; no pedestal copy — pedestal events don't
   saturate), a `TProfile` of a 0/1 indicator that is 1 when the value exceeds

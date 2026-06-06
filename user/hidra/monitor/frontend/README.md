@@ -266,31 +266,32 @@ Append an entry under `tabs:` in `config.yaml`:
   ("scorecard"). Good for counter-like histograms (e.g.
   `event_count`, a TH1I with one bin). The displayed number is the
   sum of all in-range bins. Params: `histograms: [name1, ...]`.
-- `channel_selector` — show one per-channel histogram at a time with
-  a dropdown to switch channel. Built for the backend's
-  `ADC_channel_<N>` TH1Ds. The channel list is auto-discovered from
-  the backend (every name matching `template`), so it always matches
-  the current VME geo map. Dropdown labels are enriched with the
-  detector name from the calo mapping when known (e.g. `ch 5 · M105S`).
-  Params: `template: "ADC_channel_{ch}"` (default). To pin an explicit
-  set instead of auto-discovery, add `range: [lo, hi]` or a `names`
-  list. The selected channel updates the plot on the next poll tick.
-  With `show_trigger_split: true` the slot instead overlays the selected
-  channel's inclusive histogram together with its `_physics` and
-  `_pedestal` copies (filled by `XDCFiller` from the trigger mask) as
-  three step lines in one plot. Click a legend entry to hide/show a
-  series (all visible by default); missing series are simply skipped.
-  Three params adapt it when the backend uses a different naming scheme:
-  `discover_suffix:` makes auto-discovery match `template + suffix` and
-  rebuild the base name (e.g. `"_physics"` when there is no bare
-  per-channel histogram, as for FERS); `split_suffixes:` overrides which
-  series `show_trigger_split` overlays (e.g. `["_physics", "_pedestal"]`
-  for FERS, which has no inclusive per-channel "total"); `templates:` (a
-  list, in place of `template`) drives **several** per-channel plots of the
-  *same* channel from one dropdown, stacked vertically — e.g.
-  `["FERS_HG_channel_{ch}", "FERS_LG_channel_{ch}"]` to switch HG and LG
-  together. All default to the ADC behaviour (single template; bare-name
-  discovery; total + physics + pedestal).
+- `channel_selector` — show one channel's distribution at a time with a
+  dropdown to switch channel. Two data-source modes:
+
+  - **Projection mode** (`projection_templates:`) — used by ADC and FERS.
+    The per-channel data lives in one `TH2` per trigger/gain copy
+    (`ADC_dist*`, `FERS_HG_dist_*`, …; x = channel, y = value) and a single
+    channel is fetched as a **server-side `ProjectionY` slice** instead of
+    transferring the whole 2D histogram (issue #138). Give the TH2 *base*
+    names (e.g. `["ADC_dist"]`, or `["FERS_HG_dist", "FERS_LG_dist"]` for two
+    stacked plots) plus `split_suffixes:` (`["", "_physics", "_pedestal"]`
+    for ADC; `["_physics", "_pedestal"]` for FERS). The channel count is read
+    once from the TH2's x axis (`GetNbinsX`), so it always matches the current
+    VME geo map without any config to keep in sync.
+  - **Name mode** (`template:` / `templates:`) — for a backend that exposes
+    one histogram per channel (`<name>_<N>`). The channel list is
+    auto-discovered from the backend; `discover_suffix:` matches
+    `template + suffix` when there is no bare per-channel histogram.
+
+  Common params: `show_trigger_split: true` overlays the selected channel's
+  configured `split_suffixes` series in one plot (click a legend entry to
+  hide/show a series; missing ones are skipped); `templates:`/
+  `projection_templates:` as a list drives **several** stacked plots of the
+  *same* channel from one dropdown. Dropdown labels are enriched with the calo
+  module name (e.g. `ch 5 · M105S`); `board_labels: true` instead labels as
+  `board B · ch L` (FERS). The selected channel updates the plot on the next
+  poll tick.
   Dropdown labels: by default the channel number is enriched with the calo
   module name from the ADC mapping (e.g. `ch 5 · M105S`); set
   `board_labels: true` to instead label as `board B · ch L` (board size from

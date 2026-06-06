@@ -51,17 +51,56 @@ class BackendClient:
                 return [c["_name"] for c in child.get("_childs", [])]
         return []
 
-    def fetch_multi(self, names: list[str]) -> dict[str, Optional[dict]]:
-        """Batch-fetch the given histogram names.
+    def nbins_x(self, name: str) -> Optional[int]:
+        """Number of x-axis bins of a registered histogram, via the exe.json
+        GetNbinsX method (allowed on TH2s). Used once at startup to learn the
+        channel count of a per-channel TH2 (its x axis) for the projection-mode
+        channel selector. None on failure.
+        """
+        try:
+            r = requests.get(
+                f"{self.url}/Histograms/{name}/exe.json",
+                params={"method": "GetNbinsX"},
+                timeout=self.timeout_s,
+            )
+            r.raise_for_status()
+            value = r.json()
+        except Exception as exc:
+            logger.warning("nbins_x(%s) failed: %s", name, exc)
+            return None
+        return int(value) if value is not None else None
 
-        Returns a dict {name: obj_dict | None}. None means the server
-        returned null for that sub-request (typically: histogram not
-        registered).
+    # Token marking a server-side TH2 ProjectionY request:
+    # "<th2 name>#projy=<x bin>" (a single channel's 1D slice). It becomes an
+    # exe.json sub-request in the same /multi.json batch as the plain names, so
+    # the whole 2D histogram is never transferred (see issue #138).
+    _PROJ_SEP = "#projy="
+
+    @classmethod
+    def _subrequest(cls, name: str) -> str:
+        """Map a requested name to its /multi.json sub-request path."""
+        th2, sep, xbin = name.partition(cls._PROJ_SEP)
+        if sep:
+            # Server-side ProjectionY of one x bin (= one channel) -> a 1D TH1.
+            # ROOT reuses a histogram named "_s" across calls (no leak).
+            return (
+                f"Histograms/{th2}/exe.json?method=ProjectionY"
+                f"&name=_s&firstxbin={xbin}&lastxbin={xbin}"
+            )
+        return f"Histograms/{name}/root.json"
+
+    def fetch_multi(self, names: list[str]) -> dict[str, Optional[dict]]:
+        """Batch-fetch the given names in one POST /multi.json.
+
+        Returns a dict {name: obj_dict | None}. None means the server returned
+        null for that sub-request (typically: histogram not registered). A
+        `#projy=` token is fetched as a server-side TH2 projection (a 1D slice)
+        within the same batch.
         """
         if not names:
             return {}
 
-        body = "".join(f"Histograms/{n}/root.json\n" for n in names)
+        body = "".join(self._subrequest(n) + "\n" for n in names)
         try:
             r = requests.post(
                 f"{self.url}/multi.json",

@@ -4,9 +4,8 @@
 #include "IHistogramFiller.hh"
 
 #include <TH1.h>
+#include <TH2.h>
 #include <TProfile.h>
-
-#include <vector>
 
 /**
  * @brief Fills the FERS monitoring histograms from HidraEvent::fers.
@@ -16,10 +15,12 @@
  *   - per-channel mean HG and LG (TProfile, x = channel), split into
  *     physics/pedestal via the trigger mask, plus an inclusive (physics)
  *     distribution over all channels;
- *   - per-channel HG and LG distributions (TH1I, one per channel, for the
- *     frontend channel dropdown), split physics/pedestal only (no standalone
- *     "total" copy, to save memory — physics vs pedestal is the useful overlay);
- *     optional, disabled when `per_channel_distributions` is false;
+ *   - per-channel HG and LG distributions as one TH2I per gain/trigger (x =
+ *     channel, y = ADC), split physics/pedestal only (no standalone "total"
+ *     copy, to save memory — physics vs pedestal is the useful overlay). The
+ *     frontend reads a single channel via a server-side ProjectionY, so a single
+ *     TH2 keeps the registered-object count tiny and THttpServer responsive
+ *     (issue #138). Optional, disabled when `per_channel_distributions` is false;
  *   - per-channel saturation fraction HG and LG (TProfile of a 0/1 indicator,
  *     x = channel), total and physics only (pedestal events don't saturate): a
  *     channel is saturated when its value exceeds a configurable threshold;
@@ -76,13 +77,16 @@ private:
   TProfile* m_lg_saturation;
   TProfile* m_lg_saturation_physics;
 
-  // Per-channel distributions, physics and pedestal only (no "total" copy, to
-  // save memory). TH1I (Int_t, 4 B per bin) since the contents are integer
-  // counts: half the memory of TH1D.
-  std::vector<TH1I*> m_hg_channels_physics;
-  std::vector<TH1I*> m_hg_channels_pedestal;
-  std::vector<TH1I*> m_lg_channels_physics;
-  std::vector<TH1I*> m_lg_channels_pedestal;
+  // Per-channel distributions as one TH2I per gain/trigger (x = channel,
+  // y = ADC), physics and pedestal only (no "total" copy, to save memory). A
+  // single TH2 keeps the registered-object count tiny (4 instead of one TH1I
+  // per channel): the frontend reads a single channel via a server-side
+  // ProjectionY, so the THttpServer stays responsive (see issue #138). TH1I/TH2I
+  // (Int_t, 4 B per bin) since the contents are integer counts.
+  TH2I* m_hg_dist_physics;
+  TH2I* m_hg_dist_pedestal;
+  TH2I* m_lg_dist_physics;
+  TH2I* m_lg_dist_pedestal;
 
   // Per-board aggregates (x = board).
   TProfile* m_hg_board_mean;    // mean HG over all channels of the board
