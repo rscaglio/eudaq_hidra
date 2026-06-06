@@ -65,30 +65,24 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
   m_lg_inclusive_physics = reg.Add(std::make_unique<TH1I>(
       "FERS_LG_inclusive_physics", "Inclusive FERS low gain (physics);LG [ADC];entries", channel_nbins, 0, value_max));
 
-  // Per-channel distributions: physics and pedestal only (no "total" copy, to
-  // save memory), for each gain.
-  auto book_channels = [&](const char* gain,
-                           std::vector<TH1I*>& physics,
-                           std::vector<TH1I*>& pedestal) {
-    physics.reserve(m_n_channels);
-    pedestal.reserve(m_n_channels);
-    for (unsigned int c = 0; c < m_n_channels; ++c) {
-      physics.push_back(reg.Add(std::make_unique<TH1I>(
-          hidra::utils::format("FERS_{}_channel_{}_physics", gain, c).c_str(),
-          hidra::utils::format("FERS {} channel {} (physics);{} [ADC];entries", gain, c, gain).c_str(),
-          channel_nbins, 0, value_max)));
-      pedestal.push_back(reg.Add(std::make_unique<TH1I>(
-          hidra::utils::format("FERS_{}_channel_{}_pedestal", gain, c).c_str(),
-          hidra::utils::format("FERS {} channel {} (pedestal);{} [ADC];entries", gain, c, gain).c_str(),
-          channel_nbins, 0, value_max)));
-    }
+  // Per-channel distributions: one TH2I per gain/trigger (x = channel, y = ADC),
+  // physics and pedestal only (no "total" copy, to save memory). One TH2 instead
+  // of one TH1I per channel keeps the registered-object count small; the frontend
+  // reads a single channel via a server-side ProjectionY (issue #138). Skipped
+  // entirely when disabled (the pointers stay null and Fill guards on m_per_channel).
+  auto book_dist = [&](const char* gain, const char* trig) {
+    return reg.Add(std::make_unique<TH2I>(
+        hidra::utils::format("FERS_{}_dist_{}", gain, trig).c_str(),
+        hidra::utils::format("FERS {} ({});channel;{} [ADC]", gain, trig, gain).c_str(),
+        m_n_channels, 0, m_n_channels, channel_nbins, 0, value_max));
   };
-  // The per-channel distributions dominate the histogram count/memory; skip them
-  // entirely when disabled (the per-channel vectors stay empty and Fill guards on
-  // m_per_channel).
   if (m_per_channel) {
-    book_channels("HG", m_hg_channels_physics, m_hg_channels_pedestal);
-    book_channels("LG", m_lg_channels_physics, m_lg_channels_pedestal);
+    m_hg_dist_physics = book_dist("HG", "physics");
+    m_hg_dist_pedestal = book_dist("HG", "pedestal");
+    m_lg_dist_physics = book_dist("LG", "physics");
+    m_lg_dist_pedestal = book_dist("LG", "pedestal");
+  } else {
+    m_hg_dist_physics = m_hg_dist_pedestal = m_lg_dist_physics = m_lg_dist_pedestal = nullptr;
   }
 
   // Per-channel saturation fraction (TProfile of a 0/1 indicator). Total and
@@ -141,13 +135,13 @@ void FERSFiller::Fill(const HidraEvent& event) {
         m_hg_mean_physics->Fill(i, hg);
         m_hg_inclusive_physics->Fill(hg);
         if (m_per_channel) {
-          m_hg_channels_physics[i]->Fill(hg);
+          m_hg_dist_physics->Fill(i, hg);
         }
       }
       if (is_pedestal) {
         m_hg_mean_pedestal->Fill(i, hg);
         if (m_per_channel) {
-          m_hg_channels_pedestal[i]->Fill(hg);
+          m_hg_dist_pedestal->Fill(i, hg);
         }
       }
       const int saturated = hg > m_saturation_threshold ? 1 : 0;
@@ -168,13 +162,13 @@ void FERSFiller::Fill(const HidraEvent& event) {
         m_lg_mean_physics->Fill(i, lg);
         m_lg_inclusive_physics->Fill(lg);
         if (m_per_channel) {
-          m_lg_channels_physics[i]->Fill(lg);
+          m_lg_dist_physics->Fill(i, lg);
         }
       }
       if (is_pedestal) {
         m_lg_mean_pedestal->Fill(i, lg);
         if (m_per_channel) {
-          m_lg_channels_pedestal[i]->Fill(lg);
+          m_lg_dist_pedestal->Fill(i, lg);
         }
       }
       const int saturated = lg > m_saturation_threshold ? 1 : 0;

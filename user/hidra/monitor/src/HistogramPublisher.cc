@@ -24,7 +24,21 @@ void HistogramPublisher::Start() {
 
   // Register all histograms booked so far. Start() is called after all
   // fillers are constructed, so the set is complete.
-  m_registry.ForEach([this](TH1* h) { m_server->Register(kFolder, h); });
+  //
+  // The server stays read-only (no method calls over HTTP) except that every
+  // TH2 is allowed ProjectionX/ProjectionY (+ GetNbinsX): the frontend reads one
+  // channel of a per-channel TH2 (e.g. ADC_dist_*, FERS_*_dist_*) via a
+  // server-side projection instead of transferring the whole 2D histogram, and
+  // learns the channel count once from GetNbinsX — keeping THttpServer
+  // responsive with few registered objects (issue #138). Only those read-only
+  // methods are exposed; destructive ones (Reset, Delete, ...) stay denied.
+  m_registry.ForEach([this](TH1* h) {
+    m_server->Register(kFolder, h);
+    if (h->InheritsFrom("TH2")) {
+      const std::string path = std::string(kFolder) + "/" + h->GetName();
+      m_server->Restrict(path.c_str(), "allow_method=ProjectionX,ProjectionY,GetNbinsX");
+    }
+  });
 
   m_pump_running.store(true);
   m_pump_thread = std::thread(&HistogramPublisher::PumpLoop, this);

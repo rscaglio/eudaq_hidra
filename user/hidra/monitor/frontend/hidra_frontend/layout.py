@@ -24,15 +24,16 @@ from .panels.base import Panel
 def build_panels(
     config: Config,
     available_histograms: list[str] | None = None,
+    client=None,
 ) -> dict[str, list[Panel]]:
     """Instantiate one Panel object per panel entry. Indexed by tab id.
 
     `available_histograms` is the list of names the backend currently
     exposes (from `BackendClient.list_histograms()`). Panels that
-    auto-discover their histograms — e.g. `channel_selector`, which
-    builds its dropdown from every `ADC_channel_<N>` on the server —
-    receive it via the `available_histograms` param. Panels that name
-    their histograms explicitly in config.yaml ignore it.
+    auto-discover their histograms — e.g. `channel_selector` in name mode —
+    receive it via the `available_histograms` param. `client` (the
+    `BackendClient`) lets projection-mode channel selectors learn their
+    channel count once from the per-channel TH2's x axis (GetNbinsX).
     """
     available = list(available_histograms or [])
     by_tab: dict[str, list[Panel]] = {}
@@ -53,6 +54,13 @@ def build_panels(
             )
             if needs_board_size and "channels_per_board" not in params:
                 params = {**params, "channels_per_board": config.fers.channels_per_board}
+            # Projection-mode channel selector (FERS, ADC): no per-channel names
+            # to discover. Give it the client so it can learn the channel count
+            # from the per-channel TH2's x axis (GetNbinsX) lazily — resolved on
+            # first use and retried while unknown, so it survives the backend not
+            # being up yet at frontend startup.
+            if panel_cfg.type == "channel_selector" and params.get("projection_templates"):
+                params = {**params, "_client": client}
             panels.append(build_panel(panel_id, panel_cfg.type, params))
         by_tab[tab.id] = panels
     return by_tab

@@ -71,62 +71,84 @@ def _template_regex(template: str) -> re.Pattern:
 class ChannelSelectorPanel(Panel):
     def __init__(self, panel_id, params):
         super().__init__(panel_id, params)
-        # One dropdown can drive several per-channel histograms of the *same*
-        # channel index (e.g. FERS HG and LG side by side): `templates` is a
-        # list and the panel shows one graph slot per template. A single
-        # `template` is the common case. The first template is the one used for
-        # channel discovery and for the dropdown value / cross-nav selection.
-        templates = params.get("templates")
-        if not templates:
-            templates = [params.get("template", DEFAULT_TEMPLATE)]
-        elif isinstance(templates, str):
+        # Two data-source modes, both selected by a single channel index:
+        #
+        #  * name mode (`templates`/`template`): one per-channel histogram per
+        #    channel exists on the backend (e.g. ADC_channel_<N>); fetched by
+        #    name. `templates` can list several (HG+LG side by side).
+        #  * projection mode (`projection_templates`): the per-channel data lives
+        #    in one TH2 per gain/trigger (e.g. FERS_HG_dist_physics, x=channel,
+        #    y=ADC). A single channel is fetched as a server-side ProjectionY,
+        #    encoded as a `<th2>#projy=<xbin>` token resolved by BackendClient.
+        proj = params.get("projection_templates")
+        self._projection = bool(proj)
+        if self._projection:
+            templates = proj
+        else:
+            templates = params.get("templates") or [params.get("template", DEFAULT_TEMPLATE)]
+        if isinstance(templates, str):
             # A single template written without YAML list syntax: treat it as a
             # one-element list, not a sequence of characters.
             templates = [templates]
         self._templates = [str(t) for t in templates]
         self._template = self._templates[0]
-        self._regex = _template_regex(self._template)
-        # Auto-discovery matches `template + discover_suffix` and rebuilds the
-        # base name from the captured channel. Needed when the backend exposes
-        # no bare per-channel histogram (e.g. FERS only has the `_physics` /
-        # `_pedestal` copies), so we discover via one of the suffixed names.
+        self._regex = _template_regex(self._template) if not self._projection else None
+        # Auto-discovery (name mode) matches `template + discover_suffix` and
+        # captures the channel number; needed when the backend exposes no bare
+        # per-channel histogram (only the `_physics`/`_pedestal` copies).
         self._discover_suffix = params.get("discover_suffix", "")
-        self._discover_regex = _template_regex(self._template + self._discover_suffix)
+        self._discover_regex = (
+            _template_regex(self._template + self._discover_suffix) if not self._projection else None
+        )
+        # Projection mode has no per-channel names to discover: the channel
+        # count is the per-channel TH2's x-axis size, learned from the backend
+        # (GetNbinsX) via the injected client. Resolved lazily and retried while
+        # unknown, so it recovers if the backend wasn't up yet at startup. An
+        # explicit `n_channels` (e.g. in tests) skips the backend lookup.
+        self._client = params.get("_client")
+        self._n_channels = int(params.get("n_channels", 0))
         # Dropdown label style. With `board_labels: true` the labels read
-        # "board B · ch L" (FERS, no calo mapping; board size injected from the
-        # `fers:` config section); otherwise they are enriched with the calo
-        # module name from the ADC mapping (e.g. "ch 5 · M105S").
+        # "board B · ch L" (FERS, no calo mapping; board size from the `fers:`
+        # config section); otherwise enriched with the calo module name.
         self._channels_per_board = (
             int(params["channels_per_board"])
             if params.get("board_labels") and params.get("channels_per_board")
             else None
         )
-        self._names: list[str] = []
-        self._selected: Optional[str] = None
-        # When on, the single graph slot overlays several series of the
-        # selected channel (one step line each). The panel builds its own
-        # figure from the raw payloads, so it needs its own decoder (like
-        # DetectorPanel). `split_suffixes` selects which series to overlay;
-        # default = inclusive total + physics + pedestal.
+        self._selected_ch: Optional[int] = None
+        # When on, each graph slot overlays several series of the selected
+        # channel (one step line each), built from the raw payloads, so the
+        # panel needs its own decoder. `split_suffixes` selects which series.
         self._split = bool(params.get("show_trigger_split", False))
         self._split_series = self._build_split_series(params.get("split_suffixes"))
         self._decoder = get_decoder(params.get("decoder", "pure")) if self._split else None
+        # Emergency mitigation (issue #153): a projection-mode fetch is a
+        # server-side exe.json ProjectionY, whose repeated *interpreted* calls
+        # grow ROOT's process memory over time. So in projection mode we fetch
+        # only on demand — channel change, tab (re)open, or an explicit Refresh —
+        # and keep the last figures cached instead of polling continuously.
+        self._needs_fetch = True
+        self._last_figs: Optional[list] = None
 
     @staticmethod
-    def _build_split_series(suffixes: Optional[list[str]]) -> list[tuple[str, str, str]]:
+    def _build_split_series(suffixes) -> list[tuple[str, str, str]]:
         if not suffixes:
             return TRIGGER_SPLIT_SERIES
+        if isinstance(suffixes, str):
+            # A single suffix written without YAML list syntax: treat it as a
+            # one-element list, not a sequence of characters.
+            suffixes = [suffixes]
         series: list[tuple[str, str, str]] = []
-        for i, suffix in enumerate(suffixes):
+        for suffix in suffixes:
             label, color = _SPLIT_SUFFIX_INFO.get(suffix, (suffix.lstrip("_") or "total", theme.PRIMARY))
             series.append((suffix, label, color))
         return series
 
     def gain_tag(self) -> Optional[str]:
-        """`"HG"`/`"LG"` parsed from the template, used to pair this selector
-        with the matching FERS board map. None when neither token is present
-        or when the panel spans several gains (multiple templates) — in that
-        case any gain's board map links to this single selector."""
+        """`"HG"`/`"LG"` parsed from the (first) template, used to pair this
+        selector with the matching FERS board map. None when neither token is
+        present, or when the panel spans several gains (multiple templates) — in
+        that case any gain's board map links to this single selector."""
         if len(self._templates) > 1:
             return None
         if "HG" in self._template:
@@ -135,82 +157,80 @@ class ChannelSelectorPanel(Panel):
             return "LG"
         return None
 
-    def _discover(self, available: list[str]) -> list[str]:
-        matched: list[tuple[int, str]] = []
-        for name in available:
-            m = self._discover_regex.match(name)
-            if m:
-                # Rebuild the base (unsuffixed) name from the captured channel.
-                matched.append((int(m.group(1)), self._template.format(ch=int(m.group(1)))))
-        matched.sort()
-        return [name for _, name in matched]
+    def _projection_probe(self) -> str:
+        """A per-channel TH2 name to read the channel count from (its x axis)."""
+        suffix = self._split_series[0][0] if self._split_series else ""
+        return f"{self._templates[0]}{suffix}"
+
+    def _channels(self) -> list[int]:
+        """Sorted list of selectable channel indices."""
+        if self._projection:
+            # Learn (and cache) the channel count from the TH2 x axis the first
+            # time it is needed; retry while still unknown (backend not up yet).
+            if self._n_channels <= 0 and self._client is not None:
+                self._n_channels = self._client.nbins_x(self._projection_probe()) or 0
+            return list(range(self._n_channels))
+        params = self.params
+        names = params.get("names")
+        if names:
+            chans = {c for n in names if (c := self._channel_of(n)) is not None}
+        else:
+            chans = {
+                int(m.group(1))
+                for n in (params.get("available_histograms") or [])
+                if (m := self._discover_regex.match(n))
+            }
+        return sorted(chans)
 
     def _channel_of(self, name: str) -> Optional[int]:
-        m = self._regex.match(name)
+        m = self._regex.match(name) if self._regex else None
         return int(m.group(1)) if m else None
 
     def select_channel(self, ch: int) -> None:
-        """Select a channel by its index (used by cross-panel navigation,
-        e.g. clicking a module on the detector map).
+        """Select a channel by index (cross-panel navigation, e.g. clicking a
+        cell on a detector / FERS board map). The next poll fetches it."""
+        self._selected_ch = int(ch)
+        self._needs_fetch = True
 
-        We set ``self._selected`` to the templated histogram name. The next
-        time the panel is laid out, ``_options()`` keeps this selection as
-        long as the channel exists on the backend (otherwise it falls back
-        to the first available channel). ``histogram_names()`` then makes
-        the poll fetch and draw it.
-        """
-        self._selected = self._template.format(ch=ch)
+    # ---- token / title helpers ------------------------------------------
 
-    def _options(self) -> list[dict]:
-        # Recompute the channel list on every call.
-        params = self.params
-        names = params.get("names")
-        if not names:
-            names = self._discover(params.get("available_histograms") or [])
-        self._names = list(names)
-        # Refresh the selection if it is no longer valid.
-        if self._selected not in self._names:
-            self._selected = self._names[0] if self._names else None
-        mapping = None if self._channels_per_board else default_mapping()
-        opts: list[dict] = []
-        for name in self._names:
-            ch = self._channel_of(name)
-            if ch is None:
-                opts.append({"label": name, "value": name})
-                continue
-            if self._channels_per_board:
-                # FERS: board/local label, no calo mapping (those module names
-                # belong to the ADC channels and would be misleading here).
-                board, local = divmod(ch, self._channels_per_board)
-                label = f"board {board}  ·  ch {local}"
-            else:
-                try:
-                    label = f"ch {ch}  ·  {mapping.get_channel_name(ch)}"
-                except KeyError:
-                    label = f"ch {ch}"
-            opts.append({"label": label, "value": name})
-        return opts
+    def _token(self, template: str, suffix: str, ch: int) -> str:
+        """Fetch token for one series of one slot at channel `ch`."""
+        if self._projection:
+            # `<th2>#projy=<xbin>` — ROOT bins are 1-indexed (channel c -> c+1);
+            # resolved by BackendClient into a server-side ProjectionY.
+            return f"{template}{suffix}#projy={ch + 1}"
+        return f"{template.format(ch=ch)}{suffix}"
+
+    def _slot_tokens(self, template: str, ch: int) -> list[str]:
+        if self._split:
+            return [self._token(template, suffix, ch) for suffix, _, _ in self._split_series]
+        return [self._token(template, "", ch)]
+
+    def _slot_title(self, template: str, ch: Optional[int]) -> str:
+        if ch is None:
+            return "no channel"
+        if self._projection:
+            # Prettify the TH2 base name: strip a trailing "_dist" and turn
+            # underscores into spaces (FERS_HG_dist -> "FERS HG", ADC_dist -> "ADC").
+            base = template[:-len("_dist")] if template.endswith("_dist") else template
+            return f"{base.replace('_', ' ')} · ch {ch}"
+        return template.format(ch=ch)
 
     # ---- Panel API -------------------------------------------------------
 
-    def _current_ch(self) -> Optional[int]:
-        """Selected channel index (from the first-template dropdown value)."""
-        return self._channel_of(self._selected) if self._selected else None
-
     def histogram_names(self) -> list[str]:
-        ch = self._current_ch()
+        ch = self._selected_ch
         if ch is None:
             return []
-        names: list[str] = []
+        # Projection mode polls on demand only (see __init__ / issue #153): once
+        # the selected channel has been fetched, request nothing until it changes.
+        if self._projection and not self._needs_fetch:
+            return []
+        out: list[str] = []
         for template in self._templates:
-            base = template.format(ch=ch)
-            if self._split:
-                # Fetch the configured series (default: inclusive + physics +
-                # pedestal) for this template's slot; they are overlaid.
-                names += [base + suffix for suffix, _, _ in self._split_series]
-            else:
-                names.append(base)
-        return names
+            out += self._slot_tokens(template, ch)
+        return out
 
     def figure_names(self) -> list[str]:
         # In split mode the panel builds its own overlaid figure from the
@@ -221,19 +241,53 @@ class ChannelSelectorPanel(Panel):
         # One 1D plot per template slot.
         return list(range(len(self._templates)))
 
+    def _options(self) -> list[dict]:
+        chans = self._channels()
+        if self._selected_ch not in chans:
+            self._selected_ch = chans[0] if chans else None
+        mapping = None if self._channels_per_board else default_mapping()
+        opts: list[dict] = []
+        for ch in chans:
+            if self._channels_per_board:
+                # FERS: board/local label, no calo mapping (those module names
+                # belong to the ADC channels and would be misleading here).
+                board, local = divmod(ch, self._channels_per_board)
+                label = f"board {board}  ·  ch {local}"
+            else:
+                try:
+                    label = f"ch {ch}  ·  {mapping.get_channel_name(ch)}"
+                except KeyError:
+                    label = f"ch {ch}"
+            opts.append({"label": label, "value": ch})
+        return opts
+
     def layout(self) -> html.Div:
         options = self._options()
+        # (Re)opening the tab refreshes once; projection mode then goes quiet.
+        self._needs_fetch = True
         dropdown = dcc.Dropdown(
             id={"type": "channel-select", "panel": self.panel_id},
             options=options,
-            value=self._selected,
+            value=self._selected_ch,
             clearable=False,
             placeholder="(no channels on backend)" if not options else "select a channel",
             style={"width": "320px"},
         )
-        # One graph slot per template, stacked vertically. With a single
-        # template this is just the usual single plot.
-        ch = self._current_ch()
+        # Projection mode does not auto-refresh (issue #153); offer a manual one.
+        controls = [html.Span("Channel:", style={"color": theme.FG, "fontSize": "13px"}), dropdown]
+        extra_children: list = []
+        if self._projection:
+            controls.append(
+                html.Button(
+                    "↻ refresh",
+                    id={"type": "channel-refresh", "panel": self.panel_id},
+                    n_clicks=0,
+                    style={"marginLeft": "8px", "fontSize": "12px", "cursor": "pointer"},
+                )
+            )
+            extra_children.append(dcc.Store(id={"type": "channel-refresh-sink", "panel": self.panel_id}))
+        # One graph slot per template, stacked vertically.
+        ch = self._selected_ch
         slots = [
             html.Div(
                 className="plot-cell",
@@ -241,9 +295,7 @@ class ChannelSelectorPanel(Panel):
                 children=[
                     dcc.Graph(
                         id={"type": "panel-graph", "panel": self.panel_id, "index": i},
-                        figure=theme.placeholder_figure(
-                            template.format(ch=ch) if ch is not None else "no channel"
-                        ),
+                        figure=theme.placeholder_figure(self._slot_title(template, ch)),
                         style={"height": "420px"},
                         config={"displayModeBar": False},
                     ),
@@ -256,39 +308,44 @@ class ChannelSelectorPanel(Panel):
             [
                 html.Div(
                     style={"display": "flex", "alignItems": "center", "marginBottom": "12px", "gap": "8px"},
-                    children=[
-                        html.Span("Channel:", style={"color": theme.FG, "fontSize": "13px"}),
-                        dropdown,
-                    ],
+                    children=controls,
                 ),
                 html.Div(
                     style={"display": "flex", "flexDirection": "column", "gap": "12px"},
                     children=slots,
                 ),
-                # Throwaway sink: the selection callback must write to at
-                # least one Output. The real state lives in self._selected.
+                # Throwaway sink: the selection callback must write to at least
+                # one Output. The real state lives in self._selected_ch.
                 dcc.Store(id={"type": "channel-select-sink", "panel": self.panel_id}),
             ]
+            + extra_children
         )
 
     def render(self, figs, payloads, client_state):
-        ch = self._current_ch()
+        ch = self._selected_ch
         if ch is None:
             return [theme.placeholder_figure("no channel selected") for _ in self._templates]
+        # Projection mode: if no fetch was requested this tick, reuse the cached
+        # figures (we didn't poll exe.json) rather than rebuilding from empty data.
+        if self._projection and not self._needs_fetch and self._last_figs is not None:
+            return self._last_figs
         out = []
         for template in self._templates:
-            base = template.format(ch=ch)
+            title = self._slot_title(template, ch)
             if self._split:
-                # Overlay the configured series (e.g. physics / pedestal) of
-                # this template into one figure. The Plotly legend acts as the
-                # per-series on/off toggle (all shown by default).
+                # Overlay the configured series (e.g. physics / pedestal) of this
+                # slot into one figure. The Plotly legend toggles each series.
                 specs = [
-                    (payloads.get(base + suffix), color, label)
+                    (payloads.get(self._token(template, suffix, ch)), color, label)
                     for suffix, label, color in self._split_series
                 ]
-                out.append(overlay_figure(self._decoder, specs, base))
+                out.append(overlay_figure(self._decoder, specs, title))
             else:
-                out.append(figs.get(base, theme.placeholder_figure(base)))
+                token = self._token(template, "", ch)
+                out.append(figs.get(token, theme.placeholder_figure(title)))
+        if self._projection:
+            self._last_figs = out
+            self._needs_fetch = False
         return out
 
     def register_callbacks(self, app: Dash) -> None:
@@ -298,9 +355,20 @@ class ChannelSelectorPanel(Panel):
             prevent_initial_call=True,
         )
         def _on_select(value):
-            # Persist the choice in instance state; the next poll picks it
-            # up via histogram_names(). Returning `value` just satisfies
-            # Dash's "every callback needs an Output" rule.
-            if value:
-                self._selected = value
+            # Persist the choice in instance state; the next poll picks it up via
+            # histogram_names(). Returning `value` satisfies Dash's Output rule.
+            if value is not None:
+                self._selected_ch = int(value)
+                self._needs_fetch = True   # projection mode fetches on change only
             return value
+
+        if self._projection:
+            @app.callback(
+                Output({"type": "channel-refresh-sink", "panel": self.panel_id}, "data"),
+                Input({"type": "channel-refresh", "panel": self.panel_id}, "n_clicks"),
+                prevent_initial_call=True,
+            )
+            def _on_refresh(n_clicks):
+                # Manual refresh: fetch the current channel once on the next poll.
+                self._needs_fetch = True
+                return n_clicks

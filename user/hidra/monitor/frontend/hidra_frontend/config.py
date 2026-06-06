@@ -86,9 +86,8 @@ class FersCfg:
 
     These describe the hardware, not any one plot, so they live here once
     instead of being repeated per panel/histogram. `channels_per_board` is
-    fixed by the FERS board (64) but kept configurable for a possible future
-    variant; it feeds the board geometry (`fers_board`), the channel-selector
-    board labels, and the per-channel `board_hover`.
+    fixed by the FERS board (64); it sizes the channel-selector board labels
+    and the per-channel `board_hover`.
     """
 
     channels_per_board: int = 64

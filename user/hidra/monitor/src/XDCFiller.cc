@@ -1,6 +1,8 @@
 #include "XDCFiller.hh"
 #include "HidraUtils.hh"
 
+#include <memory>
+
 namespace {
 // Interquartile range of a standard normal = 2·Φ⁻¹(0.75) ≈ 1.349, so
 // IQR/1.349 reproduces 1σ for a Gaussian while being robust to the tails
@@ -32,6 +34,10 @@ XDCFiller::XDCFiller(HistogramRegistry& reg,
     HIDRA_ERROR("XDCFiller constructed with n_tdc_channels=0.");
     n_tdc_channels = 1;
   }
+  // Store the normalized channel count (after the n_adc_channels==0 clamp
+  // above) — the same value used to book the histograms, so the bounds checks
+  // in Fill()/UpdatePedestalNoise() match the booked binning.
+  m_n_adc_channels = n_adc_channels;
   // The ";channel;<y>" axis titles mark these profiles as channel-indexed:
   // the frontend uses the "channel" x-axis title to label the hover with the
   // channel number (rather than assuming every TProfile is per-channel).
@@ -71,26 +77,16 @@ XDCFiller::XDCFiller(HistogramRegistry& reg,
       "TDC_saturation", "Saturation fraction per TDC channel;channel;saturation fraction", n_tdc_channels, 0,
       n_tdc_channels));
 
-  for (unsigned int i = 0; i < n_adc_channels; ++i) {
-    TH1D* hist = reg.Add(std::make_unique<TH1D>(hidra::utils::format("ADC_channel_{}", i).c_str(),
-                                                hidra::utils::format("ADC values for channel {}", i).c_str(),
-                                                4096,
-                                                0,
-                                                4096));
-    m_hist_adc_channels.push_back(hist);
-    TH1D* hist_physics = reg.Add(std::make_unique<TH1D>(hidra::utils::format("ADC_channel_{}_physics", i).c_str(),
-                                                        hidra::utils::format("ADC values for channel {} (physics)", i).c_str(),
-                                                        4096,
-                                                        0,
-                                                        4096));
-    m_hist_adc_channels_physics.push_back(hist_physics);
-    TH1D* hist_pedestal = reg.Add(std::make_unique<TH1D>(hidra::utils::format("ADC_channel_{}_pedestal", i).c_str(),
-                                                         hidra::utils::format("ADC values for channel {} (pedestal)", i).c_str(),
-                                                         4096,
-                                                         0,
-                                                         4096));
-    m_hist_adc_channels_pedestal.push_back(hist_pedestal);
-  }
+  // Per-channel ADC distributions: one TH2I per trigger copy (x = channel,
+  // y = ADC), total/physics/pedestal. A single TH2 keeps the registered-object
+  // count small; the frontend reads one channel via a server-side ProjectionY
+  // (issue #138). The pedestal one also feeds UpdatePedestalNoise.
+  auto book_adc_dist = [&](const char* name, const char* title) {
+    return reg.Add(std::make_unique<TH2I>(name, title, n_adc_channels, 0, n_adc_channels, 4096, 0, 4096));
+  };
+  m_adc_dist = book_adc_dist("ADC_dist", "ADC values;channel;ADC");
+  m_adc_dist_physics = book_adc_dist("ADC_dist_physics", "ADC values (physics);channel;ADC");
+  m_adc_dist_pedestal = book_adc_dist("ADC_dist_pedestal", "ADC values (pedestal);channel;ADC");
   for (unsigned int i = 0; i < n_tdc_channels; ++i) {
     TH1D* hist = reg.Add(std::make_unique<TH1D>(hidra::utils::format("TDC_channel_{}", i).c_str(),
                                                 hidra::utils::format("TDC values for channel {}", i).c_str(),
@@ -125,16 +121,19 @@ void XDCFiller::Fill(const HidraEvent& event) {
       m_profile_adc_pedestal->Fill(i, value);
       m_hist_adc_inclusive_pedestal->Fill(value);
     }
-    if (i < m_hist_adc_channels.size()) {
-      m_hist_adc_channels[i]->Fill(value);
+    if (i < m_n_adc_channels) {
+      m_adc_dist->Fill(i, value);
       if (is_physics) {
-        m_hist_adc_channels_physics[i]->Fill(value);
+        m_adc_dist_physics->Fill(i, value);
       }
       if (is_pedestal) {
-        m_hist_adc_channels_pedestal[i]->Fill(value);
+        m_adc_dist_pedestal->Fill(i, value);
       }
     } else {
-      HIDRA_ERROR("ADC channel index {} is out of bounds for histogram array. Skipping filling for this channel.", i);
+      HIDRA_ERROR("ADC channel index {} is out of bounds for the ADC_dist TH2 x-axis (n_adc_channels={}). Skipping "
+                  "filling for this channel.",
+                  i,
+                  m_n_adc_channels);
     }
     const int saturated = value > m_saturation_threshold_adc ? 1 : 0;
     m_profile_adc_saturation->Fill(i, saturated);
@@ -170,8 +169,13 @@ void XDCFiller::Fill(const HidraEvent& event) {
 void XDCFiller::UpdatePedestalNoise() {
   const double probs[2] = {0.25, 0.75};
   double quants[2] = {0.0, 0.0};
-  for (size_t c = 0; c < m_hist_adc_channels_pedestal.size(); ++c) {
-    TH1D* h = m_hist_adc_channels_pedestal[c];
+  for (unsigned int c = 0; c < m_n_adc_channels; ++c) {
+    // One channel's pedestal distribution is column c+1 of the TH2. Own the
+    // projection with a unique_ptr (RAII, freed at end of iteration) and detach
+    // it from any ROOT directory (SetDirectory(nullptr)) so gDirectory neither
+    // owns nor double-frees it — no reliance on ROOT's gDirectory bookkeeping.
+    std::unique_ptr<TH1D> h(m_adc_dist_pedestal->ProjectionY("_adc_ped_col", c + 1, c + 1));
+    h->SetDirectory(nullptr);
     double iqr_sigma = 0.0;
     double std_sigma = 0.0;
     // The estimators need a populated distribution; leave the noise at 0 for

@@ -3,6 +3,7 @@
 #include "IHistogramFiller.hh"
 
 #include <TH1D.h>
+#include <TH2.h>
 #include <TProfile.h>
 
 class XDCFiller : public IHistogramFiller {
@@ -17,9 +18,10 @@ public:
   void Reset() override;
 
 private:
+  unsigned int m_n_adc_channels;
+
   TProfile* m_profile_adc;
   TH1D* m_hist_adc_inclusive;
-  std::vector<TH1D*> m_hist_adc_channels;
   TProfile* m_profile_adc_saturation;
 
   // Physics/pedestal-split copies of the ADC views (mean, inclusive,
@@ -29,10 +31,17 @@ private:
   TProfile* m_profile_adc_pedestal;
   TH1D* m_hist_adc_inclusive_physics;
   TH1D* m_hist_adc_inclusive_pedestal;
-  std::vector<TH1D*> m_hist_adc_channels_physics;
-  std::vector<TH1D*> m_hist_adc_channels_pedestal;
   TProfile* m_profile_adc_saturation_physics;
   TProfile* m_profile_adc_saturation_pedestal;
+
+  // Per-channel distributions as one TH2I per trigger copy (x = channel,
+  // y = ADC), total/physics/pedestal. One TH2 instead of one TH1 per channel
+  // keeps the registered-object count tiny so THttpServer stays responsive; the
+  // frontend reads one channel via a server-side ProjectionY (issue #138). The
+  // pedestal one also feeds UpdatePedestalNoise (per-channel column quantiles).
+  TH2I* m_adc_dist;
+  TH2I* m_adc_dist_physics;
+  TH2I* m_adc_dist_pedestal;
 
   // Per-channel pedestal noise, one bin per channel. Two estimators are
   // published from each channel's pedestal distribution: the robust
