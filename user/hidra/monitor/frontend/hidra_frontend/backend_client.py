@@ -82,10 +82,13 @@ class BackendClient:
         th2, sep, xbin = name.partition(cls._PROJ_SEP)
         if sep:
             # Server-side ProjectionY of one x bin (= one channel) -> a 1D TH1.
-            # ROOT reuses a histogram named "_s" across calls (no leak).
+            # Use a per-TH2 target name so ROOT reuses one histogram per source
+            # (bounded; ProjectionY resets the same-named one) and the several
+            # sub-requests of a single batch never share a target. A per-client
+            # name would instead reintroduce unbounded growth (root-project/root#22501).
             return (
                 f"Histograms/{th2}/exe.json?method=ProjectionY"
-                f"&name=_s&firstxbin={xbin}&lastxbin={xbin}"
+                f"&name=_proj_{th2}&firstxbin={xbin}&lastxbin={xbin}"
             )
         return f"Histograms/{name}/root.json"
 

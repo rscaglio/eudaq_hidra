@@ -130,7 +130,10 @@ void XDCFiller::Fill(const HidraEvent& event) {
         m_adc_dist_pedestal->Fill(i, value);
       }
     } else {
-      HIDRA_ERROR("ADC channel index {} is out of bounds for histogram array. Skipping filling for this channel.", i);
+      HIDRA_ERROR("ADC channel index {} is out of bounds for the ADC_dist TH2 x-axis (n_adc_channels={}). Skipping "
+                  "filling for this channel.",
+                  i,
+                  m_n_adc_channels);
     }
     const int saturated = value > m_saturation_threshold_adc ? 1 : 0;
     m_profile_adc_saturation->Fill(i, saturated);

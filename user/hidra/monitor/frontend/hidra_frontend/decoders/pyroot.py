@@ -72,6 +72,9 @@ class PyRootDecoder(Decoder):
             edges=_edges(h.GetXaxis(), n),
             counts=counts,
             errors=errors,
+            # Out-of-range bins, so `show_flow` works with this decoder too.
+            underflow=float(h.GetBinContent(0)),
+            overflow=float(h.GetBinContent(n + 1)),
         )
 
     def _decode_tprofile(self, h, d: dict) -> DecodedHist:
