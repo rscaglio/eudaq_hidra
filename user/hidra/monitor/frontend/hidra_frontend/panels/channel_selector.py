@@ -122,6 +122,13 @@ class ChannelSelectorPanel(Panel):
         self._split = bool(params.get("show_trigger_split", False))
         self._split_series = self._build_split_series(params.get("split_suffixes"))
         self._decoder = get_decoder(params.get("decoder", "pure")) if self._split else None
+        # Emergency mitigation (issue #153): a projection-mode fetch is a
+        # server-side exe.json ProjectionY, whose repeated *interpreted* calls
+        # grow ROOT's process memory over time. So in projection mode we fetch
+        # only on demand — channel change, tab (re)open, or an explicit Refresh —
+        # and keep the last figures cached instead of polling continuously.
+        self._needs_fetch = True
+        self._last_figs: Optional[list] = None
 
     @staticmethod
     def _build_split_series(suffixes) -> list[tuple[str, str, str]]:
@@ -183,6 +190,7 @@ class ChannelSelectorPanel(Panel):
         """Select a channel by index (cross-panel navigation, e.g. clicking a
         cell on a detector / FERS board map). The next poll fetches it."""
         self._selected_ch = int(ch)
+        self._needs_fetch = True
 
     # ---- token / title helpers ------------------------------------------
 
@@ -214,6 +222,10 @@ class ChannelSelectorPanel(Panel):
     def histogram_names(self) -> list[str]:
         ch = self._selected_ch
         if ch is None:
+            return []
+        # Projection mode polls on demand only (see __init__ / issue #153): once
+        # the selected channel has been fetched, request nothing until it changes.
+        if self._projection and not self._needs_fetch:
             return []
         out: list[str] = []
         for template in self._templates:
@@ -251,6 +263,8 @@ class ChannelSelectorPanel(Panel):
 
     def layout(self) -> html.Div:
         options = self._options()
+        # (Re)opening the tab refreshes once; projection mode then goes quiet.
+        self._needs_fetch = True
         dropdown = dcc.Dropdown(
             id={"type": "channel-select", "panel": self.panel_id},
             options=options,
@@ -259,6 +273,19 @@ class ChannelSelectorPanel(Panel):
             placeholder="(no channels on backend)" if not options else "select a channel",
             style={"width": "320px"},
         )
+        # Projection mode does not auto-refresh (issue #153); offer a manual one.
+        controls = [html.Span("Channel:", style={"color": theme.FG, "fontSize": "13px"}), dropdown]
+        extra_children: list = []
+        if self._projection:
+            controls.append(
+                html.Button(
+                    "↻ refresh",
+                    id={"type": "channel-refresh", "panel": self.panel_id},
+                    n_clicks=0,
+                    style={"marginLeft": "8px", "fontSize": "12px", "cursor": "pointer"},
+                )
+            )
+            extra_children.append(dcc.Store(id={"type": "channel-refresh-sink", "panel": self.panel_id}))
         # One graph slot per template, stacked vertically.
         ch = self._selected_ch
         slots = [
@@ -281,10 +308,7 @@ class ChannelSelectorPanel(Panel):
             [
                 html.Div(
                     style={"display": "flex", "alignItems": "center", "marginBottom": "12px", "gap": "8px"},
-                    children=[
-                        html.Span("Channel:", style={"color": theme.FG, "fontSize": "13px"}),
-                        dropdown,
-                    ],
+                    children=controls,
                 ),
                 html.Div(
                     style={"display": "flex", "flexDirection": "column", "gap": "12px"},
@@ -294,12 +318,17 @@ class ChannelSelectorPanel(Panel):
                 # one Output. The real state lives in self._selected_ch.
                 dcc.Store(id={"type": "channel-select-sink", "panel": self.panel_id}),
             ]
+            + extra_children
         )
 
     def render(self, figs, payloads, client_state):
         ch = self._selected_ch
         if ch is None:
             return [theme.placeholder_figure("no channel selected") for _ in self._templates]
+        # Projection mode: if no fetch was requested this tick, reuse the cached
+        # figures (we didn't poll exe.json) rather than rebuilding from empty data.
+        if self._projection and not self._needs_fetch and self._last_figs is not None:
+            return self._last_figs
         out = []
         for template in self._templates:
             title = self._slot_title(template, ch)
@@ -314,6 +343,9 @@ class ChannelSelectorPanel(Panel):
             else:
                 token = self._token(template, "", ch)
                 out.append(figs.get(token, theme.placeholder_figure(title)))
+        if self._projection:
+            self._last_figs = out
+            self._needs_fetch = False
         return out
 
     def register_callbacks(self, app: Dash) -> None:
@@ -327,4 +359,16 @@ class ChannelSelectorPanel(Panel):
             # histogram_names(). Returning `value` satisfies Dash's Output rule.
             if value is not None:
                 self._selected_ch = int(value)
+                self._needs_fetch = True   # projection mode fetches on change only
             return value
+
+        if self._projection:
+            @app.callback(
+                Output({"type": "channel-refresh-sink", "panel": self.panel_id}, "data"),
+                Input({"type": "channel-refresh", "panel": self.panel_id}, "n_clicks"),
+                prevent_initial_call=True,
+            )
+            def _on_refresh(n_clicks):
+                # Manual refresh: fetch the current channel once on the next poll.
+                self._needs_fetch = True
+                return n_clicks

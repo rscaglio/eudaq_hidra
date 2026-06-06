@@ -278,7 +278,11 @@ Append an entry under `tabs:` in `config.yaml`:
     stacked plots) plus `split_suffixes:` (`["", "_physics", "_pedestal"]`
     for ADC; `["_physics", "_pedestal"]` for FERS). The channel count is read
     once from the TH2's x axis (`GetNbinsX`), so it always matches the current
-    VME geo map without any config to keep in sync.
+    VME geo map without any config to keep in sync. **Projection mode does not
+    auto-refresh**: the server-side `exe.json ProjectionY` is an interpreted
+    call whose repeated use grows the backend's memory over long runs (issue
+    #153), so a channel is fetched only on **channel change / tab (re)open / the
+    ↻ refresh button**, and the last figures are kept until then.
   - **Name mode** (`template:` / `templates:`) — for a backend that exposes
     one histogram per channel (`<name>_<N>`). The channel list is
     auto-discovered from the backend; `discover_suffix:` matches
