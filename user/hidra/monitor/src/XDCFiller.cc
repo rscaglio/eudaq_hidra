@@ -1,6 +1,8 @@
 #include "XDCFiller.hh"
 #include "HidraUtils.hh"
 
+#include <memory>
+
 namespace {
 // Interquartile range of a standard normal = 2·Φ⁻¹(0.75) ≈ 1.349, so
 // IQR/1.349 reproduces 1σ for a Gaussian while being robust to the tails
@@ -165,12 +167,12 @@ void XDCFiller::UpdatePedestalNoise() {
   const double probs[2] = {0.25, 0.75};
   double quants[2] = {0.0, 0.0};
   for (unsigned int c = 0; c < m_n_adc_channels; ++c) {
-    // One channel's pedestal distribution is column c+1 of the TH2. ProjectionY
-    // reuses a histogram named "_adc_ped_col" across calls (no leak); the IQR /
-    // std are then computed exactly as on the old per-channel TH1. Safe vs. the
-    // HTTP pump (which also touches gDirectory) because both run under the
-    // publisher mutex.
-    TH1D* h = m_adc_dist_pedestal->ProjectionY("_adc_ped_col", c + 1, c + 1);
+    // One channel's pedestal distribution is column c+1 of the TH2. Own the
+    // projection with a unique_ptr (RAII, freed at end of iteration) and detach
+    // it from any ROOT directory (SetDirectory(nullptr)) so gDirectory neither
+    // owns nor double-frees it — no reliance on ROOT's gDirectory bookkeeping.
+    std::unique_ptr<TH1D> h(m_adc_dist_pedestal->ProjectionY("_adc_ped_col", c + 1, c + 1));
+    h->SetDirectory(nullptr);
     double iqr_sigma = 0.0;
     double std_sigma = 0.0;
     // The estimators need a populated distribution; leave the noise at 0 for
