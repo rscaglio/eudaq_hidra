@@ -108,14 +108,12 @@ TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long lon
     const int nMatches = static_cast<int>(deltaTs.size());
     const bool betterRange = range < bestRange;
     const bool sameRange = range == bestRange;
-    const bool betterMean = sameRange && std::fabs(meanstd.first) < std::fabs(static_cast<double>(best.meanDeltaT));
-    const bool sameMean =
-        sameRange && std::fabs(meanstd.first) == std::fabs(static_cast<double>(best.meanDeltaT));
-    const bool betterMatches = sameMean && nMatches > best.nMatches;
-    const bool sameMatches = sameMean && nMatches == best.nMatches;
-    const bool betterOffset = sameMatches && std::abs(offset) < std::abs(best.bestOffset);
+    
+    const bool betterMatches = sameRange && nMatches > best.nMatches;
+    const bool sameMatches = sameRange && nMatches == best.nMatches;
+    
 
-    if (betterRange || betterMean || betterMatches || betterOffset) {
+    if (betterRange /*|| betterMatches*/ ) {
       bestRange = range;
       bestMatches = nMatches;
 
