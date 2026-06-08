@@ -356,7 +356,7 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
 
     if (det_id == 1 || det_id == 6) {
       ScopedTimer t(m_ctx->duration_xdc_decode);
-      m_ctx->xdc_decoder.decode(detector_payload, decoded.xdc);
+      m_ctx->xdc_decoder.decode(detector_payload, decoded.xdc, subevent->GetTriggerN());
     } else if (det_id == 2) {
       // Defer FERS decoding until after the loop (see below).
       fers_payload = std::move(detector_payload);
