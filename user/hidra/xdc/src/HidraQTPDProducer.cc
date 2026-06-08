@@ -19,6 +19,7 @@
 #include <set>
 #include <thread>
 #include <vector>
+#include <mutex>
 
 namespace {
 
@@ -71,6 +72,24 @@ constexpr uint16_t V792_STATUS_1_REG = 0x100E;
 constexpr uint16_t V792_MCST_FIRST = 0x02;
 constexpr uint16_t V792_MCST_MIDDLE = 0x03;
 constexpr uint16_t V792_MCST_LAST = 0x01;
+
+
+/// TRACKER SYNC MODULE
+// Lower 16 bits are written to base + 0xD000.
+// Optional readbacks:
+//   base + 0xD000 : loopback/cable readback, if cable is present
+//   base + 0xA000 : board readback register
+constexpr uint16_t EVSYNC_LOW_WRITE_REG = 0xD000;
+constexpr uint16_t EVSYNC_LOW_LOOPBACK_REG = 0xD000;
+constexpr uint16_t EVSYNC_LOW_READBACK_REG = 0xA000;
+
+// Optional/debug high word, matching the old debug routine.
+// Not needed for the trigger number itself.
+constexpr uint16_t EVSYNC_HIGH_WRITE_REG = 0xE000;
+constexpr uint16_t EVSYNC_HIGH_LOOPBACK_REG = 0xE000;
+constexpr uint16_t EVSYNC_HIGH_READBACK_REG = 0xB000;
+
+
 
 struct BoardConfig {
   std::size_t configIndex;
@@ -225,6 +244,7 @@ private:
 
     ConfigureBoards();
     ConfigureV977andVeto();
+    ConfigureEventSyncBoard(); // FOR TRACKER SYNC MODULE
 
     EUDAQ_INFO("Producer configured");
   }
@@ -288,6 +308,14 @@ private:
     }
     m_v977Base = parse_u32(conf.Get("V977_BASE", std::string("0x01000000")));
 
+    // TRACKER SYNC MODULE 
+    m_eventSyncEnabled = conf.Get("TRACKER_SYNC_ENABLE", std::string("0")) == "1";
+    m_eventSyncBase = parse_u32(conf.Get("TRACKER_SYNC_BASE", std::string("0x00D00000")));
+    m_eventSyncReadback = conf.Get("TRACKER_SYNC_READBACK", std::string("0")) == "1";
+    m_eventSyncDebug = conf.Get("TRACKER_SYNC_DEBUG", std::string("0")) == "1";
+    m_eventSyncWriteHighMarker = conf.Get("TRACKER_SYNC_WRITE_HIGH_MARKER", std::string("0")) == "1";
+    m_eventSyncHighMarker = parse_u16(conf.Get("TRACKER_SYNC_HIGH_MARKER", std::string("0xB0B0")));
+
     m_boards.clear();
     for (const auto index : ConfiguredBoardIndices(conf)) {
       AddBoardFromConf(conf, index);
@@ -312,6 +340,8 @@ private:
     ThrowIfVmeError("Board readout-chain configuration failed");
   }
 
+
+
   void ConfigureBlockTransfer() {
     for (const auto& board : m_boards) {
       WriteReg(V792_BLT_EVENT_NUMBER_REG, 0xAA, board.baseAddr); 
@@ -324,6 +354,66 @@ private:
       HIDRA_INFO("Board{} multicast role: {}", board.configIndex, board.multicastRoleName);
     }
   }
+
+
+  void ConfigureEventSyncBoard() {  // TRACKER SYNC MODULE
+  if (!m_eventSyncEnabled) {
+    EUDAQ_INFO("Event-sync board disabled");
+    return;
+  }
+
+  const uint16_t boardId = ReadReg(0x0000, m_eventSyncBase);
+  ThrowIfVmeError("Event-sync board ID read failed");
+
+  EUDAQ_INFO("Event-sync board enabled at " + hex32(m_eventSyncBase) +
+             ", ID = 0x" + hex16(boardId));
+
+  if (m_eventSyncDebug) {
+    HIDRA_INFO("Event-sync config: base {}, readback {}, writeHighMarker {}, highMarker 0x{}",
+               hex32(m_eventSyncBase),
+               m_eventSyncReadback,
+               m_eventSyncWriteHighMarker,
+               hex16(m_eventSyncHighMarker));
+  }
+}
+
+void WriteEventSyncTrigger16(uint64_t triggerNumber) {
+  if (!m_eventSyncEnabled) {
+    return;
+  }
+
+  // THIS IS THE ESSENTIAL OPERATION:
+  const uint16_t trigger16 = static_cast<uint16_t>(triggerNumber & 0xFFFFu);
+  WriteReg(EVSYNC_LOW_WRITE_REG, trigger16, m_eventSyncBase);
+  ThrowIfVmeError("Event-sync low trigger write failed");
+  //////
+
+  if (m_eventSyncWriteHighMarker) {
+    WriteReg(EVSYNC_HIGH_WRITE_REG, m_eventSyncHighMarker, m_eventSyncBase);
+    ThrowIfVmeError("Event-sync high marker write failed");
+  }
+
+  if (m_eventSyncReadback || m_eventSyncDebug) {
+    const uint16_t lowLoopback = ReadReg(EVSYNC_LOW_LOOPBACK_REG, m_eventSyncBase);
+    const uint16_t lowReg = ReadReg(EVSYNC_LOW_READBACK_REG, m_eventSyncBase);
+    ThrowIfVmeError("Event-sync low trigger readback failed");
+
+    if (m_eventSyncDebug) {
+      HIDRA_INFO("Event-sync trigger: evt {} trigger16 0x{} loopback 0x{} reg 0x{}",
+                 triggerNumber,
+                 hex16(trigger16),
+                 hex16(lowLoopback),
+                 hex16(lowReg));
+    }
+
+    if (m_eventSyncReadback && lowReg != trigger16) {
+      HIDRA_WARN("Event-sync readback mismatch for evt {}: wrote 0x{}, register reads 0x{}",
+                 triggerNumber,
+                 hex16(trigger16),
+                 hex16(lowReg));
+    }
+  }
+}
 
   /// V977 handlers
   void SetSingleV977OutputReg(bool isHigh, int chan) { // chan starts from 0
@@ -478,6 +568,7 @@ private:
         if (m_TriggerMask == 0b01) m_evt_phy++;
         if (m_TriggerMask == 0b10) m_evt_ped++;
       
+        WriteEventSyncTrigger16(m_evt); // PROPAGATE NEXT TRIGGER (COUNTER IS ALREADY INCREMENTED) NUMBER TO TRACKER SYNC MODULE
 
         // TODO: veto is still active and we can do what we want.. but slowing down. Remove and create a dedicated thread
         SetStatusTag("PhyTrigN", std::to_string(m_evt_phy));
@@ -496,6 +587,9 @@ private:
         if (pattern.spillStart) {
           m_spillCount++;
         }
+
+        
+
         ClearV977FlipFlops(); // this will release the Trigger veto and clear the spill pattern as well
       }
 
@@ -834,6 +928,13 @@ private:
   uint64_t m_evtTimeNs = 0;
   uint8_t m_TriggerMask = 0xFF; 
 
+  // TRACKER SYNC MODULE
+  uint32_t m_eventSyncBase = 0x00D00000;
+  bool m_eventSyncEnabled = false;
+  bool m_eventSyncReadback = false;
+  bool m_eventSyncDebug = false;
+  bool m_eventSyncWriteHighMarker = false;
+  uint16_t m_eventSyncHighMarker = 0xB0B0;
 
   std::chrono::steady_clock::time_point m_runStart;
 
