@@ -195,7 +195,7 @@ private:
     }
   }
 
-  void ScanDirectory() {
+  void  ScanDirectory() {
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(m_directory)) {
       if (!entry.is_regular_file()) {
@@ -243,6 +243,9 @@ private:
     ValidateHeaders(headers, file);
 
     std::size_t line_number = 1;
+    uint64_t rows_processed_for_file = 0;
+    uint64_t rows_sent_for_file = 0;
+
     while (m_running && std::getline(input, line)) {
       ++line_number;
       if (Trim(line).empty()) {
@@ -255,13 +258,24 @@ private:
                    ":" + std::to_string(line_number) + "; expected " + std::to_string(headers.size()));
         continue;
       }
+      // Attempt to send the row; only count as sent if SendRow completes without throwing.
       SendRow(headers, values, line, file, line_number);
+      ++rows_processed_for_file;
+      ++rows_sent_for_file;
+      ++m_events_sent;
+      EUDAQ_INFO("Processed line number " + std::to_string(line_number));
     }
 
-    if(m_events_sent == (line_number - 1)) {
-      EUDAQ_INFO("Finished processing tracker file " + file.filename().string() + " with " + std::to_string(line_number - 1) + " data");
+    if (rows_sent_for_file == rows_processed_for_file) {
+      EUDAQ_INFO("Finished processing tracker file " + file.filename().string() + " with " + std::to_string(rows_sent_for_file) + " data");
     } else {
-      EUDAQ_WARN("Mismatch between processed rows of file " + file.filename().string() + " with " + std::to_string(line_number - 1) + " lines and " + std::to_string(m_events_sent) + " events sent");
+      EUDAQ_WARN("Mismatch between processed rows of file " + file.filename().string() + " with " + std::to_string(rows_processed_for_file) + " data and " + std::to_string(rows_sent_for_file) + " events sent");
+    }
+
+    if (rows_processed_for_file == (line_number - 1)) {
+      EUDAQ_INFO("Finished processing all lines of tracker file " + file.filename().string());
+    } else {
+      EUDAQ_WARN("Mismatch in processing tracker file " + file.filename().string() + " with " + std::to_string(rows_processed_for_file) + " data rows processed and " + std::to_string(line_number - 1) + " total lines");
     }
   
     
@@ -311,8 +325,6 @@ private:
     const std::vector<uint8_t> raw_row(line.begin(), line.end());
     event->AddBlock(0, raw_row);
     SendEvent(std::move(event));
-    ++m_events_sent;
-    EUDAQ_DEBUG("Event number: " + std::to_string(m_events_sent) + " sent from the Tracker Producer to the Data Collector");
   }
 
   void StopWorker() {
