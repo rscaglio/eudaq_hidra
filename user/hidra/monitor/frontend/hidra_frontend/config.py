@@ -38,6 +38,10 @@ class OverlayCfg:
     enabled: bool
     search_dir: Path
     default_file: str | None
+    # How to scale live vs reference for comparison: "area" (each genuine
+    # distribution divided by its own sum of counts, so both integrate to 1)
+    # or "none" (raw counts). Profiles/per-channel plots always overlay raw.
+    normalize: str
 
 
 @dataclass
@@ -160,6 +164,7 @@ def load_config(path: str | Path) -> Config:
         enabled=bool(o.get("enabled", False)),
         search_dir=search_dir,
         default_file=o.get("default_file"),
+        normalize=str(o.get("normalize", "none")),
     )
 
     tabs: list[TabCfg] = []

@@ -138,6 +138,7 @@ def register(
                             decoder, payload, name,
                             overlay_hist=overlay_hist,
                             options=config.histogram_options.get(name),
+                            normalize=config.overlay.normalize,
                         )
 
             # Each panel decides which figures land in its own graph
