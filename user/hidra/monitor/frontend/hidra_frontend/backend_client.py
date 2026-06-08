@@ -82,14 +82,11 @@ class BackendClient:
         th2, sep, xbin = name.partition(cls._PROJ_SEP)
         if sep:
             # Server-side ProjectionY of one x bin (= one channel) -> a 1D TH1.
-            # `_destroy_result_` tells THttpServer to delete the temporary
-            # projection after serialising it, per the ROOT maintainers' guidance,
-            # so ProduceExe does not leak the returned object (root-project/root#22501).
-            # NB: with our fixed per-TH2 target name the projection is already reused
-            # (reset), so this is hygiene only; it does NOT address the dominant
-            # per-call cling/interpreter growth of exe.json (#153), which the
-            # fetch-on-demand mitigation bounds. The per-TH2 name additionally keeps
-            # the several sub-requests of one /multi.json batch from sharing a target.
+            # `_destroy_result_` frees the temporary projection once it has been
+            # serialised (ROOT maintainers' guidance on root-project/root#22501);
+            # the per-TH2 target name keeps the sub-requests of one /multi.json
+            # batch from sharing a target. It does NOT address the per-call
+            # exe.json interpreter growth -- see #153 for that.
             return (
                 f"Histograms/{th2}/exe.json?method=ProjectionY"
                 f"&name=_proj_{th2}&firstxbin={xbin}&lastxbin={xbin}&_destroy_result_"
