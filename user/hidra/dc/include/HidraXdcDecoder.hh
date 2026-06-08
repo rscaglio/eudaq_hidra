@@ -12,7 +12,7 @@ namespace hidra {
 class HidraXdcDecoder {
 public:
   HidraXdcDecoder(std::map<int, std::string> vme_geo_map);
-  void decode(const std::vector<uint8_t>& payload, HidraXdcEvent& event) const;
+  void decode(const std::vector<uint8_t>& payload, HidraXdcEvent& event, std::uint64_t trigger_n) const;
 
   int NADCChannels() const { return m_n_adc_channels; }
 

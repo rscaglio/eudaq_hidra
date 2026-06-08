@@ -94,7 +94,7 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
   HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
 
   HidraXdcEvent xdc_event;
-  m_xdc_decoder.decode(detector.payload, xdc_event);
+  m_xdc_decoder.decode(detector.payload, xdc_event, detector.trigger_n);
 
   if (xdc_event.ADCvalues.empty()) {
     return;

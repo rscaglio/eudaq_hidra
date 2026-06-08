@@ -51,8 +51,9 @@ HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map)
   HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels and {} TDC channels based on VME geo map", m_n_adc_channels, m_n_tdc_channels);
 }
 
-void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent& event) const {
+void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent& event, std::uint64_t trigger_n) const {
   event = HidraXdcEvent{};
+  event.trigger_n = trigger_n;
 
   const auto payload_size = payload.size();
 
@@ -180,6 +181,11 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       expected_word_mask = 0b100;
 
       ADCTrailerWord T{word};
+
+      if (T.evt_cnt() != trigger_n) {
+        HIDRA_ERROR("Mismatched channel count in XDC trailer vs trigger: {} vs {}. Aborting", T.evt_cnt(), trigger_n);
+        return;
+      }
       if (T.type() != expected_word_mask) {
         HIDRA_ERROR("Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", word, T.type(), expected_word_mask);
         return;
