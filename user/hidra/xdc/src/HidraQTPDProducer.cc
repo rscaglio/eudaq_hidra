@@ -282,6 +282,10 @@ private:
 
   void LoadRunConfiguration(const eudaq::Configuration& conf) {
     m_iped = static_cast<int>(parse_u16(conf.Get("Iped", std::string("100"))));
+    m_pedestal_run = conf.Get("PEDESTAL_ONLY", std::string("0")) == "1";
+    if (m_pedestal_run) {
+      HIDRA_WARN("This run is configured as pedestal-only.");
+    }
     m_v977Base = parse_u32(conf.Get("V977_BASE", std::string("0x01000000")));
 
     m_boards.clear();
@@ -397,6 +401,7 @@ private:
   }
 
   bool requestPedestalNext(){
+    if (m_pedestal_run) return true;
     if (m_evt_ped == 0 && m_evt_phy < 10) return false;
     else if (m_evt_ped == 0) return true;
     else return ((double)m_evt_phy / (double)m_evt_ped) > 10;
@@ -818,6 +823,7 @@ private:
   uint32_t m_v977Base = 0;
 
   std::atomic<bool> m_running;
+  bool m_pedestal_run = false;
 
   uint32_t m_runNumber;
   uint64_t m_evt;
