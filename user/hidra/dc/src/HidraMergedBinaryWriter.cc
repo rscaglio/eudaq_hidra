@@ -168,6 +168,7 @@ void HidraMergedBinaryWriter::WriterLoop() {
     m_has_error = true;
     m_error_message = ex.what();
     HIDRA_ERROR("HidraMergedBinaryWriter: write error: {}", m_error_message);
+    throw;
   }
 }
 
