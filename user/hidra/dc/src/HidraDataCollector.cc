@@ -645,7 +645,19 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
 
   // TODO: if here, the event is complete. Nevertheless we should check also incomplete events.
   if (m_calib_timing_validated && !m_calib_timing_mean.empty()) {
-    const int refDetectorID = m_expected_sources_map.begin()->second;
+    int refDetectorID = -1;
+    for (int detID = 0; detID < MAX_SOURCES; ++detID) {
+      if (m_is_source_enabled[detID]) {
+        refDetectorID = detID;
+        break;
+      }
+    }
+
+    if (refDetectorID < 0) {
+      HIDRA_ERROR("Timestamp validation requested, but no enabled reference detector was found");
+      return;
+    }
+
     const long long refTimestamp = static_cast<long long>(pending.events_by_source.at(refDetectorID).timestamp);
 
     for (const auto& expectedSource : m_expected_sources_map) {
