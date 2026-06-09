@@ -262,7 +262,7 @@ private:
     m_thread = std::thread(&HidraQTPDProducer::MainLoop, this);
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
 
-    ReleaseTriggerVeto();
+    ReleaseTriggerVeto(m_pedestal_run);
   }
 
   void DoStopRun() override {
