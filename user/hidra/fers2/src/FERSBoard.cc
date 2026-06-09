@@ -8,6 +8,7 @@
 
 #include "FERSlib.h"
 #include "FERSPayloadSerialization.h"
+#include "HidraUtils.hh"
 
 namespace hidra {
 namespace fers2 {
@@ -301,6 +302,12 @@ bool FERSBoard::ReadAvailableEvents(std::vector<FERSEvent>* events, size_t max_e
 
     if (nb <= 0 || event_ptr == nullptr) {
       break;
+    }
+
+    // Filtering service events before reaching the queue
+    if (data_qualifier == DTQ_SERVICE) {
+      HIDRA_DEBUG("From board {}: received service event with data qualifier {}. Skipping", m_board_id, data_qualifier);
+      continue;
     }
 
     FERSEvent event;

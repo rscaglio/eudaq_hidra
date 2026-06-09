@@ -48,7 +48,8 @@ inline bool SerializeFersEventPayload(void* event_ptr,
     return true;
   }
 
-  if (base_dq == DTQ_SPECT || data_qualifier == DTQ_TSPECT) {
+  /*if (base_dq == DTQ_SPECT || data_qualifier == DTQ_TSPECT) { */
+  if (base_dq == DTQ_SPECT || base_dq == DTQ_TSPECT) { // TODO: clarify difference between base_dq and data_qualifier 
     const auto* ev = reinterpret_cast<const SpectEvent_t*>(event_ptr);
     out_event->trigger_id = ev->trigger_id;
     out_event->payload.resize(sizeof(SpectEvent_t));
