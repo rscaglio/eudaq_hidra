@@ -31,7 +31,7 @@ TRACKER_TIMESTAMP_SCALE_NS = 1
 Start it with:
 
 ```sh
-euCliProducer -n TrackerProducer -t Tracker
+euCliProducer -n HidraTrackerProducer -t TrackerProducer
 ```
 
 Each event stores every column as an EUDAQ tag and stores the original data row
