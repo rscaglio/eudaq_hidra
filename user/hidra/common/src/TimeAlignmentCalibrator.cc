@@ -33,11 +33,12 @@ std::pair<double, double> getMeanStd(std::vector<long long> v, bool safeoffset =
     return {(double)v[0], 0.};
   }
 
+  long long commonOffset = 0;
   if (safeoffset){
-    double x = (double)v[0];
+    commonOffset = v[0];
     std::transform(v.begin(), v.end(), v.begin(),
-               [x](double value) {
-                   return value - x;
+               [commonOffset](long long value) {
+                   return value - commonOffset;
                });
   }
 
@@ -54,7 +55,7 @@ std::pair<double, double> getMeanStd(std::vector<long long> v, bool safeoffset =
 
   const double stddev = std::sqrt(sumResidual2 / static_cast<double>(v.size()));
 
-  return {safeoffset ? mean+(double)v[0] : mean, stddev};
+  return {safeoffset ? mean + static_cast<double>(commonOffset) : mean, stddev};
 }
 
 
@@ -76,9 +77,6 @@ TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long lon
     std::vector<long long> deltaTs;
     deltaTs.reserve(std::min(reference.size(), other.size()));
 
-    long long dTFirstStep = 0;
-
-    
     for (const auto& [trigRef, timeRef] : reference) {
 
       const long long trigOther = trigRef + offset;
@@ -104,19 +102,24 @@ TriggerAlignmentResult alignOneMapToReference(const std::map<long long, long lon
     const long long maxDeltaT = *minmax.second;
     const long long range = maxDeltaT - minDeltaT;
 
-    auto meanstd = getMeanStd(deltaTs, true);
-
     // deciding if this is the best alignment so far
-    
-    if (range < bestRange) {
-      bestRange = range;
-      bestMatches = static_cast<int>(deltaTs.size());
 
-      auto meanstd = getMeanStd(deltaTs, true);
+    auto meanstd = getMeanStd(deltaTs, true);
+    const int nMatches = static_cast<int>(deltaTs.size());
+    const bool betterRange = range < bestRange;
+    const bool sameRange = range == bestRange;
+    
+    const bool betterMatches = sameRange && nMatches > best.nMatches;
+    const bool sameMatches = sameRange && nMatches == best.nMatches;
+    
+
+    if (betterRange /*|| betterMatches*/ ) {
+      bestRange = range;
+      bestMatches = nMatches;
 
       // reapplying the common offset to the best offset found, to have a more meaningful value to return
       best.bestOffset = offset;
-      best.nMatches = static_cast<int>(deltaTs.size());
+      best.nMatches = nMatches;
       best.minDeltaT = minDeltaT ;
       best.maxDeltaT = maxDeltaT;
       best.deltaTRange = range;
