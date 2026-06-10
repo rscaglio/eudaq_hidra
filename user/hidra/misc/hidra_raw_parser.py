@@ -17,7 +17,7 @@ import statistics
 import struct
 import sys
 from dataclasses import dataclass, field
-from typing import BinaryIO, Counter, Dict, Iterable, List, Optional, Sequence
+from typing import BinaryIO, Counter, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 
 EVENT_MARKER = 0xB0BF
@@ -93,8 +93,8 @@ class DetectorRecord:
     detector_id: int
     event_number: int
     spill_number: int
-    event_time_begin: int
-    event_time_end: int
+    event_time: int
+    native_event_time: int
     reserved16: int
     reserved8: int
     endianness: int
@@ -109,8 +109,10 @@ class DetectorRecord:
         return self.end_marker_offset + 2
 
     @property
-    def timestamp_span(self) -> int:
-        return self.event_time_end - self.event_time_begin
+    def native_time_delta(self) -> int:
+        if self.native_event_time == 0xFFFFFFFFFFFFFFFF:
+            return 0
+        return self.native_event_time - self.event_time
 
     @property
     def endianness_name(self) -> str:
@@ -409,8 +411,8 @@ def parse_detector_at(
     detector_id = record[pos + 2]
     event_number = u32(record, pos + 3)
     spill_number = u32(record, pos + 7)
-    event_time_begin = u64(record, pos + 11)
-    event_time_end = u64(record, pos + 19)
+    event_time = u64(record, pos + 11)
+    native_event_time = u64(record, pos + 19)
     reserved16 = u16(record, pos + 27)
     reserved8 = record[pos + 29]
     endianness = record[pos + 30]
@@ -475,8 +477,8 @@ def parse_detector_at(
         detector_id=detector_id,
         event_number=event_number,
         spill_number=spill_number,
-        event_time_begin=event_time_begin,
-        event_time_end=event_time_end,
+        event_time=event_time,
+        native_event_time=native_event_time,
         reserved16=reserved16,
         reserved8=reserved8,
         endianness=endianness,
@@ -527,7 +529,9 @@ class Stats:
     det_payload_sizes: Dict[int, List[int]] = field(default_factory=lambda: collections.defaultdict(list))
     det_endianness: Dict[int, Counter[int]] = field(default_factory=lambda: collections.defaultdict(collections.Counter))
     det_size_source: Counter[str] = field(default_factory=collections.Counter)
-    det_timestamp_spans: Dict[int, List[int]] = field(default_factory=lambda: collections.defaultdict(list))
+    det_event_times: Dict[int, List[int]] = field(default_factory=lambda: collections.defaultdict(list))
+    det_native_event_times: Dict[int, List[int]] = field(default_factory=lambda: collections.defaultdict(list))
+    det_native_time_deltas: Dict[int, List[int]] = field(default_factory=lambda: collections.defaultdict(list))
 
     def add(self, event: EventRecord) -> None:
         self.events += 1
@@ -548,7 +552,354 @@ class Stats:
             self.det_payload_sizes[det.detector_id].append(det.payload_size)
             self.det_endianness[det.detector_id][det.endianness] += 1
             self.det_size_source[det.size_source] += 1
-            self.det_timestamp_spans[det.detector_id].append(det.timestamp_span)
+            self.det_event_times[det.detector_id].append(det.event_time)
+            if det.native_event_time != 0xFFFFFFFFFFFFFFFF:
+                self.det_native_event_times[det.detector_id].append(det.native_event_time)
+                self.det_native_time_deltas[det.detector_id].append(det.native_time_delta)
+
+
+@dataclass
+class AlignmentOptions:
+    enabled: bool = False
+    detail: str = "anomalies"
+    max_details: int = 200
+    time_tolerance: int = 0
+    reference_detector: Optional[int] = None
+    expected_detectors: Optional[Set[int]] = None
+
+
+@dataclass
+class AlignmentEvent:
+    index: int
+    file_offset: int
+    detectors: Dict[int, DetectorRecord]
+    duplicate_detector_ids: List[int]
+    expected_detector_ids: List[int]
+    reference_detector: Optional[int]
+
+    @property
+    def present_detector_ids(self) -> List[int]:
+        return sorted(self.detectors)
+
+    @property
+    def missing_detector_ids(self) -> List[int]:
+        return [det_id for det_id in self.expected_detector_ids if det_id not in self.detectors]
+
+    @property
+    def trigger_ids(self) -> Dict[int, int]:
+        return {det_id: det.event_number for det_id, det in self.detectors.items()}
+
+    @property
+    def unique_trigger_ids(self) -> Set[int]:
+        return set(self.trigger_ids.values())
+
+    @property
+    def one_to_one_trigger_match(self) -> bool:
+        return (
+            not self.missing_detector_ids
+            and not self.duplicate_detector_ids
+            and bool(self.detectors)
+            and len(self.unique_trigger_ids) == 1
+        )
+
+    @property
+    def offset_pattern(self) -> Tuple[Tuple[int, int], ...]:
+        if self.reference_detector is None or self.reference_detector not in self.detectors:
+            return ()
+        ref_trigger = self.detectors[self.reference_detector].event_number
+        return tuple(
+            (det_id, det.event_number - ref_trigger)
+            for det_id, det in sorted(self.detectors.items())
+            if det_id != self.reference_detector
+        )
+
+    def status(self) -> str:
+        parts = []
+        if self.one_to_one_trigger_match:
+            parts.append("1-to-1 trigger match")
+        else:
+            if self.missing_detector_ids:
+                parts.append("missing " + ",".join(f"det{det_id}" for det_id in self.missing_detector_ids))
+            if self.duplicate_detector_ids:
+                parts.append("duplicate " + ",".join(f"det{det_id}" for det_id in self.duplicate_detector_ids))
+            if len(self.unique_trigger_ids) > 1:
+                parts.append("trigger mismatch")
+            if not parts:
+                parts.append("no detector events")
+        if self.offset_pattern:
+            offsets = ", ".join(f"det{det_id}:{offset:+d}" for det_id, offset in self.offset_pattern)
+            parts.append(f"offsets vs det{self.reference_detector} [{offsets}]")
+        return "; ".join(parts)
+
+
+class AlignmentAnalyzer:
+    def __init__(self, options: AlignmentOptions):
+        self.options = options
+        self.events: List[EventRecord] = []
+
+    def add(self, event: EventRecord) -> None:
+        self.events.append(event)
+
+    def print_report(self) -> None:
+        print()
+        print("Detector alignment report")
+        print("  Source fields: detector-local trigger IDs and timestamps only; event header trigger/time are ignored.")
+        if not self.events:
+            print("  No events parsed.")
+            return
+
+        expected = self._expected_detectors()
+        if not expected:
+            print("  No detector events were found.")
+            return
+        reference = self._reference_detector(expected)
+        rows = [self._event_alignment(event, expected, reference) for event in self.events]
+        one_to_one = sum(1 for row in rows if row.one_to_one_trigger_match)
+        anomalous_rows = [row for row in rows if not row.one_to_one_trigger_match]
+
+        print(f"  Expected detectors: {detector_list_text(expected)}")
+        print(f"  Reference detector: det{reference}")
+        print(f"  Events checked: {len(rows)}")
+        print(f"  Events with 1-to-1 trigger-ID match: {one_to_one}")
+        print(f"  Events with missing/duplicate/mismatched detector triggers: {len(anomalous_rows)}")
+        self._print_per_detector_trigger_ranges(expected)
+        self._print_trigger_coverage(expected)
+        self._print_pairwise_alignment(expected)
+        self._print_offset_segments(rows, reference)
+        self._print_event_details(rows)
+
+    def _expected_detectors(self) -> List[int]:
+        if self.options.expected_detectors is not None:
+            return sorted(self.options.expected_detectors)
+        observed = {det.detector_id for event in self.events for det in event.detectors}
+        return sorted(observed)
+
+    def _reference_detector(self, expected: Sequence[int]) -> int:
+        if self.options.reference_detector is not None:
+            return self.options.reference_detector
+        return expected[0]
+
+    def _event_alignment(
+        self,
+        event: EventRecord,
+        expected: Sequence[int],
+        reference: Optional[int],
+    ) -> AlignmentEvent:
+        detectors: Dict[int, DetectorRecord] = {}
+        duplicates: List[int] = []
+        for det in event.detectors:
+            if det.detector_id in detectors:
+                duplicates.append(det.detector_id)
+                continue
+            detectors[det.detector_id] = det
+        return AlignmentEvent(
+            index=event.index,
+            file_offset=event.file_offset,
+            detectors=detectors,
+            duplicate_detector_ids=duplicates,
+            expected_detector_ids=list(expected),
+            reference_detector=reference,
+        )
+
+    def _detector_entries(self) -> Dict[int, List[Tuple[int, int, int]]]:
+        entries: Dict[int, List[Tuple[int, int, int]]] = collections.defaultdict(list)
+        for event in self.events:
+            for det in event.detectors:
+                entries[det.detector_id].append((det.event_number, det.event_time, event.index))
+        return entries
+
+    def _trigger_index(self) -> Dict[int, Dict[int, List[Tuple[int, int]]]]:
+        trigger_index: Dict[int, Dict[int, List[Tuple[int, int]]]] = collections.defaultdict(
+            lambda: collections.defaultdict(list)
+        )
+        for event in self.events:
+            for det in event.detectors:
+                trigger_index[det.event_number][det.detector_id].append((event.index, det.event_time))
+        return trigger_index
+
+    def _print_per_detector_trigger_ranges(self, expected: Sequence[int]) -> None:
+        entries = self._detector_entries()
+        print()
+        print("  Per-detector trigger streams:")
+        for det_id in expected:
+            det_entries = entries.get(det_id, [])
+            triggers = [trigger for trigger, _time, _event_index in det_entries]
+            duplicate_count = len(triggers) - len(set(triggers))
+            monotonic_breaks = sum(
+                1 for previous, current in zip(triggers, triggers[1:]) if current <= previous
+            )
+            print(
+                f"    det{det_id}: events={len(triggers)} triggers={range_text(triggers)} "
+                f"duplicates={duplicate_count} nonmonotonic_steps={monotonic_breaks}"
+            )
+
+    def _print_trigger_coverage(self, expected: Sequence[int]) -> None:
+        trigger_index = self._trigger_index()
+        complete = 0
+        incomplete: List[Tuple[int, List[int], List[int]]] = []
+        duplicate_triggers: List[Tuple[int, List[int]]] = []
+        for trigger_id in sorted(trigger_index):
+            present = sorted(det_id for det_id in trigger_index[trigger_id] if det_id in expected)
+            missing = [det_id for det_id in expected if det_id not in trigger_index[trigger_id]]
+            duplicates = [
+                det_id for det_id in present if len(trigger_index[trigger_id][det_id]) > 1
+            ]
+            if missing:
+                incomplete.append((trigger_id, present, missing))
+            else:
+                complete += 1
+            if duplicates:
+                duplicate_triggers.append((trigger_id, duplicates))
+
+        print()
+        print("  Trigger-ID coverage across detectors:")
+        print(f"    unique detector-local trigger IDs: {len(trigger_index)}")
+        print(f"    trigger IDs present in all expected detectors: {complete}")
+        print(f"    trigger IDs missing at least one detector: {len(incomplete)}")
+        print(f"    trigger IDs duplicated within a detector stream: {len(duplicate_triggers)}")
+
+        self._print_limited_detail(
+            incomplete,
+            "    Missing trigger-ID details:",
+            lambda item: (
+                f"      trigger={item[0]} present={detector_list_text(item[1])} "
+                f"missing={detector_list_text(item[2])}"
+            ),
+        )
+        self._print_limited_detail(
+            duplicate_triggers,
+            "    Duplicate trigger-ID details:",
+            lambda item: f"      trigger={item[0]} duplicated_in={detector_list_text(item[1])}",
+        )
+
+    def _print_pairwise_alignment(self, expected: Sequence[int]) -> None:
+        entries = self._detector_entries()
+        by_detector: Dict[int, Dict[int, List[int]]] = {}
+        for det_id, det_entries in entries.items():
+            by_trigger: Dict[int, List[int]] = collections.defaultdict(list)
+            for trigger_id, timestamp, _event_index in det_entries:
+                by_trigger[trigger_id].append(timestamp)
+            by_detector[det_id] = by_trigger
+
+        print()
+        print("  Pairwise trigger and timestamp alignment:")
+        drift_details: List[str] = []
+        for i, det_a in enumerate(expected):
+            for det_b in expected[i + 1 :]:
+                triggers_a = set(by_detector.get(det_a, {}))
+                triggers_b = set(by_detector.get(det_b, {}))
+                common = sorted(triggers_a & triggers_b)
+                deltas = [
+                    by_detector[det_b][trigger_id][0] - by_detector[det_a][trigger_id][0]
+                    for trigger_id in common
+                    if by_detector[det_a][trigger_id] and by_detector[det_b][trigger_id]
+                ]
+                aligned = timestamp_deltas_aligned(deltas, self.options.time_tolerance)
+                status = "aligned" if aligned else "timestamp drift"
+                print(
+                    f"    det{det_a}<->det{det_b}: common_triggers={len(common)} "
+                    f"missing_in_det{det_a}={len(triggers_b - triggers_a)} "
+                    f"missing_in_det{det_b}={len(triggers_a - triggers_b)} "
+                    f"delta_t(det{det_b}-det{det_a})={series_text(deltas)} status={status}"
+                )
+                if deltas:
+                    baseline = deltas[0]
+                    for trigger_id, delta in zip(common, deltas):
+                        if abs(delta - baseline) > self.options.time_tolerance:
+                            drift_details.append(
+                                f"      det{det_a}<->det{det_b} trigger={trigger_id}: "
+                                f"delta_t={delta} expected={baseline} "
+                                f"diff={delta - baseline:+d}"
+                            )
+        self._print_limited_detail(
+            drift_details,
+            "    Timestamp-drift details:",
+            lambda item: item,
+        )
+
+    def _print_offset_segments(self, rows: Sequence[AlignmentEvent], reference: int) -> None:
+        segments: List[Tuple[int, int, Tuple[Tuple[int, int], ...]]] = []
+        start = None
+        previous_pattern: Optional[Tuple[Tuple[int, int], ...]] = None
+        previous_index = None
+        for row in rows:
+            pattern = row.offset_pattern
+            if not pattern:
+                continue
+            if previous_pattern is None:
+                start = row.index
+                previous_pattern = pattern
+            elif pattern != previous_pattern:
+                assert start is not None and previous_index is not None
+                segments.append((start, previous_index, previous_pattern))
+                start = row.index
+                previous_pattern = pattern
+            previous_index = row.index
+        if previous_pattern is not None and start is not None and previous_index is not None:
+            segments.append((start, previous_index, previous_pattern))
+
+        nonzero_or_changed = [
+            segment for segment in segments if len(segments) > 1 or any(offset != 0 for _det_id, offset in segment[2])
+        ]
+        print()
+        print(f"  Trigger offset segments versus det{reference}:")
+        if not nonzero_or_changed:
+            print("    all checked events have zero trigger offset")
+            return
+        self._print_limited_detail(
+            nonzero_or_changed,
+            "    Offset segment details:",
+            lambda item: (
+                f"      events {item[0]}..{item[1]}: "
+                + ", ".join(f"det{det_id}:{offset:+d}" for det_id, offset in item[2])
+            ),
+        )
+
+    def _print_event_details(self, rows: Sequence[AlignmentEvent]) -> None:
+        if self.options.detail == "none":
+            return
+        selected = rows if self.options.detail == "all" else [row for row in rows if not row.one_to_one_trigger_match]
+        title = "  Per-event alignment details:" if self.options.detail == "all" else "  Per-event anomaly details:"
+        self._print_limited_detail(selected, title, alignment_event_text)
+
+    def _print_limited_detail(self, rows: Sequence[object], title: str, formatter) -> None:
+        if not rows:
+            return
+        print(title)
+        limit = self.options.max_details
+        visible_rows = rows if limit == 0 else rows[:limit]
+        for row in visible_rows:
+            print(formatter(row))
+        if limit and len(rows) > limit:
+            print(f"      ... {len(rows) - limit} more entries suppressed; use --alignment-max-details 0 to print all")
+
+
+def alignment_event_text(row: AlignmentEvent) -> str:
+    trigger_text = ", ".join(
+        f"det{det_id}:trg={det.event_number},t={det.event_time},native={native_time_text(det.native_event_time)}"
+        for det_id, det in sorted(row.detectors.items())
+    )
+    if not trigger_text:
+        trigger_text = "none"
+    return f"    event[{row.index}] file=0x{row.file_offset:08x}: {row.status()} | {trigger_text}"
+
+
+def detector_list_text(detector_ids: Sequence[int]) -> str:
+    if not detector_ids:
+        return "none"
+    return ",".join(f"det{det_id}" for det_id in detector_ids)
+
+
+def native_time_text(value: int) -> str:
+    if value == 0xFFFFFFFFFFFFFFFF:
+        return "unset"
+    return str(value)
+
+
+def timestamp_deltas_aligned(deltas: Sequence[int], tolerance: int) -> bool:
+    if len(deltas) < 2:
+        return True
+    return max(deltas) - min(deltas) <= tolerance
 
 
 def print_stats(stats: Stats, filename: str) -> None:
@@ -575,7 +926,9 @@ def print_stats(stats: Stats, filename: str) -> None:
         print("Per-detector statistics:")
     for det_id in sorted(stats.det_counts):
         sizes = stats.det_payload_sizes[det_id]
-        spans = stats.det_timestamp_spans[det_id]
+        event_times = stats.det_event_times[det_id]
+        native_times = stats.det_native_event_times[det_id]
+        native_deltas = stats.det_native_time_deltas[det_id]
         endianness = {
             ENDIANNESS_NAMES.get(value, f"unknown(0x{value:02x})"): count
             for value, count in stats.det_endianness[det_id].items()
@@ -585,7 +938,9 @@ def print_stats(stats: Stats, filename: str) -> None:
             f"  det{det_id}: events={stats.det_counts[det_id]} "
             f"payload_total={stats.det_payload_bytes[det_id]}B "
             f"payload/event={series_text(sizes)} "
-            f"timestamp_span={series_text(spans)} "
+            f"event_time={range_text(event_times)} "
+            f"native_time={range_text(native_times)} "
+            f"native_delta={series_text(native_deltas)} "
             f"endianness={endianness_text}"
         )
 
@@ -608,7 +963,8 @@ def print_event_summary(event: EventRecord, verbose: bool = False) -> None:
         for det in event.detectors:
             print(
                 f"  det{det.detector_id}: localEvent={det.event_number} spill={det.spill_number} "
-                f"time={det.event_time_begin}->{det.event_time_end} span={det.timestamp_span} "
+                f"eventTime={det.event_time} nativeTime={native_time_text(det.native_event_time)} "
+                f"nativeDelta={det.native_time_delta} "
                 f"offset=0x{det.offset:04x} payload=0x{det.payload_offset:04x}+{det.payload_size} "
                 f"sizeSource={det.size_source}"
             )
@@ -777,6 +1133,32 @@ def positive_int(text: str) -> int:
     return value
 
 
+def nonnegative_int(text: str) -> int:
+    value = int(text, 0)
+    if value < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return value
+
+
+def detector_id(text: str) -> int:
+    value = int(text, 0)
+    if value < 0 or value >= MAX_DETECTORS:
+        raise argparse.ArgumentTypeError(f"must be between 0 and {MAX_DETECTORS - 1}")
+    return value
+
+
+def detector_id_list(text: str) -> Set[int]:
+    values: Set[int] = set()
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        values.add(detector_id(part))
+    if not values:
+        raise argparse.ArgumentTypeError("must contain at least one detector ID")
+    return values
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Parse HIDRA EventSerializer .raw files and optionally colored-hex-dump records."
@@ -792,6 +1174,41 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--events", action="store_true", help="print one summary line per event")
     parser.add_argument("-v", "--verbose", action="store_true", help="print detailed per-event header fields")
+    parser.add_argument(
+        "--alignment",
+        action="store_true",
+        help="summarize detector-local trigger/timestamp alignment, ignoring event-header trigger/time fields",
+    )
+    parser.add_argument(
+        "--alignment-detail",
+        choices=("none", "anomalies", "all"),
+        default="anomalies",
+        help="control per-event alignment detail output",
+    )
+    parser.add_argument(
+        "--alignment-max-details",
+        type=nonnegative_int,
+        default=200,
+        help="maximum detailed alignment rows to print per section; 0 means unlimited",
+    )
+    parser.add_argument(
+        "--alignment-time-tolerance",
+        type=nonnegative_int,
+        default=0,
+        help="allowed spread of pairwise detector timestamp deltas before flagging drift",
+    )
+    parser.add_argument(
+        "--alignment-reference-detector",
+        type=detector_id,
+        default=None,
+        help="detector ID used as trigger-offset reference; defaults to the lowest expected detector",
+    )
+    parser.add_argument(
+        "--alignment-detectors",
+        type=detector_id_list,
+        default=None,
+        help="comma-separated detector IDs expected in every aligned event; defaults to all observed detectors",
+    )
     parser.add_argument(
         "--dump",
         action="store_true",
@@ -848,11 +1265,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
 
     stats = Stats()
+    alignment = AlignmentAnalyzer(
+        AlignmentOptions(
+            enabled=args.alignment,
+            detail=args.alignment_detail,
+            max_details=args.alignment_max_details,
+            time_tolerance=args.alignment_time_tolerance,
+            reference_detector=args.alignment_reference_detector,
+            expected_detectors=args.alignment_detectors,
+        )
+    )
     reader = RawReader(args.input, options)
 
     try:
         for event in reader.iter_events(args.max_events):
             stats.add(event)
+            if args.alignment:
+                alignment.add(event)
             should_print_event = args.events or args.verbose
             should_dump = (args.dump or args.payload_bits) and (not dump_indices or event.index in dump_indices)
             if should_print_event:
@@ -873,6 +1302,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.events or args.verbose or args.dump:
         print()
     print_stats(stats, args.input)
+    if args.alignment:
+        alignment.print_report()
     return 0
 
 
