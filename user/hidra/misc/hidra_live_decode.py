@@ -47,8 +47,8 @@ class DetectorEvent:
     det_id: int
     event_number: int
     spill_number: int
-    timestamp_begin: int
-    timestamp_end: int
+    event_time: int
+    native_event_time: int
     payload: bytes
     quantities: List[Quantity] = field(default_factory=list)
 
@@ -156,8 +156,8 @@ def parse_event_record(record: bytes, file_offset: int) -> HidraEvent:
         det_id = record[pos + 2]
         det_event_number = u32(record, pos + 3)
         det_spill_number = u32(record, pos + 7)
-        ts_begin = u64(record, pos + 11)
-        ts_end = u64(record, pos + 19)
+        det_event_time = u64(record, pos + 11)
+        native_event_time = u64(record, pos + 19)
         payload_start = pos + DETECTOR_HEADER_SIZE
         payload_end = find_detector_payload_end(record, payload_start, trailer_offset)
         payload = record[payload_start:payload_end]
@@ -167,8 +167,8 @@ def parse_event_record(record: bytes, file_offset: int) -> HidraEvent:
                 det_id=det_id,
                 event_number=det_event_number,
                 spill_number=det_spill_number,
-                timestamp_begin=ts_begin,
-                timestamp_end=ts_end,
+                event_time=det_event_time,
+                native_event_time=native_event_time,
                 payload=payload,
             )
         )
@@ -238,10 +238,18 @@ def iter_events(
 
 
 def decode_generic(det: DetectorEvent) -> List[Quantity]:
-    return [
+    quantities = [
         Quantity("payload_bytes", float(len(det.payload)), "B"),
-        Quantity("timestamp_span", float(det.timestamp_end - det.timestamp_begin), "ns"),
+        Quantity("detector_event_time", float(det.event_time), "ns"),
     ]
+    if det.native_event_time != 0xFFFFFFFFFFFFFFFF:
+        quantities.extend(
+            [
+                Quantity("detector_native_event_time", float(det.native_event_time), "ns"),
+                Quantity("detector_native_time_delta", float(det.native_event_time - det.event_time), "ns"),
+            ]
+        )
+    return quantities
 
 
 def decode_xdc_words(det: DetectorEvent) -> List[Quantity]:
