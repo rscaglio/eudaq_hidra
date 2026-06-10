@@ -23,7 +23,7 @@ fi
 
 # Start monitoring dashboard in a new tmux session
 tmux new-session -d -s "$TMUX_SESSION" \
-    "cd \"$DASHBOARD_DIR\" && php -S localhost:8080"
+    "cd \"$DASHBOARD_DIR\" && php -S 0.0.0.0:8080"
 
 $BINPATH/euRun -n HidraRunControl &
 sleep 1
@@ -37,3 +37,5 @@ sleep 1
 $BINPATH/euCliProducer -n HidraQTPDProducer -t QTPDProducer &
 
 $BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
+
+# $BINPATH/euCliProducer -n HidraTrackerProducer -t TrackerProducer 
