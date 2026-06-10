@@ -505,9 +505,9 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
       EUDAQ_INFO("V560 scaler disabled");
       return;
     }
-    ThrowIfVmeError("V560 status read failed");
     
     const uint16_t status = ReadReg(V560_STATUS_REG, m_v560Base);
+    ThrowIfVmeError("V560 status read failed");
 
     EUDAQ_INFO("V560 status at " + hex32(m_v560Base) + ": 0x" + hex16(status));
     EUDAQ_INFO("V560 configured at address: " + hex32(m_v560Base));
@@ -522,23 +522,18 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   }
 
   void V560_ForSpill() {
-    const uint16_t chan1 = ReadReg(V560_READ_CHAN1, m_v560Base);
+    m_spillCount_560 = ReadReg(V560_READ_CHAN1, m_v560Base);
     ThrowIfVmeError("V560 channel for spill read failed");
   }
 
   void V560_ForTrigger() {
-    const uint16_t chan2 = ReadReg(V560_READ_CHAN2, m_v560Base);
+    m_triggerCount_560 = ReadReg(V560_READ_CHAN2, m_v560Base);
     ThrowIfVmeError("V560 channel for trigger read failed");
   }
 
   void V560_ForBoh() {
-    const uint16_t chan3 = ReadReg(V560_READ_CHAN3, m_v560Base);
+    m_bohCount_560 = ReadReg(V560_READ_CHAN3, m_v560Base);
     ThrowIfVmeError("V560 channel for BOH read failed");
-  }
-
-  void V560_ForAAA() {
-    const uint16_t chan4 = ReadReg(V560_READ_CHAN4, m_v560Base);
-    ThrowIfVmeError("V560 channel for AAA read failed");
   }
 
   void VetoTrigger() {
@@ -629,6 +624,14 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
         
+        V560_ForTrigger(); // updates trigger number from scaler
+
+        HIDRA_DEBUG("Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_triggerCount_560, m_evt & 0xFFFF);
+
+        if (m_v560Enabled && m_triggerCount_560 != (m_evt & 0xFFFF)) {
+          HIDRA_ERROR("Mismatch between trigger count from V560 ({}) and expected from event pattern ({}). You are probably loosing events.", m_triggerCount_560, m_evt & 0xFFFF);
+        }
+
         bool eventHandlingOk = ReadOneBlockAndSendEvent();
         m_evt++;
         if (m_TriggerMask == 0b01) m_evt_phy++;
@@ -1013,6 +1016,11 @@ private:
   bool m_eventSyncDebug = false;
   bool m_eventSyncWriteHighMarker = false;
   uint16_t m_eventSyncHighMarker = 0xB0B0;
+
+  //V560 scaler
+  uint16_t m_triggerCount_560 = 0;
+  uint16_t m_spillCount_560 = 0;
+  uint16_t m_bohCount_560 = 0;
 
   std::chrono::steady_clock::time_point m_runStart;
 
