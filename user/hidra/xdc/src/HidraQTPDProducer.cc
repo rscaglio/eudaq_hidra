@@ -77,9 +77,10 @@ constexpr uint16_t V792_MCST_LAST = 0x01;
 // CAEN V560 registers used by this producer
 constexpr uint16_t V560_STATUS_REG = 0x58;
 constexpr uint16_t V560_CLEAR_REG  = 0x50;
-constexpr uint16_t V560_CHANNEL_BASE_REG = 0x10;
-constexpr uint16_t V560_CHANNEL_STRIDE = 0x04;
-constexpr std::size_t V560_CHANNEL_COUNT = 16;
+constexpr uint16_t V560_READ_CHAN1 = 0X10;
+constexpr uint16_t V560_READ_CHAN2 = 0X14;
+constexpr uint16_t V560_READ_CHAN3 = 0X18;
+constexpr uint16_t V560_READ_CHAN4 = 0X1C;
 
 
 /// TRACKER SYNC MODULE
@@ -323,7 +324,7 @@ private:
       HIDRA_WARN("This run is configured as pedestal-only.");
     }
     m_v977Base = parse_u32(conf.Get("V977_BASE", std::string("0x01000000")));
-    m_v560Enabled = conf.Get("V560_ENABLE", conf.Has("V560_BASE") ? std::string("1") : std::string("0")) == "1";
+    m_v560Enabled = conf.Get("V560_ENABLE", conf.Has("V560_BASE") ? std::string("1") : std::string("0")) == "1"; // if V560_BASE is set, enable V560 by default
     m_v560Base = parse_u32(conf.Get("V560_BASE", std::string("0x00200000")));
 
     // TRACKER SYNC MODULE 
@@ -488,14 +489,25 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977Base));
   }
 
+
+  void ResetV977ForRun() {
+    ClearV977FlipFlops();
+    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);                       // all inputs set to 0
+    SetSingleV977OutputReg(true, V977OUT::cResetSignal);
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    SetSingleV977OutputReg(false, V977OUT::cResetSignal);
+  }
+
+  //V560 functions
+
   void ConfigureV560() {
     if (!m_v560Enabled) {
       EUDAQ_INFO("V560 scaler disabled");
       return;
     }
-
-    const uint16_t status = ReadReg(V560_STATUS_REG, m_v560Base);
     ThrowIfVmeError("V560 status read failed");
+    
+    const uint16_t status = ReadReg(V560_STATUS_REG, m_v560Base);
 
     EUDAQ_INFO("V560 status at " + hex32(m_v560Base) + ": 0x" + hex16(status));
     EUDAQ_INFO("V560 configured at address: " + hex32(m_v560Base));
@@ -505,30 +517,28 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     if (!m_v560Enabled) {
       return;
     }
-
-    ReadReg(V560_CLEAR_REG, m_v560Base);
+    ReadReg(V560_CLEAR_REG, m_v560Base); // this is a clear register, so we just need to read it to clear the scaler
     ThrowIfVmeError("V560 clear failed");
   }
 
-  uint32_t ReadV560Channel(std::size_t channel) {
-    if (channel >= V560_CHANNEL_COUNT) {
-      EUDAQ_THROW("V560 channel out of range: " + std::to_string(channel));
-    }
-
-    const uint16_t highReg = static_cast<uint16_t>(V560_CHANNEL_BASE_REG + channel * V560_CHANNEL_STRIDE);
-    const uint16_t high = ReadReg(highReg, m_v560Base);
-    const uint16_t low = ReadReg(static_cast<uint16_t>(highReg + 0x02), m_v560Base);
-    ThrowIfVmeError("V560 channel read failed");
-
-    return (static_cast<uint32_t>(high) << 16) | low;
+  void V560_ForSpill() {
+    const uint16_t chan1 = ReadReg(V560_READ_CHAN1, m_v560Base);
+    ThrowIfVmeError("V560 channel for spill read failed");
   }
 
-  void ResetV977ForRun() {
-    ClearV977FlipFlops();
-    WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);                       // all inputs set to 0
-    SetSingleV977OutputReg(true, V977OUT::cResetSignal);
-    std::this_thread::sleep_for(std::chrono::microseconds(10));
-    SetSingleV977OutputReg(false, V977OUT::cResetSignal);
+  void V560_ForTrigger() {
+    const uint16_t chan2 = ReadReg(V560_READ_CHAN2, m_v560Base);
+    ThrowIfVmeError("V560 channel for trigger read failed");
+  }
+
+  void V560_ForBoh() {
+    const uint16_t chan3 = ReadReg(V560_READ_CHAN3, m_v560Base);
+    ThrowIfVmeError("V560 channel for BOH read failed");
+  }
+
+  void V560_ForAAA() {
+    const uint16_t chan4 = ReadReg(V560_READ_CHAN4, m_v560Base);
+    ThrowIfVmeError("V560 channel for AAA read failed");
   }
 
   void VetoTrigger() {
@@ -980,11 +990,12 @@ private:
 
   
   uint32_t m_v977Base = 0;
-  bool m_v560Enabled = false;
   uint32_t m_v560Base = 0;
 
   std::atomic<bool> m_running;
   bool m_pedestal_run = false;
+
+  bool m_v560Enabled = false;
 
   uint32_t m_runNumber;
   uint64_t m_evt;
