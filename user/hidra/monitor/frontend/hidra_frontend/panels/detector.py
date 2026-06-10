@@ -275,6 +275,10 @@ def _detector_figure(
         text=cell_info["text"], texttemplate="%{text}",
         textfont=dict(size=11, color=theme.FG),
         colorscale=[[0.0, theme.EMPTY], [1.0, theme.EMPTY]],
+        # All cells share the same sentinel value (0.0); pin the range so the
+        # flat colorscale is applied deterministically instead of autoscaling
+        # a zmin == zmax buffer.
+        zauto=False, zmin=0.0, zmax=1.0,
         showscale=False,
         xgap=2, ygap=2,
         hoverongaps=False,
