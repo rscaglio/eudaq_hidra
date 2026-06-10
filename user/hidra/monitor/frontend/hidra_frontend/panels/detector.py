@@ -24,11 +24,21 @@ so the value for channel `c` is the mean stored in fArray bin `c + 1`
 `MetricPanel` uses — instead of going through the full decoder, since
 all we need is one number per channel.
 
-Each figure is a **single `Heatmap` trace**, deliberately: the axes,
-colorbar and geometry are identical from poll to poll, so only the `z`
-array changes. That lets Plotly's client-side `react` diff update just
-the colours instead of rebuilding the whole scene — which it would
-have to do with per-module layout shapes/annotations.
+Each figure is built from three stacked `Heatmap` traces sharing the
+same geometry, so only the per-cell `z`/`text` arrays change from poll
+to poll. That lets Plotly's client-side `react` diff update just the
+data instead of rebuilding the whole scene — which it would have to do
+with per-module layout shapes/annotations. The three layers are:
+
+  1. value heatmap (Viridis) — colours + colorbar for filled cells;
+  2. empty overlay (flat grey) — fills mapped-but-unfilled cells so
+     they stay visible instead of vanishing into the background;
+  3. a transparent hit layer on top — the only interactive trace. It
+     has a real (non-gap) value on every mapped cell so a click always
+     lands on a point (a click on a heatmap *gap* does not fire in
+     Plotly), carrying the channel index as `customdata` for the
+     cross-tab navigation. The two visible layers are `hoverinfo=skip`
+     so all hover/click goes through this one.
 """
 
 from __future__ import annotations
@@ -247,29 +257,66 @@ def _detector_figure(
     rows = geom["rows"]
     cell_info = geom["per_type"][pmt_type]
 
-    # Only `z` varies poll-to-poll; the text/customdata grids and cell
-    # placements come straight from the cached geometry.
+    # `z` and the per-cell click/hover payload vary poll-to-poll; the static
+    # text grid and cell placements come straight from the cached geometry.
     z: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
     # Mapped cells with no value this poll: flagged so they render as a flat
     # "empty" tile instead of vanishing into the (unmapped) background.
     z_empty: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
+    # Transparent hit layer: a real (non-gap) value on *every* mapped cell so
+    # the top trace always has a clickable point there — filled or empty. A
+    # gap in the value heatmap does NOT emit a click in Plotly (hoverongaps
+    # only enables the hover *label*, not click events), so an empty cell can
+    # only be made clickable by a non-gap point. `None` stays for unmapped
+    # cells, which must remain inert.
+    z_hit: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
+    # Per-cell hover string for the hit layer (rebuilt each poll: the value
+    # changes). The hit layer draws no on-cell text, so its `text` is free to
+    # hold the full hover label here. The channel index for the click comes
+    # from the cached scalar `customdata` grid instead — Plotly does not
+    # serialise a per-cell *array* customdata into a heatmap's clickData, so it
+    # must stay a scalar.
+    hovertext: list[list[Optional[str]]] = [[None] * len(columns) for _ in rows]
     present_values: list[float] = []
     for ri, ci, channel in cell_info["cells"]:
         value = values.get(channel)
+        module = cell_info["text"][ri][ci]
         z[ri][ci] = value
+        z_hit[ri][ci] = 0.0
         if value is not None:
             present_values.append(value)
+            hovertext[ri][ci] = f"{module}  ·  ch {channel}<br>{value_label} {value:.3f}"
         else:
             z_empty[ri][ci] = 0.0
+            hovertext[ri][ci] = f"{module}  ·  ch {channel}<br>no data"
 
     cmin, cmax = (min(present_values), max(present_values)) if present_values else (0.0, 1.0)
     if cmin == cmax:
         cmax = cmin + 1.0
 
-    # Drawn underneath the value heatmap: where a channel has data the value
-    # cell (opaque) covers it; where it doesn't, the value cell is a gap and
-    # this flat tile shows through, keeping the module label so the operator
-    # sees *which* channel is unfilled rather than an empty space.
+    # The figure is three stacked heatmaps:
+    #   1. value heatmap (Viridis) — colours + colorbar for filled cells;
+    #   2. empty overlay (flat grey) — fills the unfilled-but-mapped cells so
+    #      they're visible instead of vanishing into the background;
+    #   3. hit layer (transparent) — the only interactive trace; a real point
+    #      on every mapped cell so clicks/hover work uniformly.
+    # The first two are visual only (`hoverinfo="skip"`) so they never take
+    # part in hit-testing; Plotly's hit test picks the top trace, so all
+    # hover/click must come from the transparent layer that sits on top.
+
+    # 1. Values. Empty cells are gaps here -> the grey overlay shows through.
+    value_heatmap = go.Heatmap(
+        x=columns, y=rows, z=z,
+        text=cell_info["text"], texttemplate="%{text}",
+        textfont=dict(size=11),
+        colorscale=COLORSCALE,
+        zmin=cmin, zmax=cmax,
+        xgap=2, ygap=2,
+        hoverinfo="skip",
+        colorbar=dict(title=value_label, thickness=12),
+    )
+
+    # 2. Flat grey tile + label for mapped cells with no value this poll.
     empty_overlay = go.Heatmap(
         x=columns, y=rows, z=z_empty,
         text=cell_info["text"], texttemplate="%{text}",
@@ -281,21 +328,27 @@ def _detector_figure(
         zauto=False, zmin=0.0, zmax=1.0,
         showscale=False,
         xgap=2, ygap=2,
-        hoverongaps=False,
-        hovertemplate="%{text}<br>no data<extra></extra>",
+        hoverinfo="skip",
     )
 
-    heatmap = go.Heatmap(
-        x=columns, y=rows, z=z,
-        text=cell_info["text"], texttemplate="%{text}",
+    # 3. Transparent click/hover catcher on top. `z_hit` is a real value on
+    # every mapped cell (no gaps), so each module is a clickable point whether
+    # or not it has data; unmapped cells stay `None` (inert). Fully transparent
+    # colourscale so it doesn't alter the visuals below; `text`/`customdata`
+    # drive the hover. No `texttemplate` -> it draws no labels of its own (the
+    # labels come from the two visible layers).
+    hit_layer = go.Heatmap(
+        x=columns, y=rows, z=z_hit,
+        # `text` holds the hover label (the layer draws no on-cell text);
+        # `customdata` is the scalar channel index the navigation click reads.
+        text=hovertext,
         customdata=cell_info["customdata"],
-        textfont=dict(size=11),
-        colorscale=COLORSCALE,
-        zmin=cmin, zmax=cmax,
-        xgap=2, ygap=2,
+        colorscale=[[0.0, "rgba(0,0,0,0)"], [1.0, "rgba(0,0,0,0)"]],
+        zauto=False, zmin=0.0, zmax=1.0,
+        showscale=False,
+        xgap=0, ygap=0,
         hoverongaps=False,
-        hovertemplate="%{text}  ·  ch %{customdata}<br>" + value_label + " %{z:.3f}<extra></extra>",
-        colorbar=dict(title=value_label, thickness=12),
+        hovertemplate="%{text}<extra></extra>",
     )
 
     # Merge over the base axis styling rather than replacing it.
@@ -316,5 +369,6 @@ def _detector_figure(
         "showgrid": False, "zeroline": False,
         "scaleanchor": "x", "scaleratio": MODULE_HEIGHT_MM / MODULE_WIDTH_MM,
     }
-    # Empty-tile overlay first so the opaque value heatmap draws on top of it.
-    return go.Figure(data=[empty_overlay, heatmap], layout=layout)
+    # Order = bottom-to-top: grey overlay, value colours, transparent hit
+    # layer. The hit layer must be last so it sits on top and receives clicks.
+    return go.Figure(data=[empty_overlay, value_heatmap, hit_layer], layout=layout)
