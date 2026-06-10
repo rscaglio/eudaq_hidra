@@ -80,8 +80,12 @@ def register(app: Dash, panels_by_tab: dict[str, list[Panel]]) -> None:
         points = (click_data or {}).get("points") or []
         if not points:
             return no_update
+        # Both clickable maps carry the channel index as a scalar `customdata`
+        # (the detector map keeps its hover label separately, in `text`). A
+        # heatmap only serialises a *scalar* customdata into clickData, so this
+        # is always a bare number here.
         channel = points[0].get("customdata")
-        if channel is None:  # clicked an empty cell (no module there)
+        if channel is None:  # clicked an unmapped cell (no module there)
             return no_update
 
         target_tab, selector = entry

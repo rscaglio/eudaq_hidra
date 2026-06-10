@@ -18,6 +18,10 @@ SECONDARY = "#a6e3a1"
 REFERENCE = "#f9e2af"
 BORDER = "#45475a"
 SURFACE = "#313244"
+# Flat fill for a mapped detector cell that exists but has no data this poll
+# (e.g. a PMT channel whose ADC mean was never filled) — visibly distinct from
+# both the coloured value cells and the blank (unmapped) background.
+EMPTY = "#585b70"
 GRID = "rgba(205, 214, 244, 0.10)"
 ZERO = "rgba(205, 214, 244, 0.16)"
 
