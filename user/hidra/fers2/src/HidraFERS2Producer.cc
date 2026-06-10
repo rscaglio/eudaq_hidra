@@ -228,13 +228,13 @@ private:
     auto conf = GetConfiguration();
     m_evt_f = 0;
     if (!conf) {
-      EUDAQ_THROW("Run configuration is missing");
+      HIDRA_THROW("Run configuration is missing");
     }
 
     EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
     m_config_file = conf->Get("FERS_CONF_FILE", std::string(""));
     if (m_config_file.empty()) {
-      EUDAQ_THROW("FERS_CONF_FILE is missing from the run configuration");
+      HIDRA_THROW("FERS_CONF_FILE is missing from the run configuration");
     }
 
     //m_readout_mode = conf->Get("FERS_READOUT_MODE", 0);
@@ -264,19 +264,19 @@ private:
     m_poll_monitor_out_of_spill = conf->Get("POLL_MONITOR_OUT_OF_SPILL", 0) != 0;
     m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
     if (m_status_poll_interval_s < 0) {
-      EUDAQ_WARN("FERS_STATUS_POLL_INTERVAL_S is negative; disabling FERS2 status polling");
+      HIDRA_WARN("FERS_STATUS_POLL_INTERVAL_S is negative; disabling FERS2 status polling");
       m_status_poll_interval_s = 0;
     }
 
     std::string error;
     if (!FERSConfiguration::FromFile(m_config_file, &m_config, &error)) {
-      EUDAQ_THROW("Cannot parse FERS configuration file: " + error);
+      HIDRA_THROW("Cannot parse FERS configuration file: " + error);
     }
 
     try {
       m_board_manager = std::make_unique<FERSBoardManager>(m_config, 0, m_readout_mode, m_configure_mode);
     } catch (const hidra::fers2::FersError& e) {
-      EUDAQ_THROW(std::string("Failed to build FERS boards: ") + e.what());
+      HIDRA_THROW(std::string("Failed to build FERS boards: ") + e.what());
     }
 
     // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
@@ -291,12 +291,12 @@ private:
       m_event_queues[board.board_id()] = {};
     }
 
-    EUDAQ_INFO("Configured FERS2 boards: " + JoinBoardIds(m_board_ids));
+    HIDRA_INFO("Configured FERS2 boards: " + JoinBoardIds(m_board_ids));
     if (m_status_poll_interval_s > 0) {
-      EUDAQ_INFO("FERS2 status polling enabled every " + std::to_string(m_status_poll_interval_s) + " s");
+      HIDRA_INFO("FERS2 status polling enabled every " + std::to_string(m_status_poll_interval_s) + " s");
     }
     if (m_poll_monitor_out_of_spill) {
-      EUDAQ_INFO("FERS2 out-of-spill status polling enabled after 2 s without read events");
+      HIDRA_INFO("FERS2 out-of-spill status polling enabled after 2 s without read events");
     }
   }
 
@@ -332,17 +332,17 @@ private:
 
     m_start_boards_call_ts_ns = hidra::utils::getTimens();
     if (!m_board_manager->StartAll(m_start_mode, m_run_number, &error)) {
-      EUDAQ_THROW(error);
+      HIDRA_THROW(error);
     }
 
-    EUDAQ_INFO("Starting FERS2 run " + std::to_string(m_run_number));
+    HIDRA_INFO("Starting FERS2 run " + std::to_string(m_run_number));
   }
 
   void DoStopRun() override {
     m_exit_of_run = true;
     std::string error;
     if (m_board_manager && !m_board_manager->StopAll(m_start_mode, m_run_number, &error)) {
-      EUDAQ_WARN(error);
+      HIDRA_WARN(error);
     }
 
     // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
@@ -354,7 +354,7 @@ private:
     eore->SetRunN(static_cast<uint32_t>(m_run_number));
     SendEvent(std::move(eore));
 
-    EUDAQ_INFO("Stopping FERS2 run " + std::to_string(m_run_number));
+    HIDRA_INFO("Stopping FERS2 run " + std::to_string(m_run_number));
   }
 
   void DoReset() override {
@@ -362,7 +362,7 @@ private:
     m_evt_f = 0;
     std::string error;
     if (m_board_manager && !m_board_manager->StopAll(m_start_mode, m_run_number, &error)) {
-      EUDAQ_WARN(error);
+      HIDRA_WARN(error);
     }
 
     // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
@@ -382,7 +382,7 @@ private:
     m_exit_of_run = true;
     std::string error;
     if (m_board_manager && !m_board_manager->StopAll(m_start_mode, m_run_number, &error)) {
-      EUDAQ_WARN(error);
+      HIDRA_WARN(error);
     }
 
     // if (!m_board_manager.SetHighVoltageAll(false, &error)) {
@@ -408,7 +408,7 @@ private:
       }
 
       if (!error.empty()) {
-        EUDAQ_THROW(error);
+        HIDRA_THROW(error);
       }
 
       for (const auto& event : events) {
@@ -442,14 +442,14 @@ private:
     std::string error;
     auto statuses = m_board_manager->ReadMonitorStatuses(&error);
     if (!error.empty()) {
-      EUDAQ_WARN(error);
+      HIDRA_WARN(error);
     }
 
     const uint64_t read_time_ns = hidra::utils::getTimens();
     int monitorstatus = 0;
     for (auto& status : statuses) {
       status.read_time_ns = read_time_ns;
-      EUDAQ_INFO("FERS2 monitor " + FormatMonitorStatus(status));
+      HIDRA_INFO("FERS2 monitor " + FormatMonitorStatus(status));
       m_monitor_status[status.board_id] = status;
       if (monitorstatus == 0) {
         monitorstatus = IsMonitorStatusOk(status);
@@ -577,7 +577,7 @@ private:
         }
       }
 
-      EUDAQ_WARN("FERS2 alignment gap at trigger " + std::to_string(trigger_n) +
+      HIDRA_WARN("FERS2 alignment gap at trigger " + std::to_string(trigger_n) +
                  ", missing boards: " + missing.str());
     }
 
@@ -683,7 +683,7 @@ private:
       }
 
       if (!all_matched) {
-        EUDAQ_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
+        HIDRA_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
                    ", proceeding with available boards only");
       }
 
