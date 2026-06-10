@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 
-class SipmMapping:
+class SiPMMapping:
     """FERS/SiPM channel mapping: global channel index -> detector position.
 
     The raw map lives in the bundled `sipm_channels.json`, a compact

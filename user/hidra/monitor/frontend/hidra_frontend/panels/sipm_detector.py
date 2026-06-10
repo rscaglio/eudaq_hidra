@@ -82,7 +82,16 @@ class SiPMDetectorPanel(Panel):
 
     def _base_hist(self) -> str:
         default = "FERS_HG_mean" if self._mode_toggle else "FERS_HG_mean_physics"
-        return self.params.get("histogram", default)
+        name = self.params.get("histogram", default)
+        # With the toggle on we append the active `_physics`/`_pedestal` suffix
+        # ourselves (see `_hist_name`); tolerate a base that already carries one
+        # (e.g. a copied `FERS_HG_mean_physics`) so we never request a
+        # double-suffixed, non-existent `..._physics_physics`.
+        if self._mode_toggle:
+            for suffix in (f"_{m}" for m in _MODES):
+                if name.endswith(suffix):
+                    return name[: -len(suffix)]
+        return name
 
     def _hist_name(self) -> str:
         if self._mode_toggle:
