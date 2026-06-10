@@ -34,7 +34,8 @@ enum V977IN {
 };
 enum V977OUT {
   cVeto = static_cast<int>(V977IN::cFastGate),
-  cPedVeto = 5
+  cPedVeto = 5,
+  cResetSignal = 15
 };
 ////////////////////
 
@@ -479,6 +480,9 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   void ResetV977ForRun() {
     ClearV977FlipFlops();
     WriteReg(V977_INPUT_SET_REG, 0x0000, m_v977Base);                       // all inputs set to 0
+    SetSingleV977OutputReg(true, V977OUT::cResetSignal);
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    SetSingleV977OutputReg(false, V977OUT::cResetSignal);
   }
 
   void VetoTrigger() {
