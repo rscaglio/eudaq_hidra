@@ -24,11 +24,12 @@ so the value for channel `c` is the mean stored in fArray bin `c + 1`
 `MetricPanel` uses — instead of going through the full decoder, since
 all we need is one number per channel.
 
-Each figure is built from three stacked `Heatmap` traces sharing the
-same geometry, so only the per-cell `z`/`text` arrays change from poll
+Each figure is built from three stacked `Heatmap` traces over the same
+row/column grid, so only the per-cell `z`/`text` arrays change from poll
 to poll. That lets Plotly's client-side `react` diff update just the
 data instead of rebuilding the whole scene — which it would have to do
-with per-module layout shapes/annotations. The three layers are:
+with per-module layout shapes/annotations. The three layers, bottom to
+top, are:
 
   1. value heatmap (Viridis) — colours + colorbar for filled cells;
   2. empty overlay (flat grey) — fills mapped-but-unfilled cells so
@@ -39,6 +40,10 @@ with per-module layout shapes/annotations. The three layers are:
      Plotly), carrying the channel index as `customdata` for the
      cross-tab navigation. The two visible layers are `hoverinfo=skip`
      so all hover/click goes through this one.
+
+The two visible layers draw a 2 px inter-cell gap for the grid look;
+the hit layer drops it (`xgap/ygap=0`) so its click target covers the
+full cell pitch and there are no dead zones between modules.
 """
 
 from __future__ import annotations
@@ -294,17 +299,20 @@ def _detector_figure(
     if cmin == cmax:
         cmax = cmin + 1.0
 
-    # The figure is three stacked heatmaps:
-    #   1. value heatmap (Viridis) — colours + colorbar for filled cells;
-    #   2. empty overlay (flat grey) — fills the unfilled-but-mapped cells so
+    # The figure is three stacked heatmaps over the same row/column grid,
+    # listed here bottom-to-top to match the `data=[...]` order at the return:
+    #   1. empty overlay (flat grey) — fills the unfilled-but-mapped cells so
     #      they're visible instead of vanishing into the background;
+    #   2. value heatmap (Viridis) — colours + colorbar for filled cells;
     #   3. hit layer (transparent) — the only interactive trace; a real point
     #      on every mapped cell so clicks/hover work uniformly.
     # The first two are visual only (`hoverinfo="skip"`) so they never take
     # part in hit-testing; Plotly's hit test picks the top trace, so all
     # hover/click must come from the transparent layer that sits on top.
+    # (The traces are built below in a convenient construction order; only the
+    # `data=[...]` order at the return determines stacking.)
 
-    # 1. Values. Empty cells are gaps here -> the grey overlay shows through.
+    # Values. Empty cells are gaps here -> the grey overlay shows through.
     value_heatmap = go.Heatmap(
         x=columns, y=rows, z=z,
         text=cell_info["text"], texttemplate="%{text}",
@@ -316,7 +324,7 @@ def _detector_figure(
         colorbar=dict(title=value_label, thickness=12),
     )
 
-    # 2. Flat grey tile + label for mapped cells with no value this poll.
+    # Flat grey tile + label for mapped cells with no value this poll.
     empty_overlay = go.Heatmap(
         x=columns, y=rows, z=z_empty,
         text=cell_info["text"], texttemplate="%{text}",
@@ -331,7 +339,7 @@ def _detector_figure(
         hoverinfo="skip",
     )
 
-    # 3. Transparent click/hover catcher on top. `z_hit` is a real value on
+    # Transparent click/hover catcher on top. `z_hit` is a real value on
     # every mapped cell (no gaps), so each module is a clickable point whether
     # or not it has data; unmapped cells stay `None` (inert). Fully transparent
     # colourscale so it doesn't alter the visuals below; `text`/`customdata`
@@ -346,6 +354,10 @@ def _detector_figure(
         colorscale=[[0.0, "rgba(0,0,0,0)"], [1.0, "rgba(0,0,0,0)"]],
         zauto=False, zmin=0.0, zmax=1.0,
         showscale=False,
+        # No inter-cell gap here (the visible layers use 2): the catcher should
+        # cover the full cell pitch, including the 2 px spacing between the
+        # visible tiles, so there are no dead zones between modules where a
+        # click would miss.
         xgap=0, ygap=0,
         hoverongaps=False,
         hovertemplate="%{text}<extra></extra>",
