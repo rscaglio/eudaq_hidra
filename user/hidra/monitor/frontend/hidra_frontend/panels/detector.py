@@ -250,16 +250,36 @@ def _detector_figure(
     # Only `z` varies poll-to-poll; the text/customdata grids and cell
     # placements come straight from the cached geometry.
     z: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
+    # Mapped cells with no value this poll: flagged so they render as a flat
+    # "empty" tile instead of vanishing into the (unmapped) background.
+    z_empty: list[list[Optional[float]]] = [[None] * len(columns) for _ in rows]
     present_values: list[float] = []
     for ri, ci, channel in cell_info["cells"]:
         value = values.get(channel)
         z[ri][ci] = value
         if value is not None:
             present_values.append(value)
+        else:
+            z_empty[ri][ci] = 0.0
 
     cmin, cmax = (min(present_values), max(present_values)) if present_values else (0.0, 1.0)
     if cmin == cmax:
         cmax = cmin + 1.0
+
+    # Drawn underneath the value heatmap: where a channel has data the value
+    # cell (opaque) covers it; where it doesn't, the value cell is a gap and
+    # this flat tile shows through, keeping the module label so the operator
+    # sees *which* channel is unfilled rather than an empty space.
+    empty_overlay = go.Heatmap(
+        x=columns, y=rows, z=z_empty,
+        text=cell_info["text"], texttemplate="%{text}",
+        textfont=dict(size=11, color=theme.FG),
+        colorscale=[[0.0, theme.EMPTY], [1.0, theme.EMPTY]],
+        showscale=False,
+        xgap=2, ygap=2,
+        hoverongaps=False,
+        hovertemplate="%{text}<br>no data<extra></extra>",
+    )
 
     heatmap = go.Heatmap(
         x=columns, y=rows, z=z,
@@ -292,4 +312,5 @@ def _detector_figure(
         "showgrid": False, "zeroline": False,
         "scaleanchor": "x", "scaleratio": MODULE_HEIGHT_MM / MODULE_WIDTH_MM,
     }
-    return go.Figure(data=[heatmap], layout=layout)
+    # Empty-tile overlay first so the opaque value heatmap draws on top of it.
+    return go.Figure(data=[empty_overlay, heatmap], layout=layout)
