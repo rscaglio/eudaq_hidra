@@ -255,10 +255,11 @@ private:
 
     m_runNumber = GetRunNumber();
     ResetRunState();
-    
+
     for(const auto& board : m_boards) {
       SetandClearV792BitSet2(board);
     }
+
     m_running = true;
 
     SendBORE();
@@ -713,8 +714,9 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     WriteReg(V792_BIT_SET_2_REG, 0x0008, board.baseAddr);
     WriteReg(V792_BIT_SET_2_REG, 0x1000, board.baseAddr);
     WriteReg(V792_EVENT_COUNTER_RESET_REG, 0x0, board.baseAddr);
-    WriteReg(V792_BIT_SET_2_REG, 0x4, board.baseAddr);
-    WriteReg(V792_BIT_CLEAR_2_REG, 0x4004, board.baseAddr);
+    SetandClearV792BitSet2(board);
+    //WriteReg(V792_BIT_SET_2_REG, 0x4, board.baseAddr);
+    //WriteReg(V792_BIT_CLEAR_2_REG, 0x4004, board.baseAddr);
 
     const uint16_t bitSet2 = ReadReg(V792_BIT_SET_2_REG, board.baseAddr);
     EUDAQ_INFO("Board programmed 0x" + hex16(bitSet2));
