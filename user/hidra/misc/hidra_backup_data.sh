@@ -12,8 +12,10 @@ if [[ -z "${EUDAQHIDRA:-}" ]]; then
 fi
 
 
-LOCAL_DIR="${EUDAQHIDRA}/run/out_data"
-BACKUP_DIR="/home/eudaq/cernbox/TB2026_H8/raw"
+LOCAL_DIR_DATA="${EUDAQHIDRA}/run/out_data"
+BACKUP_DIR_DATA="/home/eudaq/cernbox/TB2026_H8/raw"
+LOCAL_DIR_LOG="${EUDAQHIDRA}/run/logs"
+BACKUP_DIR_LOG="/home/eudaq/cernbox/TB2026_H8/logs"
 
 ##############################################################################
 # Transfer
@@ -22,8 +24,10 @@ BACKUP_DIR="/home/eudaq/cernbox/TB2026_H8/raw"
 
 echo "============================================================"
 echo "Starting local rsync"
-echo "Source      : $LOCAL_DIR"
-echo "Destination : $BACKUP_DIR"
+echo "Source data      : $LOCAL_DIR_DATA"
+echo "Destination data : $BACKUP_DIR_DATA"
+echo "Source log       : $LOCAL_DIR_LOG"
+echo "Destination log  : $BACKUP_DIR_LOG"
 echo "============================================================"
 
 rsync \
@@ -32,8 +36,17 @@ rsync \
     --partial \
     --human-readable \
     --stats \
-    "${LOCAL_DIR}/" \
-    "${BACKUP_DIR}/"
+    "${LOCAL_DIR_DATA}/" \
+    "${BACKUP_DIR_DATA}/"
+
+rsync \
+    -av \
+    --update \
+    --partial \
+    --human-readable \
+    --stats \
+    "${LOCAL_DIR_LOG}/" \
+    "${BACKUP_DIR_LOG}/"
 
 echo "============================================================"
 echo "Done."
