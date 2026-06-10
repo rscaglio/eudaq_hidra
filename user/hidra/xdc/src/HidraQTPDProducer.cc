@@ -242,6 +242,7 @@ private:
     ResetRunState();
     LoadRunConfiguration(*conf);
 
+
     ConfigureBoards();
     ConfigureV977andVeto();
     ConfigureEventSyncBoard(); // FOR TRACKER SYNC MODULE
@@ -254,6 +255,10 @@ private:
 
     m_runNumber = GetRunNumber();
     ResetRunState();
+    
+    for(const auto& board : m_boards) {
+      SetandClearV792BitSet2(board);
+    }
     m_running = true;
 
     SendBORE();
@@ -624,7 +629,15 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     ThrowIfVmeError("V977 OUTPUT CLEAR write failed");
   }
 
+  void SetandClearV792BitSet2(const BoardConfig& board) {
   
+       WriteReg(V792_BIT_SET_2_REG, 0x4, board.baseAddr);
+       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+       WriteReg(V792_BIT_CLEAR_2_REG, 0x4004, board.baseAddr);
+  
+
+      ThrowIfVmeError("V792 BIT SET/CLEAR 2 write failed");
+  }
 
   void OpenController() {
     if (m_handle >= 0) {
