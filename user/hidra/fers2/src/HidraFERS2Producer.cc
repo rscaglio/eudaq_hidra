@@ -546,7 +546,7 @@ private:
     HIDRA_DEBUG("Searching for trigger {} in fers boards", trigger_n);
     for (int board_id : m_board_ids) {
       const auto& queue = m_event_queues.at(board_id);
-      if (!queue.empty()) {
+      if (queue.empty()) {
         HIDRA_DEBUG("Empty queue for board {}", board_id);
         continue;
       }
