@@ -74,6 +74,13 @@ constexpr uint16_t V792_MCST_FIRST = 0x02;
 constexpr uint16_t V792_MCST_MIDDLE = 0x03;
 constexpr uint16_t V792_MCST_LAST = 0x01;
 
+// CAEN V560 registers used by this producer
+constexpr uint16_t V560_STATUS_REG = 0x58;
+constexpr uint16_t V560_CLEAR_REG  = 0x50;
+constexpr uint16_t V560_CHANNEL_BASE_REG = 0x10;
+constexpr uint16_t V560_CHANNEL_STRIDE = 0x04;
+constexpr std::size_t V560_CHANNEL_COUNT = 16;
+
 
 /// TRACKER SYNC MODULE
 // Lower 16 bits are written to base + 0xD000.
@@ -246,6 +253,7 @@ private:
 
     ConfigureBoards();
     ConfigureV977andVeto();
+    ConfigureV560();
     ConfigureEventSyncBoard(); // FOR TRACKER SYNC MODULE
 
     EUDAQ_INFO("Producer configured");
@@ -265,6 +273,7 @@ private:
 
     SendBORE();
     ResetV977ForRun();
+    ClearV560();
     
     m_thread = std::thread(&HidraQTPDProducer::MainLoop, this);
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
@@ -314,6 +323,8 @@ private:
       HIDRA_WARN("This run is configured as pedestal-only.");
     }
     m_v977Base = parse_u32(conf.Get("V977_BASE", std::string("0x01000000")));
+    m_v560Enabled = conf.Get("V560_ENABLE", conf.Has("V560_BASE") ? std::string("1") : std::string("0")) == "1";
+    m_v560Base = parse_u32(conf.Get("V560_BASE", std::string("0x00200000")));
 
     // TRACKER SYNC MODULE 
     m_eventSyncEnabled = conf.Get("TRACKER_SYNC_ENABLE", std::string("0")) == "1";
@@ -475,6 +486,41 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     ThrowIfVmeError("V977 configuration failed");
 
     EUDAQ_INFO("Initialized I/O at address: " + hex32(m_v977Base));
+  }
+
+  void ConfigureV560() {
+    if (!m_v560Enabled) {
+      EUDAQ_INFO("V560 scaler disabled");
+      return;
+    }
+
+    const uint16_t status = ReadReg(V560_STATUS_REG, m_v560Base);
+    ThrowIfVmeError("V560 status read failed");
+
+    EUDAQ_INFO("V560 status at " + hex32(m_v560Base) + ": 0x" + hex16(status));
+    EUDAQ_INFO("V560 configured at address: " + hex32(m_v560Base));
+  }
+
+  void ClearV560() {
+    if (!m_v560Enabled) {
+      return;
+    }
+
+    ReadReg(V560_CLEAR_REG, m_v560Base);
+    ThrowIfVmeError("V560 clear failed");
+  }
+
+  uint32_t ReadV560Channel(std::size_t channel) {
+    if (channel >= V560_CHANNEL_COUNT) {
+      EUDAQ_THROW("V560 channel out of range: " + std::to_string(channel));
+    }
+
+    const uint16_t highReg = static_cast<uint16_t>(V560_CHANNEL_BASE_REG + channel * V560_CHANNEL_STRIDE);
+    const uint16_t high = ReadReg(highReg, m_v560Base);
+    const uint16_t low = ReadReg(static_cast<uint16_t>(highReg + 0x02), m_v560Base);
+    ThrowIfVmeError("V560 channel read failed");
+
+    return (static_cast<uint32_t>(high) << 16) | low;
   }
 
   void ResetV977ForRun() {
@@ -934,6 +980,8 @@ private:
 
   
   uint32_t m_v977Base = 0;
+  bool m_v560Enabled = false;
+  uint32_t m_v560Base = 0;
 
   std::atomic<bool> m_running;
   bool m_pedestal_run = false;
