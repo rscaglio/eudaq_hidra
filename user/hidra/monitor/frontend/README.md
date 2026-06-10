@@ -148,6 +148,9 @@ overlay:
   enabled: true                   # set false to hide overlay controls
   search_dir: reference           # where to look for .root files
   default_file: null
+  normalize: area                 # area = each distribution / its own sum of
+                                  #   counts (both integrate to 1, compare
+                                  #   shapes); profiles overlay raw. none = raw.
 
 fers:                             # FERS detector properties (hardware, not
                                   # per-plot); used by all FERS views.
@@ -401,10 +404,28 @@ custom layout, or special interactions — write a Panel subclass.
 
 ### Use the overlay (reference histograms from .root files)
 
-Drop one or more `*.root` files into `reference/`. Reload the
-dashboard, click **Refresh files**, pick a file from the dropdown,
-and a dashed reference trace appears on top of each live histogram
-with the same name.
+Drop one or more `*.root` files into `reference/` (a snapshot of a
+previous run works — e.g. `run/out_data/monitor_run*.root`). Reload the
+dashboard, click **Refresh files**, pick a file from the dropdown, and a
+dashed reference trace appears on top of the live histogram.
+
+The reference trace is drawn on every shown **1D** plot (TH1 *and*
+TProfile) whose name exists in the file. The TH2 channel slices (the
+projection channel selector) never get one — there is no single reference
+curve for a 2D distribution.
+
+`normalize` controls the scaling:
+
+- `area` (the default) divides each **genuine distribution** (1D spectra:
+  ADC/TDC/FERS inclusive, `dt_between_events`, `trigger_mask`, …) by its
+  own sum of counts, so the live and reference both integrate to 1 and the
+  **shapes** compare regardless of how much data each run collected (the
+  y-axis then reads "fraction of entries"). **Profiles** (means,
+  saturation, board) and **per-channel value plots** (e.g. the pedestal
+  noise, whose x-axis is "channel") always overlay in their **raw** units
+  — normalizing a mean would be meaningless.
+- `none` keeps raw counts everywhere (only meaningful when the two runs
+  have comparable statistics).
 
 ### Change colors / spacing
 

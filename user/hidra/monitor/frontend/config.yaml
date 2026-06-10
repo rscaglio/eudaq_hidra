@@ -33,6 +33,14 @@ overlay:
   # write reference snapshots here.
   search_dir: reference
   default_file: null
+  # How live and reference are scaled for comparison:
+  #   area - genuine distributions (1D spectra) are each divided by their own
+  #          sum of counts, so both integrate to 1 and shapes compare regardless
+  #          of how much data each run collected. Profiles (means/saturation)
+  #          and per-channel value plots always overlay raw — normalizing a mean
+  #          would be meaningless. TH2 channel slices never get a reference.
+  #   none - raw counts everywhere (only meaningful at similar statistics).
+  normalize: area
 
 # FERS detector properties (hardware, not per-plot). Defined once here and
 # used by all FERS views: the board-map geometry, the channel-selector board

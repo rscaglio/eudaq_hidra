@@ -64,6 +64,7 @@ def to_figure(
     name: str,
     overlay_hist: Optional[DecodedHist] = None,
     options: Optional[HistogramDisplayCfg] = None,
+    normalize: str = "none",
 ) -> go.Figure:
     """Render one histogram as a Plotly figure.
 
@@ -71,6 +72,10 @@ def to_figure(
       the name is missing on the server).
     * `overlay_hist` is the optional reference histogram from a local
       `.root` file (loaded by `OverlayStore`).
+    * `normalize` controls live-vs-reference scaling when an overlay is
+      shown: "area" divides the live and the reference each by its own
+      sum of counts (both integrate to 1, shapes compare regardless of
+      statistics); "none" keeps raw counts. No effect without an overlay.
     * `options` are the per-histogram display options from config.yaml
       (`logx`, `density`); `None` means defaults (linear, raw counts).
     * Errors during decoding/rendering produce a figure with an
@@ -162,6 +167,28 @@ def to_figure(
     # the channel within the board in the hover (e.g. FERS: 64 channels/board).
     channels_per_board = int(options.channels_per_board) if options else 0
 
+    # Reference-overlay normalization. When a reference trace is shown and area
+    # normalization is on, scale the live and the reference each by 1/Σcounts so
+    # both integrate to 1 and their shapes compare regardless of statistics. With
+    # no overlay the live histogram keeps its natural counts axis (scale = 1).
+    # Area-normalize genuine distributions only. A TProfile's y is already a
+    # mean and a per-channel plot's y is a value per channel — dividing either by
+    # a sum of counts is meaningless, so those overlay in their raw units.
+    normalized = (
+        overlay_hist is not None
+        and normalize == "area"
+        and decoded is not None
+        and decoded.typename.startswith("TH1")
+        and not per_channel
+    )
+    live_scale = ref_scale = 1.0
+    if normalized:
+        if decoded is not None:
+            live_sum = float(np.sum(decoded.counts))
+            live_scale = 1.0 / live_sum if live_sum > 0 else 1.0
+        ref_sum = float(np.sum(overlay_hist.counts))
+        ref_scale = 1.0 / ref_sum if ref_sum > 0 else 1.0
+
     # Build the live trace from the (successfully) decoded histogram.
     if decoded is not None:
         try:
@@ -169,6 +196,7 @@ def to_figure(
                 trace, extra_layout = _build_trace(
                     decoded, color=theme.PRIMARY, density=density, logx=apply_logx,
                     per_channel=per_channel, channels_per_board=channels_per_board,
+                    scale=live_scale,
                 )
             if trace is not None:
                 traces.append(trace)
@@ -177,7 +205,7 @@ def to_figure(
                 # "no trigger mask" events). Skipped on a log x-axis, where a
                 # bar at/below the lower edge can't be placed.
                 if show_flow and not apply_logx:
-                    flow = _flow_trace(decoded)
+                    flow = _flow_trace(decoded, scale=live_scale)
                     if flow is not None:
                         traces.append(flow)
                         # Distinct x positions, but keep them from being
@@ -200,7 +228,7 @@ def to_figure(
         with Phase("trace_build.overlay"):
             otrace, _ = _build_trace(
                 overlay_hist, color=theme.REFERENCE, dashed=True, label_suffix=" (ref)",
-                density=density, logx=apply_logx,
+                density=density, logx=apply_logx, scale=ref_scale,
             )
         if otrace is not None:
             traces.append(otrace)
@@ -224,6 +252,16 @@ def to_figure(
         layout["yaxis"]["title"] = f"{base_y} / {unit}" if unit else f"{base_y} / bin width"
     elif y_title:
         layout["yaxis"]["title"] = y_title
+
+    # Area normalization changes what the y values mean (a fraction of the
+    # entries, not raw counts), so relabel the axis to say so. With density the
+    # integral (sum of fraction*width) is still 1, but the height is per unit x.
+    if normalized:
+        if density:
+            unit = _axis_unit(x_title)
+            layout["yaxis"]["title"] = f"fraction / {unit}" if unit else "fraction / bin width"
+        else:
+            layout["yaxis"]["title"] = "fraction of entries"
 
     if annotations:
         layout["annotations"] = annotations
@@ -345,6 +383,7 @@ def _build_trace(
     logx: bool = False,
     per_channel: bool = False,
     channels_per_board: int = 0,
+    scale: float = 1.0,
 ) -> tuple[Optional[go.BaseTraceType], dict]:
     """Build one trace for a decoded histogram.
 
@@ -369,7 +408,9 @@ def _build_trace(
         edges = decoded.edges
         lin_widths = edges[1:] - edges[:-1]
 
-        y = decoded.counts.astype(float)
+        # `scale` (a constant) applies the area normalization; it commutes with
+        # the per-width density division below.
+        y = decoded.counts.astype(float) * scale
         if density:
             # Per unit x. Guard against zero-width bins (shouldn't happen
             # for valid edges, but never divide by zero).
@@ -436,10 +477,11 @@ def _build_trace(
     return None, {}
 
 
-def _flow_trace(decoded: DecodedHist) -> Optional[go.Bar]:
+def _flow_trace(decoded: DecodedHist, scale: float = 1.0) -> Optional[go.Bar]:
     """A small bar trace for ROOT's underflow/overflow bins, drawn just outside
     the histogram range (one extra bar on each side). Only the non-empty side(s)
-    are shown; returns None when both are empty."""
+    are shown; returns None when both are empty. `scale` matches the main trace's
+    area normalization so the flow bars stay on the same y scale."""
     edges = decoded.edges
     if edges.size < 2:
         return None
@@ -447,9 +489,9 @@ def _flow_trace(decoded: DecodedHist) -> Optional[go.Bar]:
     wn = edges[-1] - edges[-2]
     points = []  # (center, value, width, label)
     if decoded.underflow:
-        points.append((edges[0] - 0.5 * w0, float(decoded.underflow), w0, "underflow"))
+        points.append((edges[0] - 0.5 * w0, float(decoded.underflow) * scale, w0, "underflow"))
     if decoded.overflow:
-        points.append((edges[-1] + 0.5 * wn, float(decoded.overflow), wn, "overflow"))
+        points.append((edges[-1] + 0.5 * wn, float(decoded.overflow) * scale, wn, "overflow"))
     if not points:
         return None
     xs, ys, widths, labels = zip(*points)
