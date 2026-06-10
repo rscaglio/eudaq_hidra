@@ -543,15 +543,20 @@ private:
   BoardMatchResult InspectQueuesForTrigger(uint64_t trigger_n) const {
     BoardMatchResult result;
     result.matched_boards.reserve(m_board_ids.size());
-
+    HIDRA_DEBUG("Searching for trigger {} in fers boards", trigger_n);
     for (int board_id : m_board_ids) {
       const auto& queue = m_event_queues.at(board_id);
-      if (!queue.empty()) continue; 
+      if (!queue.empty()) {
+        HIDRA_DEBUG("Empty queue for board {}", board_id);
+        continue;
+      }
       const uint64_t front_id = queue.front().trigger_id;
+      HIDRA_DEBUG("Found trigger id {} at front of queue for board {}", front_id, board_id);
       if (front_id == trigger_n) {
         result.matched_boards.push_back(board_id);
       } else if (front_id > trigger_n) {
         result.any_board_ahead = true;
+        HIDRA_DEBUG("Board {} is ahead of expected trigger, skipping", board_id);
       }
     }
     return result;
@@ -674,6 +679,7 @@ private:
       }
 
       const auto [matched_boards, any_board_ahead] = InspectQueuesForTrigger(trigger_n);
+      HIDRA_DEBUG("Inspected board for trigger {}: found {}/{}", trigger_n, matched_boards.size(), m_board_ids.size());
       const bool all_matched = matched_boards.size() == m_board_ids.size();
       const uint64_t waited_us = (hidra::utils::getTimens() - m_alignment_wait_start_ns) / 1000ULL;
       const uint64_t timeout_us = any_board_ahead ? kAlignmentWaitAheadTimeoutUs : kAlignmentWaitIdleTimeoutUs;
