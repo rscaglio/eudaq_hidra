@@ -9,6 +9,7 @@
 #include "FERSlib.h"
 #include "FERSPayloadSerialization.h"
 #include "HidraUtils.hh"
+#include "Logger.hh"
 
 namespace hidra {
 namespace fers2 {
@@ -42,7 +43,7 @@ FERSBoard::FERSBoard(int board_id,
     FERS_CloseDevice(handle);
     throw FersError("FERS_InitReadout failed for '" + m_connection_path + "'", ret);
   }
-
+  HIDRA_INFO("Init readout on board {}, mode {}", board_id, readout_mode);
   // adopt handle
   m_handle = FersHandle(handle);
   m_status.allocated_readout_bytes = allocated_size;

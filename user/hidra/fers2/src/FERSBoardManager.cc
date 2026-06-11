@@ -37,7 +37,7 @@ void FERSBoardManager::BuildBoardsFromConfiguration(const FERSConfiguration& con
       // Construct and fully initialise the board. Throws on failure.
       m_boards.emplace_back(board_id, path, &config, configure_mode, readout_mode);
     } catch (const FersError& e) {
-      FERS_LibMsg(const_cast<char*>("[WARNING][BRD %02d] Ignoring board path '%s': %s\n"),
+      HIDRA_DEBUG("[WARNING][BRD {}] Ignoring board path {}: {}",
                  board_id,
                  path.c_str(),
                  e.what());
@@ -211,7 +211,7 @@ void FERSBoardManager::OpenAndLogConcentrator(ConcentratorRecord* concentrator) 
   }
 
   const int handle = concentrator->handle.get();
-  FERS_LibMsg(const_cast<char*>("[INFO][CNC %02d] Connected concentrator %s (%s), board_count=%d\n"),
+  HIDRA_DEBUG("[INFO][CNC {}] Connected concentrator {} ({}), board_count={}",
               FERS_INDEX(handle),
               concentrator->cnc_path.c_str(),
               BuildConcentratorSummary(concentrator->info).c_str(),
@@ -219,7 +219,7 @@ void FERSBoardManager::OpenAndLogConcentrator(ConcentratorRecord* concentrator) 
   for (uint16_t chain = 0; chain < concentrator->info.NumLink && chain < 8; ++chain) {
     const auto& chain_info = concentrator->info.ChainInfo[chain];
     if (chain_info.BoardCount > 0) {
-      FERS_LibMsg(const_cast<char*>("[INFO][CNC %02d] Chain %u: board_count=%u rate=%.3f cps throughput=%.3f Mbps\n"),
+      HIDRA_DEBUG(const_cast<char*>("[INFO][CNC {}] Chain {}: board_count={} rate={} cps throughput={} Mbps"),
           FERS_INDEX(handle),
           chain,
           chain_info.BoardCount,
