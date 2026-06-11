@@ -295,7 +295,19 @@ Append an entry under `tabs:` in `config.yaml`:
   configured `split_suffixes` series in one plot (click a legend entry to
   hide/show a series; missing ones are skipped); `templates:`/
   `projection_templates:` as a list drives **several** stacked plots of the
-  *same* channel from one dropdown. Dropdown labels are enriched with the calo
+  *same* channel from one dropdown. `fixed_channel: <N>` pins the panel to one
+  channel and hides the dropdown (a dedicated single-channel view, e.g. the
+  muon counter on ADC channel 193: `projection_templates: ["ADC_dist"]`,
+  `split_suffixes: ["", "_pedestal"]` to overlay total + pedestal); `title:`
+  overrides the auto plot title for such a panel. `fixed_channels: [a, b, …]`
+  instead shows **one plot per channel** side by side (titles taken from the
+  calo mapping, e.g. `Cher1 · ch 194`); `cols:` sets how many per row (default
+  1 = stacked), so `cols: 3` puts the three Cherenkov chambers on one row.
+  `threshold: <ADC>` adds a
+  dashed vertical marker at that ADC value and writes the **fraction of entries
+  above it** into the title; `threshold_series:` picks which copy the fraction
+  is computed on (e.g. `"_physics"` to count only physics events, even when that
+  copy is not one of the displayed `split_suffixes`). Dropdown labels are enriched with the calo
   module name (e.g. `ch 5 · M105S`); `board_labels: true` instead labels as
   `board B · ch L` (FERS). The selected channel updates the plot on the next
   poll tick.

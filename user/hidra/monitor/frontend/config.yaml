@@ -145,6 +145,42 @@ tabs:
         split_suffixes: ["", "_physics", "_pedestal"]
         show_trigger_split: true
 
+  # Muon counter: a single dedicated ADC channel (index 193, "Muon" in
+  # mapping/adc_channels.json). Reuses the channel_selector in projection mode
+  # but pinned to one channel (no dropdown), overlaying the full spectrum
+  # ("total") and the pedestal-only copy. Like the ADC channels tab it fetches a
+  # server-side ProjectionY on tab-open / Refresh (issue #153), not every poll.
+  - id: muon
+    label: Muon counter
+    panels:
+      - type: channel_selector
+        projection_templates: ["ADC_dist"]
+        split_suffixes: ["", "_pedestal"]   # overlay: total + pedestal-only
+        show_trigger_split: true
+        fixed_channel: 193
+        title: "Muon counter · ch 193"
+        # Fraction of *physics* events above this ADC value, shown in the title
+        # with a vertical marker at the threshold.
+        threshold: 500
+        threshold_series: "_physics"
+
+  # Cherenkov chambers: three dedicated ADC channels (Cher1/Cher2/Cher3 =
+  # 194/195/196 in mapping/adc_channels.json), one fixed-channel spectrum each,
+  # overlaying total + pedestal (no threshold/fraction). Like the ADC channels /
+  # muon tabs, each fetches a server-side ProjectionY on tab-open / Refresh.
+  - id: cherenkov
+    label: Cherenkov
+    panels:
+      # One panel, three fixed channels on a single row (cols: 3); each plot
+      # overlays total + pedestal. Titles come from the calo mapping
+      # (Cher1/Cher2/Cher3). No threshold/fraction.
+      - type: channel_selector
+        projection_templates: ["ADC_dist"]
+        split_suffixes: ["", "_pedestal"]
+        show_trigger_split: true
+        fixed_channels: [194, 195, 196]
+        cols: 3
+
   - id: adc_saturation
     label: ADC Saturation
     panels:
