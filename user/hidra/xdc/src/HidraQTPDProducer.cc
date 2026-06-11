@@ -38,6 +38,13 @@ enum V977OUT {
   cPedVeto = 5,
   cResetSignal = 15
 };
+
+enum V560CHAN {
+  sFastGate = 0,
+  sSpill = 1,
+  sIsPhys = 2,
+  sIsPed = 3
+};
 ////////////////////
 
 constexpr std::size_t MAX_BLT_SIZE = 1024 * 4; // TODO check this
@@ -78,10 +85,7 @@ constexpr uint16_t V792_MCST_LAST = 0x01;
 // CAEN V560 registers used by this producer
 constexpr uint16_t V560_STATUS_REG = 0x58;
 constexpr uint16_t V560_CLEAR_REG  = 0x50;
-constexpr uint16_t V560_READ_CHAN1 = 0X10;
-constexpr uint16_t V560_READ_CHAN2 = 0X14;
-constexpr uint16_t V560_READ_CHAN3 = 0X18;
-constexpr uint16_t V560_READ_CHAN4 = 0X1C;
+// REGISTER FOR CHANNEL READING IS  0x10 + 0x4 * channel;
 
 
 /// TRACKER SYNC MODULE
@@ -537,20 +541,16 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     ThrowIfVmeError("V560 clear failed");
   }
 
-  void V560_ForSpill() {
-    m_spillCount_560 = ReadReg(V560_READ_CHAN1, m_v560Base);
-    ThrowIfVmeError("V560 channel for spill read failed");
+  uint16_t ReadV560Channel(uint16_t channel) {
+    if (!m_v560Enabled) {
+      return 0;
+    }
+    uint16_t reg = 0x10 + 0x4 * channel;
+    uint16_t value = ReadReg(channel, m_v560Base);
+    ThrowIfVmeError("V560 channel read failed");
+    return value;
   }
-
-  void V560_ForTrigger() {
-    m_triggerCount_560 = ReadReg(V560_READ_CHAN2, m_v560Base);
-    ThrowIfVmeError("V560 channel for trigger read failed");
-  }
-
-  void V560_ForBoh() {
-    m_bohCount_560 = ReadReg(V560_READ_CHAN3, m_v560Base);
-    ThrowIfVmeError("V560 channel for BOH read failed");
-  }
+  
 
   void VetoTrigger() {
     uint16_t setBitMask = 0x0000 | (1u << V977OUT::cVeto) | (1u << V977OUT::cPedVeto);
@@ -640,9 +640,10 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
 
-	if (m_v560Enabled){
-	  V560_ForTrigger(); // updates trigger number from scaler
-	}
+	      if (m_v560Enabled){
+          m_triggerCount_560 = ReadV560Channel(V560CHAN::sFastGate);
+          m_spillCount_560 = ReadV560Channel(V560CHAN::sSpill);
+	      }
 
         HIDRA_DEBUG("Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_triggerCount_560, m_evt & 0xFFFF);
 
@@ -1051,7 +1052,6 @@ private:
   //V560 scaler
   uint16_t m_triggerCount_560 = 0;
   uint16_t m_spillCount_560 = 0;
-  uint16_t m_bohCount_560 = 0;
 
   std::chrono::steady_clock::time_point m_runStart;
 
