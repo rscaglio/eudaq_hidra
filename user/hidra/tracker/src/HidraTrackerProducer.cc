@@ -15,6 +15,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -97,7 +98,7 @@ uint64_t ParseUnsigned(const std::string& value, const std::string& column, cons
 }
 
 uint32_t ParseUint32(const std::string& value, const std::string& column, const std::filesystem::path& file,
-                     std::size_t line_number) {
+                     std::size_t line_number, std::set<std::string>& warned_columns) {
   // Fast path: a plain unsigned integer, parsed exactly.
   std::size_t parsed = 0;
   try {
@@ -133,8 +134,14 @@ uint32_t ParseUint32(const std::string& value, const std::string& column, const 
   }
 
   const uint32_t rounded = static_cast<uint32_t>(std::llround(real));
-  EUDAQ_WARN("Column '" + column + "' has a non-integer value '" + value + "' at " + file.string() + ":" +
-             std::to_string(line_number) + "; rounded to " + std::to_string(rounded));
+  // Warn only once per column per file: fractional coordinates are expected to
+  // recur on every row, so a per-value warning would flood the log. The first
+  // occurrence is enough to flag that this column carries non-integer values.
+  if (warned_columns.insert(column).second) {
+    EUDAQ_WARN("Column '" + column + "' has a non-integer value (e.g. '" + value + "' at " + file.string() + ":" +
+               std::to_string(line_number) + ", rounded to " + std::to_string(rounded) +
+               "); further non-integer values in this column/file are rounded silently");
+  }
   return rounded;
 }
 
@@ -295,6 +302,9 @@ private:
     std::size_t line_number = 1;
     uint64_t rows_processed_for_file = 0;
     uint64_t rows_sent_for_file = 0;
+    // Columns already flagged (non-integer values) for this file, so the
+    // per-value rounding warning fires only once per column.
+    std::set<std::string> warned_float_columns;
 
     while (m_running && std::getline(input, line)) {
       ++line_number;
@@ -309,7 +319,7 @@ private:
         continue;
       }
       // Attempt to send the row; only count as sent if SendRow completes without throwing.
-      SendRow(headers, values, file, line_number);
+      SendRow(headers, values, file, line_number, warned_float_columns);
       ++rows_processed_for_file;
       ++rows_sent_for_file;
       ++m_events_sent;
@@ -345,7 +355,8 @@ private:
   }
 
   void SendRow(const std::vector<std::string>& headers, const std::vector<std::string>& values,
-               const std::filesystem::path& file, std::size_t line_number) {
+               const std::filesystem::path& file, std::size_t line_number,
+               std::set<std::string>& warned_float_columns) {
     const auto trigger_index = FindColumn(headers, TRIGGER_COLUMN);
     const auto timestamp_index = FindColumn(headers, TIMESTAMP_COLUMN);
     const uint64_t trigger = ParseUnsigned(values[trigger_index], TRIGGER_COLUMN, file, line_number);
@@ -365,7 +376,7 @@ private:
     std::array<uint32_t, COORDINATE_COLUMN_INDICES.size()> coordinates{};
     for (std::size_t i = 0; i < COORDINATE_COLUMN_INDICES.size(); ++i) {
       const std::size_t col = COORDINATE_COLUMN_INDICES[i];
-      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number);
+      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number, warned_float_columns);
     }
 
     auto event = eudaq::Event::MakeUnique("TrackerRaw");

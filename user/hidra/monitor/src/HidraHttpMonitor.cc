@@ -27,7 +27,17 @@ const uint32_t HidraHttpMonitor::m_id_factory = eudaq::cstr2hash("HidraHttpMonit
 namespace {
 auto _reg = eudaq::Factory<eudaq::Monitor>::Register<HidraHttpMonitor, const std::string&, const std::string&>(
     HidraHttpMonitor::m_id_factory);
+
+// Strip leading/trailing whitespace; returns "" for an all-whitespace string.
+std::string Trim(const std::string& s) {
+  const auto first = s.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return {};
+  }
+  const auto last = s.find_last_not_of(" \t\r\n");
+  return s.substr(first, last - first + 1);
 }
+} // namespace
 
 // ── MonitorContext ──────────────────────────────────────────────────────────
 
@@ -222,13 +232,26 @@ void HidraHttpMonitor::DoConfigure() {
       TrackerStationConfig station = def;
       const std::string override_str = conf->Get(hidra::utils::format("TRACKER_STATION{}", i), std::string(""));
       if (!override_str.empty()) {
-        // Expect "xmin,xmax,ymin,ymax"; binning stays the global default.
+        // Expect "xmin,xmax,ymin,ymax"; binning stays the global default. Each
+        // token is parsed strictly: trimmed, and the whole token must be a
+        // number (no trailing garbage like "50#comment"), else the override is
+        // rejected and the global range kept.
         std::vector<double> vals;
         std::stringstream ss(override_str);
         std::string tok;
         while (std::getline(ss, tok, ',')) {
+          const std::string trimmed = Trim(tok);
+          if (trimmed.empty()) {
+            vals.clear();
+            break;
+          }
+          std::size_t pos = 0;
           try {
-            vals.push_back(std::stod(tok));
+            const double v = std::stod(trimmed, &pos);
+            if (pos != trimmed.size()) {
+              throw std::invalid_argument("trailing characters");
+            }
+            vals.push_back(v);
           } catch (const std::exception&) {
             vals.clear();
             break;
