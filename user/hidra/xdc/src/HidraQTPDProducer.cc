@@ -89,6 +89,7 @@ constexpr uint16_t V560_READ_CHAN4 = 0X1C;
 //   base + 0xD000 : loopback/cable readback, if cable is present
 //   base + 0xA000 : board readback register
 constexpr uint16_t EVSYNC_LOW_WRITE_REG = 0xD000;
+constexpr uint16_t EVSYNC_LOW_READ_REG = 0xD000;
 constexpr uint16_t EVSYNC_LOW_LOOPBACK_REG = 0xD000;
 constexpr uint16_t EVSYNC_LOW_READBACK_REG = 0xA000;
 
@@ -97,6 +98,7 @@ constexpr uint16_t EVSYNC_LOW_READBACK_REG = 0xA000;
 constexpr uint16_t EVSYNC_HIGH_WRITE_REG = 0xE000;
 constexpr uint16_t EVSYNC_HIGH_LOOPBACK_REG = 0xE000;
 constexpr uint16_t EVSYNC_HIGH_READBACK_REG = 0xB000;
+constexpr uint16_t EVSYNC_HIGH_READ_REG = 0xE000;
 
 
 
@@ -397,6 +399,16 @@ private:
   }
 }
 
+uint32_t ReadEventSyncTstamp24(){
+  if (!m_eventSyncEnabled) return 0;
+
+    uint16_t xhigh = ReadRegSyncModule(EVSYNC_HIGH_READ_REG, m_eventSyncBase);
+    uint16_t xlow = ReadRegSyncModule(EVSYNC_LOW_READ_REG, m_eventSyncBase);
+    uint32_t tstamp = (static_cast<uint32_t>(xhigh << 16)) | xlow;
+    HIDRA_WARN("SYNC READ TSTAMP {} -- valid {} (should be 0)", tstamp, (xhigh >> 15));
+    return tstamp; 
+}
+
 void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   if (!m_eventSyncEnabled) {
     return;
@@ -407,6 +419,8 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   WriteReg(EVSYNC_LOW_WRITE_REG, trigger16, m_eventSyncBase, cvA24_U_DATA);
   ThrowIfVmeError("Event-sync low trigger write failed");
   //////
+
+  HIDRA_WARN("SYNC WRITTEN TRIG {}", trigger16);
 
   if (m_eventSyncWriteHighMarker) {
     WriteReg(EVSYNC_HIGH_WRITE_REG, m_eventSyncHighMarker, m_eventSyncBase, cvA24_U_DATA);
@@ -624,8 +638,10 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         if (m_TriggerMask == 0b11) {
           HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
-        
-        V560_ForTrigger(); // updates trigger number from scaler
+
+	if (m_v560Enabled){
+	  V560_ForTrigger(); // updates trigger number from scaler
+	}
 
         HIDRA_DEBUG("Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_triggerCount_560, m_evt & 0xFFFF);
 
@@ -637,7 +653,8 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         m_evt++;
         if (m_TriggerMask == 0b01) m_evt_phy++;
         if (m_TriggerMask == 0b10) m_evt_ped++;
-      
+
+	uint32_t tracker_time = ReadEventSyncTstamp24();
         WriteEventSyncTrigger16(m_evt); // PROPAGATE NEXT TRIGGER (COUNTER IS ALREADY INCREMENTED) NUMBER TO TRACKER SYNC MODULE
 
         // TODO: veto is still active and we can do what we want.. but slowing down. Remove and create a dedicated thread
@@ -743,6 +760,16 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     return data;
   }
 
+  uint16_t ReadRegSyncModule(uint16_t regAddr, uint32_t baseAddr) {
+    uint16_t data = 0;
+    const CVErrorCodes ret = CAENVME_ReadCycle(m_handle, baseAddr + regAddr, &data, cvA24_U_DATA, cvD16);
+    if (ret != cvSuccess) {
+      m_errorString = "Cannot read at address " + hex32(baseAddr + regAddr);
+      m_vmeError = true;
+    }
+    return data;
+  }
+
   void WriteReg(uint16_t regAddr, uint16_t data, uint32_t baseAddr, CVAddressModifier am = cvA32_U_DATA) {
     const CVErrorCodes ret = CAENVME_WriteCycle(m_handle, baseAddr + regAddr, &data, am, cvD16);
     if (ret != cvSuccess) {
@@ -814,13 +841,13 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
 
     if (byteCount <= 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      EUDAQ_ERROR("BCNT = 0, controller replied with 0 bytes");
+      HIDRA_ERROR("BCNT = 0, controller replied with 0 bytes. Ret code of BLT was {}", ret);
       return false;
     }
 
     const int wordCount = byteCount / 4;
     if (wordCount <= 0) {
-      EUDAQ_ERROR("BCNT = 0, controller replied with less than 4 bytes");
+      HIDRA_ERROR("BCNT = 0, controller replied with less than 4 bytes. Ret code of BLT was {}", ret);
       return false;
     }
 
