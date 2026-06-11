@@ -10,6 +10,9 @@
 #include <QPainter>
 
 #include <iostream>
+#include <fstream>
+#include <mutex>
+#include <string>
 #include <QSettings>
 
 // To make Qt behave on OSX (to be checked on other OSes)
@@ -36,6 +39,7 @@ public:
   void Exec() override;
 public:
   void DoInitialise() override;
+  void OnStartRun() override;
   void DoConnect(eudaq::ConnectionSPC id) override;
   void DoReceive(const eudaq::LogMessage &msg) override;
   void LoadFile(const std::string &filename);
@@ -52,7 +56,13 @@ private slots:
   void AddMessage(const eudaq::LogMessage &msg);
 private:
   static void CheckRegistered();
+  void OpenLogFile(uint32_t run_number, bool rename_current);
   LogCollectorModel m_model;
   LogItemDelegate m_delegate;
   std::ofstream m_os_file;
+  std::mutex m_os_file_mutex;
+  std::string m_file_pattern;
+  std::string m_start_time;
+  std::string m_current_filename;
+  bool m_provisional = false;
 };
