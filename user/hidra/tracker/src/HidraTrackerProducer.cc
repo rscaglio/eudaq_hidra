@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -39,7 +40,13 @@ constexpr std::array<const char*, 10> TRACKER_COLUMNS = {
 
 constexpr const char* TRIGGER_COLUMN = "TriggerId";
 constexpr const char* TIMESTAMP_COLUMN = "Time stamp";
-constexpr std::array<std::size_t, 4> COORDINATE_COLUMN_INDICES = {2, 3, 4, 5};
+// Per-station hit coordinates, as consecutive (x, y) column pairs: station 0 =
+// (X, Y), station 1 = (Column5, Column6), station 2 = (Column7, Column8). The
+// block built in SendRow is therefore one uint32 per entry here, and the
+// number of stations the decoder/monitor sees is `size()/2`.
+// PROVISIONAL: the official production tracker format is not finalised yet —
+// revisit these indices (and `TRACKER_COLUMNS`) together when it is.
+constexpr std::array<std::size_t, 6> COORDINATE_COLUMN_INDICES = {2, 3, 4, 5, 6, 7};
 
 std::string Trim(std::string value) {
   const auto first = value.find_first_not_of(" \t\r\n");
@@ -91,12 +98,44 @@ uint64_t ParseUnsigned(const std::string& value, const std::string& column, cons
 
 uint32_t ParseUint32(const std::string& value, const std::string& column, const std::filesystem::path& file,
                      std::size_t line_number) {
-  const uint64_t result = ParseUnsigned(value, column, file, line_number);
-  if (result > std::numeric_limits<uint32_t>::max()) {
-    EUDAQ_THROW("Column '" + column + "' is larger than uint32_t at " + file.string() + ":" +
-                std::to_string(line_number));
+  // Fast path: a plain unsigned integer, parsed exactly.
+  std::size_t parsed = 0;
+  try {
+    const uint64_t result = std::stoull(value, &parsed, 0);
+    if (parsed == value.size()) {
+      if (result > std::numeric_limits<uint32_t>::max()) {
+        EUDAQ_THROW("Column '" + column + "' is larger than uint32_t at " + file.string() + ":" +
+                    std::to_string(line_number));
+      }
+      return static_cast<uint32_t>(result);
+    }
+  } catch (const std::exception&) {
+    // Not a plain integer; fall through to the float path below.
   }
-  return static_cast<uint32_t>(result);
+
+  // The value carries a fractional/float format (e.g. "12.5"). Accept it but
+  // warn, then round to the nearest integer.
+  std::size_t float_parsed = 0;
+  double real = 0.0;
+  try {
+    real = std::stod(value, &float_parsed);
+  } catch (const std::exception&) {
+    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
+                ": " + value);
+  }
+  if (float_parsed != value.size()) {
+    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
+                ": " + value);
+  }
+  if (!std::isfinite(real) || real < 0.0 || real > static_cast<double>(std::numeric_limits<uint32_t>::max())) {
+    EUDAQ_THROW("Column '" + column + "' is out of uint32_t range at " + file.string() + ":" +
+                std::to_string(line_number) + ": " + value);
+  }
+
+  const uint32_t rounded = static_cast<uint32_t>(std::llround(real));
+  EUDAQ_WARN("Column '" + column + "' has a non-integer value '" + value + "' at " + file.string() + ":" +
+             std::to_string(line_number) + "; rounded to " + std::to_string(rounded));
+  return rounded;
 }
 
 std::size_t FindColumn(const std::vector<std::string>& headers, const std::string& column) {
@@ -321,14 +360,13 @@ private:
                   std::to_string(line_number));
     }
 
-    const uint32_t plane0_x = ParseUint32(values[COORDINATE_COLUMN_INDICES[0]],
-                                          headers[COORDINATE_COLUMN_INDICES[0]], file, line_number);
-    const uint32_t plane0_y = ParseUint32(values[COORDINATE_COLUMN_INDICES[1]],
-                                          headers[COORDINATE_COLUMN_INDICES[1]], file, line_number);
-    const uint32_t plane1_x = ParseUint32(values[COORDINATE_COLUMN_INDICES[2]],
-                                          headers[COORDINATE_COLUMN_INDICES[2]], file, line_number);
-    const uint32_t plane1_y = ParseUint32(values[COORDINATE_COLUMN_INDICES[3]],
-                                          headers[COORDINATE_COLUMN_INDICES[3]], file, line_number);
+    // One uint32 per coordinate column, in order: consecutive (x, y) pairs, one
+    // per station. The decoder reconstructs `size()/2` stations from this block.
+    std::array<uint32_t, COORDINATE_COLUMN_INDICES.size()> coordinates{};
+    for (std::size_t i = 0; i < COORDINATE_COLUMN_INDICES.size(); ++i) {
+      const std::size_t col = COORDINATE_COLUMN_INDICES[i];
+      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number);
+    }
 
     auto event = eudaq::Event::MakeUnique("TrackerRaw");
     event->SetRunN(static_cast<uint32_t>(m_run_number));
@@ -342,7 +380,6 @@ private:
       event->SetTag(headers[index], values[index]);
     }
 
-    const std::array<uint32_t, 4> coordinates = {plane0_x, plane0_y, plane1_x, plane1_y};
     event->AddBlock(0, coordinates.data(), coordinates.size() * sizeof(uint32_t));
     SendEvent(std::move(event));
   }
