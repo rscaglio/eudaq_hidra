@@ -143,4 +143,31 @@ void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
   AddBranchValues(branches, "FERStot", fers_event.FERStot);
 }
 
+bool HidraTrackerPayloadDecoder::Matches(const RootDetectorPayload& detector) const {
+  return detector.det_id == 3 || detector.producer.find("Tracker") != std::string::npos;
+}
+
+std::vector<std::string> HidraTrackerPayloadDecoder::BranchNames() const {
+  auto names = HidraGenericPayloadDecoder{}.BranchNames();
+  names.push_back("TrackerX");
+  names.push_back("TrackerY");
+  return names;
+}
+
+void HidraTrackerPayloadDecoder::Decode(const RootDetectorPayload& detector,
+                                        std::vector<RootQuantity>& quantities,
+                                        RootBranchValues& branches) const {
+  HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
+
+  HidraTrackerEvent tracker_event;
+  m_tracker_decoder.decode(detector.payload, tracker_event, detector.trigger_n);
+
+  if (tracker_event.X.empty()) {
+    return;
+  }
+
+  AddBranchValues(branches, "TrackerX", tracker_event.X);
+  AddBranchValues(branches, "TrackerY", tracker_event.Y);
+}
+
 } // namespace hidra
