@@ -660,6 +660,7 @@ private:
     if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
       m_last_status_log = std::chrono::steady_clock::now();
       HIDRA_INFO("FERS producer sent event for trg {}. Total events sent: {}", trigger_n, m_evt_f);
+      SendStatus(); //TODO move in dedicated logging struct
     }
     ++m_evt_f;
   }
