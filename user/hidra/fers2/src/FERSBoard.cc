@@ -43,7 +43,7 @@ FERSBoard::FERSBoard(int board_id,
     FERS_CloseDevice(handle);
     throw FersError("FERS_InitReadout failed for '" + m_connection_path + "'", ret);
   }
-  HIDRA_INFO("Init readout on board {}, mode {}", board_id, readout_mode);
+  HIDRA_INFO("Init readout on board {}, mode {}, path {}", board_id, readout_mode, m_connection_path);
   // adopt handle
   m_handle = FersHandle(handle);
   m_status.allocated_readout_bytes = allocated_size;
@@ -229,6 +229,7 @@ bool FERSBoard::StopAcquisition(int start_mode, int run_number) {
 
   m_status.state = BoardState::kConfigured;
   m_status.last_error.clear();
+  FERS_FlushData(handle);
   return true;
 }
 
