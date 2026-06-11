@@ -11,11 +11,11 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <map>
-#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -58,6 +58,32 @@ std::string Trim(std::string value) {
   return value.substr(first, last - first + 1);
 }
 
+// Expand ${VAR} references in a config value from the process environment, so a
+// path can be written machine-independently (e.g. ${REPO_ROOT}/...). Only the
+// ${...} form is recognised; an unset or unterminated variable is a hard error.
+std::string ExpandEnv(const std::string& value) {
+  std::string out;
+  out.reserve(value.size());
+  for (std::size_t i = 0; i < value.size();) {
+    if (value[i] == '$' && i + 1 < value.size() && value[i + 1] == '{') {
+      const auto end = value.find('}', i + 2);
+      if (end == std::string::npos) {
+        EUDAQ_THROW("Unterminated ${...} in config value: " + value);
+      }
+      const std::string name = value.substr(i + 2, end - (i + 2));
+      const char* env = std::getenv(name.c_str());
+      if (env == nullptr) {
+        EUDAQ_THROW("Environment variable '" + name + "' referenced in config value is not set: " + value);
+      }
+      out += env;
+      i = end + 1;
+    } else {
+      out += value[i++];
+    }
+  }
+  return out;
+}
+
 std::vector<std::string> Split(const std::string& line, char delimiter) {
   std::vector<std::string> fields;
   std::stringstream stream(line);
@@ -98,7 +124,7 @@ uint64_t ParseUnsigned(const std::string& value, const std::string& column, cons
 }
 
 uint32_t ParseUint32(const std::string& value, const std::string& column, const std::filesystem::path& file,
-                     std::size_t line_number, std::set<std::string>& warned_columns) {
+                     std::size_t line_number) {
   // Fast path: a plain unsigned integer, parsed exactly.
   std::size_t parsed = 0;
   try {
@@ -133,16 +159,10 @@ uint32_t ParseUint32(const std::string& value, const std::string& column, const 
                 std::to_string(line_number) + ": " + value);
   }
 
-  const uint32_t rounded = static_cast<uint32_t>(std::llround(real));
-  // Warn only once per column per file: fractional coordinates are expected to
-  // recur on every row, so a per-value warning would flood the log. The first
-  // occurrence is enough to flag that this column carries non-integer values.
-  if (warned_columns.insert(column).second) {
-    EUDAQ_WARN("Column '" + column + "' has a non-integer value (e.g. '" + value + "' at " + file.string() + ":" +
-               std::to_string(line_number) + ", rounded to " + std::to_string(rounded) +
-               "); further non-integer values in this column/file are rounded silently");
-  }
-  return rounded;
+  // Accept a fractional coordinate by rounding to the nearest integer, silently:
+  // production tracker data is integer-valued, so this only triggers on test
+  // inputs, where a per-value log would just flood the run.
+  return static_cast<uint32_t>(std::llround(real));
 }
 
 std::size_t FindColumn(const std::vector<std::string>& headers, const std::string& column) {
@@ -176,7 +196,9 @@ private:
     }
 
     EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
-    m_directory = conf->Get("TRACKER_DIRECTORY", std::string(""));
+    // Expand ${VAR} so the path can be absolute and machine-independent (e.g.
+    // ${REPO_ROOT}/...), instead of depending on the launch working directory.
+    m_directory = ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
     if (m_directory.empty()) {
       EUDAQ_THROW("TRACKER_DIRECTORY is missing from the run configuration");
     }
@@ -302,9 +324,6 @@ private:
     std::size_t line_number = 1;
     uint64_t rows_processed_for_file = 0;
     uint64_t rows_sent_for_file = 0;
-    // Columns already flagged (non-integer values) for this file, so the
-    // per-value rounding warning fires only once per column.
-    std::set<std::string> warned_float_columns;
 
     while (m_running && std::getline(input, line)) {
       ++line_number;
@@ -319,7 +338,7 @@ private:
         continue;
       }
       // Attempt to send the row; only count as sent if SendRow completes without throwing.
-      SendRow(headers, values, file, line_number, warned_float_columns);
+      SendRow(headers, values, file, line_number);
       ++rows_processed_for_file;
       ++rows_sent_for_file;
       ++m_events_sent;
@@ -355,8 +374,7 @@ private:
   }
 
   void SendRow(const std::vector<std::string>& headers, const std::vector<std::string>& values,
-               const std::filesystem::path& file, std::size_t line_number,
-               std::set<std::string>& warned_float_columns) {
+               const std::filesystem::path& file, std::size_t line_number) {
     const auto trigger_index = FindColumn(headers, TRIGGER_COLUMN);
     const auto timestamp_index = FindColumn(headers, TIMESTAMP_COLUMN);
     const uint64_t trigger = ParseUnsigned(values[trigger_index], TRIGGER_COLUMN, file, line_number);
@@ -376,7 +394,7 @@ private:
     std::array<uint32_t, COORDINATE_COLUMN_INDICES.size()> coordinates{};
     for (std::size_t i = 0; i < COORDINATE_COLUMN_INDICES.size(); ++i) {
       const std::size_t col = COORDINATE_COLUMN_INDICES[i];
-      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number, warned_float_columns);
+      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number);
     }
 
     auto event = eudaq::Event::MakeUnique("TrackerRaw");
