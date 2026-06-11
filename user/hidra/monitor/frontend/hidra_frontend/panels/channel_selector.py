@@ -33,6 +33,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+import numpy as np
 from dash import Dash, Input, Output, dcc, html
 
 from .. import theme
@@ -115,13 +116,46 @@ class ChannelSelectorPanel(Panel):
             if params.get("board_labels") and params.get("channels_per_board")
             else None
         )
-        self._selected_ch: Optional[int] = None
+        # `fixed_channel: N` pins the panel to one channel and hides the dropdown
+        # (e.g. the muon counter on ADC channel 193). `fixed_channels: [a, b, …]`
+        # instead shows one plot per channel side by side (with `cols`, e.g. the
+        # three Cherenkov chambers on one row). Both disable the dropdown; the
+        # rest of the projection/overlay/on-demand machinery is unchanged.
+        fixed = params.get("fixed_channel")
+        self._fixed_channel: Optional[int] = int(fixed) if fixed is not None else None
+        fixed_list = params.get("fixed_channels")
+        self._fixed_channels: Optional[list[int]] = [int(c) for c in fixed_list] if fixed_list else None
+        if self._fixed_channel is not None:
+            self._selected_ch: Optional[int] = self._fixed_channel
+        elif self._fixed_channels:
+            self._selected_ch = self._fixed_channels[0]
+        else:
+            self._selected_ch = None
+        # Graph slots are laid out in rows of `cols` (default 1 = stacked, matching
+        # the previous one-plot-per-template behaviour).
+        self._cols = max(1, int(params.get("cols", 1)))
+        # Optional fixed plot title (overrides the auto "ADC · ch N"); handy when
+        # the channel has a meaningful name (e.g. "Muon counter").
+        self._title: Optional[str] = params.get("title")
         # When on, each graph slot overlays several series of the selected
         # channel (one step line each), built from the raw payloads, so the
         # panel needs its own decoder. `split_suffixes` selects which series.
         self._split = bool(params.get("show_trigger_split", False))
         self._split_series = self._build_split_series(params.get("split_suffixes"))
-        self._decoder = get_decoder(params.get("decoder", "pure")) if self._split else None
+        # Optional "fraction above an ADC threshold" annotation. When `threshold`
+        # is set the panel also fetches the `threshold_series` copy (default the
+        # displayed "total"; the muon counter uses "_physics" to count only
+        # physics events), computes the fraction of its entries above the
+        # threshold, writes it into the title and draws a vertical line there.
+        thr = params.get("threshold")
+        self._threshold: Optional[float] = float(thr) if thr is not None else None
+        self._threshold_series = str(params.get("threshold_series", ""))
+        # The overlay (split mode) and the fraction both need a decoder.
+        self._decoder = (
+            get_decoder(params.get("decoder", "pure"))
+            if (self._split or self._threshold is not None)
+            else None
+        )
         # Emergency mitigation (issue #153): a projection-mode fetch is a
         # server-side exe.json ProjectionY, whose repeated *interpreted* calls
         # grow ROOT's process memory over time. So in projection mode we fetch
@@ -164,6 +198,8 @@ class ChannelSelectorPanel(Panel):
 
     def _channels(self) -> list[int]:
         """Sorted list of selectable channel indices."""
+        if self._fixed_channel is not None:
+            return [self._fixed_channel]
         if self._projection:
             # Learn (and cache) the channel count from the TH2 x axis the first
             # time it is needed; retry while still unknown (backend not up yet).
@@ -192,7 +228,24 @@ class ChannelSelectorPanel(Panel):
         self._selected_ch = int(ch)
         self._needs_fetch = True
 
-    # ---- token / title helpers ------------------------------------------
+    # ---- slots / token / title helpers ----------------------------------
+
+    @property
+    def _has_dropdown(self) -> bool:
+        """The channel dropdown is shown only in the interactive selector mode
+        (neither a single nor a multi fixed-channel panel)."""
+        return self._fixed_channel is None and self._fixed_channels is None
+
+    def _slot_specs(self) -> list[tuple[str, Optional[int]]]:
+        """The (template, channel) pair for each graph slot, in slot order.
+
+        Two shapes: several templates of the *same* (current) channel — the
+        interactive / single-fixed-channel case — or the *same* template across
+        several fixed channels (`fixed_channels`, e.g. the Cherenkov chambers).
+        """
+        if self._fixed_channels is not None:
+            return [(self._template, c) for c in self._fixed_channels]
+        return [(t, self._selected_ch) for t in self._templates]
 
     def _token(self, template: str, suffix: str, ch: int) -> str:
         """Fetch token for one series of one slot at channel `ch`."""
@@ -210,6 +263,18 @@ class ChannelSelectorPanel(Panel):
     def _slot_title(self, template: str, ch: Optional[int]) -> str:
         if ch is None:
             return "no channel"
+        # A configured title wins (single-slot fixed-channel panels, e.g. the
+        # muon counter). With several slots it would be ambiguous, so only honour
+        # it when there is one.
+        if self._title and len(self._slot_specs()) == 1:
+            return self._title
+        # Multi fixed-channel panels (e.g. Cherenkov): prefer the detector name
+        # from the calo mapping, so each plot reads "Cher1 · ch 194".
+        if self._fixed_channels is not None:
+            try:
+                return f"{default_mapping().get_channel_name(ch)} · ch {ch}"
+            except KeyError:
+                pass
         if self._projection:
             # Prettify the TH2 base name: strip a trailing "_dist" and turn
             # underscores into spaces (FERS_HG_dist -> "FERS HG", ADC_dist -> "ADC").
@@ -220,16 +285,22 @@ class ChannelSelectorPanel(Panel):
     # ---- Panel API -------------------------------------------------------
 
     def histogram_names(self) -> list[str]:
-        ch = self._selected_ch
-        if ch is None:
+        specs = [(t, c) for t, c in self._slot_specs() if c is not None]
+        if not specs:
             return []
         # Projection mode polls on demand only (see __init__ / issue #153): once
         # the selected channel has been fetched, request nothing until it changes.
         if self._projection and not self._needs_fetch:
             return []
         out: list[str] = []
-        for template in self._templates:
+        for template, ch in specs:
             out += self._slot_tokens(template, ch)
+            # Also fetch the series the threshold fraction is computed on, if it
+            # isn't already among the displayed series.
+            if self._threshold is not None:
+                tok = self._token(template, self._threshold_series, ch)
+                if tok not in out:
+                    out.append(tok)
         return out
 
     def figure_names(self) -> list[str]:
@@ -238,8 +309,8 @@ class ChannelSelectorPanel(Panel):
         return [] if self._split else self.histogram_names()
 
     def control_indices(self) -> list[int]:
-        # One 1D plot per template slot.
-        return list(range(len(self._templates)))
+        # One 1D plot per slot.
+        return list(range(len(self._slot_specs())))
 
     def _options(self) -> list[dict]:
         chans = self._channels()
@@ -262,21 +333,34 @@ class ChannelSelectorPanel(Panel):
         return opts
 
     def layout(self) -> html.Div:
-        options = self._options()
         # (Re)opening the tab refreshes once; projection mode then goes quiet.
         self._needs_fetch = True
-        dropdown = dcc.Dropdown(
-            id={"type": "channel-select", "panel": self.panel_id},
-            options=options,
-            value=self._selected_ch,
-            clearable=False,
-            placeholder="(no channels on backend)" if not options else "select a channel",
-            style={"width": "320px"},
-        )
-        # Projection mode does not auto-refresh (issue #153); offer a manual one.
-        controls = [html.Span("Channel:", style={"color": theme.FG, "fontSize": "13px"}), dropdown]
+        # Control header. The dropdown only in interactive mode; a single fixed
+        # channel shows a static label; multi fixed channels (Cherenkov) label
+        # each plot individually, so the header carries only the refresh button.
+        if self._has_dropdown:
+            options = self._options()  # may set _selected_ch
+            controls: list = [
+                html.Span("Channel:", style={"color": theme.FG, "fontSize": "13px"}),
+                dcc.Dropdown(
+                    id={"type": "channel-select", "panel": self.panel_id},
+                    options=options,
+                    value=self._selected_ch,
+                    clearable=False,
+                    placeholder="(no channels on backend)" if not options else "select a channel",
+                    style={"width": "320px"},
+                ),
+            ]
+        elif self._fixed_channel is not None:
+            controls = [
+                html.Span(self._slot_title(self._template, self._fixed_channel),
+                          style={"color": theme.FG, "fontSize": "13px", "fontWeight": "bold"})
+            ]
+        else:
+            controls = []
         extra_children: list = []
         if self._projection:
+            # Projection mode does not auto-refresh (issue #153); offer a manual one.
             controls.append(
                 html.Button(
                     "↻ refresh",
@@ -286,8 +370,10 @@ class ChannelSelectorPanel(Panel):
                 )
             )
             extra_children.append(dcc.Store(id={"type": "channel-refresh-sink", "panel": self.panel_id}))
-        # One graph slot per template, stacked vertically.
-        ch = self._selected_ch
+
+        # One graph slot per (template, channel) spec, arranged in rows of `cols`
+        # (default 1 = stacked). `cols: 3` puts e.g. the three Cherenkov plots on
+        # one row.
         slots = [
             html.Div(
                 className="plot-cell",
@@ -302,44 +388,63 @@ class ChannelSelectorPanel(Panel):
                     controls_overlay(self.panel_id, i),
                 ],
             )
-            for i, template in enumerate(self._templates)
+            for i, (template, ch) in enumerate(self._slot_specs())
         ]
+        rows = [
+            html.Div(
+                style={"display": "flex", "gap": "12px", "marginBottom": "12px"},
+                children=slots[start:start + self._cols],
+            )
+            for start in range(0, len(slots), self._cols)
+        ]
+        header = (
+            [html.Div(
+                style={"display": "flex", "alignItems": "center", "marginBottom": "12px", "gap": "8px"},
+                children=controls,
+            )]
+            if controls else []
+        )
         return html.Div(
-            [
-                html.Div(
-                    style={"display": "flex", "alignItems": "center", "marginBottom": "12px", "gap": "8px"},
-                    children=controls,
-                ),
-                html.Div(
-                    style={"display": "flex", "flexDirection": "column", "gap": "12px"},
-                    children=slots,
-                ),
-                # Throwaway sink: the selection callback must write to at least
-                # one Output. The real state lives in self._selected_ch.
-                dcc.Store(id={"type": "channel-select-sink", "panel": self.panel_id}),
-            ]
+            header
+            + rows
+            # Throwaway sink: the selection callback must write to at least one
+            # Output. The real state lives in self._selected_ch.
+            + [dcc.Store(id={"type": "channel-select-sink", "panel": self.panel_id})]
             + extra_children
         )
 
     def render(self, figs, payloads, client_state):
-        ch = self._selected_ch
-        if ch is None:
-            return [theme.placeholder_figure("no channel selected") for _ in self._templates]
+        slot_specs = self._slot_specs()
+        if all(ch is None for _, ch in slot_specs):
+            return [theme.placeholder_figure("no channel selected") for _ in slot_specs]
         # Projection mode: if no fetch was requested this tick, reuse the cached
         # figures (we didn't poll exe.json) rather than rebuilding from empty data.
         if self._projection and not self._needs_fetch and self._last_figs is not None:
             return self._last_figs
         out = []
-        for template in self._templates:
+        for template, ch in slot_specs:
             title = self._slot_title(template, ch)
-            if self._split:
+            if ch is None:
+                out.append(theme.placeholder_figure(title))
+            elif self._split:
                 # Overlay the configured series (e.g. physics / pedestal) of this
                 # slot into one figure. The Plotly legend toggles each series.
                 specs = [
                     (payloads.get(self._token(template, suffix, ch)), color, label)
                     for suffix, label, color in self._split_series
                 ]
-                out.append(overlay_figure(self._decoder, specs, title))
+                if self._threshold is not None:
+                    frac = self._fraction_above(payloads.get(self._token(template, self._threshold_series, ch)))
+                    title = self._title_with_fraction(title, frac)
+                fig = overlay_figure(self._decoder, specs, title)
+                if self._threshold is not None:
+                    # Vertical marker at the ADC threshold the fraction refers to.
+                    fig.add_vline(
+                        x=self._threshold, line_dash="dash", line_color=theme.ACCENT, line_width=1,
+                        annotation_text=f"{self._threshold:g}", annotation_position="top",
+                        annotation_font_color=theme.ACCENT,
+                    )
+                out.append(fig)
             else:
                 token = self._token(template, "", ch)
                 out.append(figs.get(token, theme.placeholder_figure(title)))
@@ -348,19 +453,53 @@ class ChannelSelectorPanel(Panel):
             self._needs_fetch = False
         return out
 
+    def _fraction_above(self, payload) -> Optional[float]:
+        """Fraction of the threshold-series entries with bin centre > threshold.
+
+        Decoded from the raw projection payload; returns None when the payload is
+        missing/unusable or the histogram is empty (so the title shows "n/a").
+        """
+        if not payload or self._decoder is None or self._threshold is None:
+            return None
+        try:
+            decoded = self._decoder.decode(payload)
+        except Exception:
+            return None
+        counts = np.asarray(decoded.counts, dtype=float)
+        edges = np.asarray(decoded.edges, dtype=float)
+        if counts.size == 0 or edges.size != counts.size + 1:
+            return None
+        total = counts.sum()
+        if total <= 0:
+            return None
+        centres = 0.5 * (edges[:-1] + edges[1:])
+        above = counts[centres > self._threshold].sum()
+        return float(above / total)
+
+    def _title_with_fraction(self, title: str, frac: Optional[float]) -> str:
+        label = _SPLIT_SUFFIX_INFO.get(self._threshold_series,
+                                       (self._threshold_series.lstrip("_") or "total", ""))[0]
+        thr = f"{self._threshold:g}"
+        if frac is None:
+            return f"{title} — {label} frac > {thr}: n/a"
+        return f"{title} — {label} frac > {thr} = {frac * 100:.1f}%"
+
     def register_callbacks(self, app: Dash) -> None:
-        @app.callback(
-            Output({"type": "channel-select-sink", "panel": self.panel_id}, "data"),
-            Input({"type": "channel-select", "panel": self.panel_id}, "value"),
-            prevent_initial_call=True,
-        )
-        def _on_select(value):
-            # Persist the choice in instance state; the next poll picks it up via
-            # histogram_names(). Returning `value` satisfies Dash's Output rule.
-            if value is not None:
-                self._selected_ch = int(value)
-                self._needs_fetch = True   # projection mode fetches on change only
-            return value
+        # Fixed-channel panels (single or multi) render no dropdown, so there is
+        # no selection callback to register (its Input component would not exist).
+        if self._has_dropdown:
+            @app.callback(
+                Output({"type": "channel-select-sink", "panel": self.panel_id}, "data"),
+                Input({"type": "channel-select", "panel": self.panel_id}, "value"),
+                prevent_initial_call=True,
+            )
+            def _on_select(value):
+                # Persist the choice in instance state; the next poll picks it up via
+                # histogram_names(). Returning `value` satisfies Dash's Output rule.
+                if value is not None:
+                    self._selected_ch = int(value)
+                    self._needs_fetch = True   # projection mode fetches on change only
+                return value
 
         if self._projection:
             @app.callback(
