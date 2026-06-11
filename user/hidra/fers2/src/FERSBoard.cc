@@ -198,6 +198,7 @@ bool FERSBoard::StartAcquisition(int start_mode, int run_number) {
 
   const int handle = m_handle.get();
   int one_handle[1] = {handle};
+  FERS_SendCommand(handle, CMD_CLEAR);
   int ret = FERS_StartAcquisition(one_handle, 1, start_mode, run_number);
   m_status.last_return_code = ret;
   if (ret != 0) {
