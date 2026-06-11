@@ -382,6 +382,9 @@ private:
   }
 
   const uint16_t boardId = ReadReg(0x0000, m_eventSyncBase, cvA24_U_DATA); 
+
+  ThrowIfVmeError("Event-sync board ID read failed");
+
   EUDAQ_INFO("Event-sync board enabled at " + hex32(m_eventSyncBase) +
              ", ID = 0x" + hex16(boardId));
 
