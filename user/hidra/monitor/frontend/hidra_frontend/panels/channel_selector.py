@@ -30,6 +30,7 @@ documented in the README (per-process state is shared across callbacks).
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
 
@@ -37,11 +38,13 @@ import numpy as np
 from dash import Dash, Input, Output, dcc, html
 
 from .. import theme
-from ..decoders import get_decoder
+from ..decoders import DecoderError, get_decoder
 from ..figure_builder import overlay_figure
 from ..mapping import default_mapping
 from .base import Panel
 from .graph_controls import controls_overlay
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TEMPLATE = "ADC_channel_{ch}"
 
@@ -426,28 +429,36 @@ class ChannelSelectorPanel(Panel):
             title = self._slot_title(template, ch)
             if ch is None:
                 out.append(theme.placeholder_figure(title))
-            elif self._split:
+                continue
+            # Threshold annotation (independent of split mode): put the fraction
+            # above the threshold into the title; the marker is added after the
+            # figure is built. The raw threshold-series payload is fetched by
+            # histogram_names() and so is present in `payloads` in either mode.
+            if self._threshold is not None:
+                frac = self._fraction_above(payloads.get(self._token(template, self._threshold_series, ch)))
+                title = self._title_with_fraction(title, frac)
+            if self._split:
                 # Overlay the configured series (e.g. physics / pedestal) of this
                 # slot into one figure. The Plotly legend toggles each series.
                 specs = [
                     (payloads.get(self._token(template, suffix, ch)), color, label)
                     for suffix, label, color in self._split_series
                 ]
-                if self._threshold is not None:
-                    frac = self._fraction_above(payloads.get(self._token(template, self._threshold_series, ch)))
-                    title = self._title_with_fraction(title, frac)
                 fig = overlay_figure(self._decoder, specs, title)
-                if self._threshold is not None:
-                    # Vertical marker at the ADC threshold the fraction refers to.
-                    fig.add_vline(
-                        x=self._threshold, line_dash="dash", line_color=theme.ACCENT, line_width=1,
-                        annotation_text=f"{self._threshold:g}", annotation_position="top",
-                        annotation_font_color=theme.ACCENT,
-                    )
-                out.append(fig)
             else:
-                token = self._token(template, "", ch)
-                out.append(figs.get(token, theme.placeholder_figure(title)))
+                fig = figs.get(self._token(template, "", ch))
+                if fig is None:
+                    fig = theme.placeholder_figure(title)
+                elif self._threshold is not None:
+                    fig.update_layout(title_text=title)
+            if self._threshold is not None:
+                # Vertical marker at the ADC threshold the fraction refers to.
+                fig.add_vline(
+                    x=self._threshold, line_dash="dash", line_color=theme.ACCENT, line_width=1,
+                    annotation_text=f"{self._threshold:g}", annotation_position="top",
+                    annotation_font_color=theme.ACCENT,
+                )
+            out.append(fig)
         if self._projection:
             self._last_figs = out
             self._needs_fetch = False
@@ -463,7 +474,11 @@ class ChannelSelectorPanel(Panel):
             return None
         try:
             decoded = self._decoder.decode(payload)
-        except Exception:
+        except DecoderError:
+            # Payload shape this decoder can't handle: a normal "n/a", stay quiet.
+            return None
+        except Exception:  # noqa: BLE001 — one bad payload must not break the poll
+            logger.warning("threshold fraction: unexpected error decoding payload", exc_info=True)
             return None
         counts = np.asarray(decoded.counts, dtype=float)
         edges = np.asarray(decoded.edges, dtype=float)
