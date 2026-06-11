@@ -29,6 +29,7 @@ using hidra::fers2::BoardMonitorStatus;
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
 using hidra::fers2::FERSEvent;
+using namespace std::chrono_literals;
 
 std::string FormatSummary(const FERSEvent& event) {
   std::ostringstream oss;
@@ -656,7 +657,8 @@ private:
     SendEvent(std::move(ev));
     m_stamp_last_sent_ns = ts_now;
     HIDRA_DEBUG("FERS producers sent event for trg {}", trigger_n);
-    if (m_evt_f % 500 == 0) {
+    if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
+      m_last_status_log = std::chrono::steady_clock::now();
       HIDRA_INFO("FERS producer sent event for trg {}. Total events sent: {}", trigger_n, m_evt_f);
     }
     ++m_evt_f;
@@ -730,6 +732,7 @@ private:
   bool m_exit_of_run = false;
   std::chrono::steady_clock::time_point m_next_status_poll = std::chrono::steady_clock::time_point::min();
   std::chrono::steady_clock::time_point m_last_event_read = std::chrono::steady_clock::time_point::min();
+  std::chrono::steady_clock::time_point m_last_status_log = std::chrono::steady_clock::time_point::min();
   bool m_polled_monitor_out_of_spill = false;
   uint64_t m_stamp_last_sent_ns = 0;
   uint64_t m_start_boards_call_ts_ns = 0;
