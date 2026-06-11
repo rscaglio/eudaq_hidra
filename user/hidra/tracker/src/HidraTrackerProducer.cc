@@ -125,14 +125,19 @@ uint64_t ParseUnsigned(const std::string& value, const std::string& column, cons
 
 uint32_t ParseUint32(const std::string& value, const std::string& column, const std::filesystem::path& file,
                      std::size_t line_number) {
+  // Trim once up front so trailing whitespace (common in CSVs) doesn't defeat
+  // the "whole token consumed" checks below. (Split already trims its fields,
+  // but keep the parser robust on its own.)
+  const std::string v = Trim(value);
+
   // Fast path: a plain unsigned integer, parsed exactly.
   std::size_t parsed = 0;
   try {
-    const uint64_t result = std::stoull(value, &parsed, 0);
-    if (parsed == value.size()) {
+    const uint64_t result = std::stoull(v, &parsed, 0);
+    if (parsed == v.size()) {
       if (result > std::numeric_limits<uint32_t>::max()) {
         EUDAQ_THROW("Column '" + column + "' is larger than uint32_t at " + file.string() + ":" +
-                    std::to_string(line_number));
+                    std::to_string(line_number) + ": " + v);
       }
       return static_cast<uint32_t>(result);
     }
@@ -140,29 +145,30 @@ uint32_t ParseUint32(const std::string& value, const std::string& column, const 
     // Not a plain integer; fall through to the float path below.
   }
 
-  // The value carries a fractional/float format (e.g. "12.5"). Accept it but
-  // warn, then round to the nearest integer.
+  // The value carries a fractional/float format (e.g. "12.5"); accept it by
+  // rounding to the nearest integer.
   std::size_t float_parsed = 0;
   double real = 0.0;
   try {
-    real = std::stod(value, &float_parsed);
+    real = std::stod(v, &float_parsed);
   } catch (const std::exception&) {
     EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
-                ": " + value);
+                ": " + v);
   }
-  if (float_parsed != value.size()) {
+  if (float_parsed != v.size() || !std::isfinite(real)) {
     EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
-                ": " + value);
-  }
-  if (!std::isfinite(real) || real < 0.0 || real > static_cast<double>(std::numeric_limits<uint32_t>::max())) {
-    EUDAQ_THROW("Column '" + column + "' is out of uint32_t range at " + file.string() + ":" +
-                std::to_string(line_number) + ": " + value);
+                ": " + v);
   }
 
-  // Accept a fractional coordinate by rounding to the nearest integer, silently:
-  // production tracker data is integer-valued, so this only triggers on test
-  // inputs, where a per-value log would just flood the run.
-  return static_cast<uint32_t>(std::llround(real));
+  // Round first, then range-check the integer, so a value just below the max
+  // can't round up past it. Silent: production data is integer-valued, so this
+  // path only triggers on test inputs, where a per-value log would flood the run.
+  const long long rounded = std::llround(real);
+  if (rounded < 0 || rounded > static_cast<long long>(std::numeric_limits<uint32_t>::max())) {
+    EUDAQ_THROW("Column '" + column + "' is out of uint32_t range at " + file.string() + ":" +
+                std::to_string(line_number) + ": " + v);
+  }
+  return static_cast<uint32_t>(rounded);
 }
 
 std::size_t FindColumn(const std::vector<std::string>& headers, const std::string& column) {

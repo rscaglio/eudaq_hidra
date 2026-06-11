@@ -231,13 +231,21 @@ void HidraHttpMonitor::DoConfigure() {
     for (int i = 0; i < n_stations; ++i) {
       TrackerStationConfig station = def;
       const std::string override_str = conf->Get(hidra::utils::format("TRACKER_STATION{}", i), std::string(""));
-      if (!override_str.empty()) {
+      // The EUDAQ config parser keeps inline comments on the value (it only
+      // drops whole lines starting with '#'/';'), so strip a trailing "# ..."
+      // or "; ..." before parsing — the repo's .conf files use inline comments.
+      std::string spec = override_str;
+      const auto comment = spec.find_first_of("#;");
+      if (comment != std::string::npos) {
+        spec = spec.substr(0, comment);
+      }
+      if (!Trim(spec).empty()) {
         // Expect "xmin,xmax,ymin,ymax"; binning stays the global default. Each
         // token is parsed strictly: trimmed, and the whole token must be a
-        // number (no trailing garbage like "50#comment"), else the override is
+        // number (no trailing garbage like "50abc"), else the override is
         // rejected and the global range kept.
         std::vector<double> vals;
-        std::stringstream ss(override_str);
+        std::stringstream ss(spec);
         std::string tok;
         while (std::getline(ss, tok, ',')) {
           const std::string trimmed = Trim(tok);
