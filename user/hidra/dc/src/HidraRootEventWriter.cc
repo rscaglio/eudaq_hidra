@@ -106,6 +106,7 @@ struct HidraRootEventWriter::Impl {
 
   HidraXdcPayloadDecoder xdc_decoder;
   HidraFersPayloadDecoder fers_decoder;
+  HidraTrackerPayloadDecoder tracker_decoder;
   HidraGenericPayloadDecoder generic_decoder;
 
   void ResetEntryBuffers() {
@@ -161,6 +162,9 @@ struct HidraRootEventWriter::Impl {
     for (const auto& name : fers_decoder.BranchNames()) {
       EnsureRootBranch(tree, name);
     }
+    for (const auto& name : tracker_decoder.BranchNames()) {
+      EnsureRootBranch(tree, name);
+    }
   }
 
   void AddBranchValues(TTree* tree, const RootBranchValues& branches) {
@@ -177,6 +181,8 @@ struct HidraRootEventWriter::Impl {
       xdc_decoder.Decode(detector, detector.quantities, detector.branches);
     } else if (fers_decoder.Matches(detector)) {
       fers_decoder.Decode(detector, detector.quantities, detector.branches);
+    } else if (tracker_decoder.Matches(detector)) {
+      tracker_decoder.Decode(detector, detector.quantities, detector.branches);
     } else {
       generic_decoder.Decode(detector, detector.quantities, detector.branches);
     }

@@ -5,6 +5,7 @@
 #include "SummaryFiller.hh"
 #include "XDCFiller.hh"
 #include "FERSFiller.hh"
+#include "TrackerFiller.hh"
 #include "MetaFiller.hh"
 #include "HidraUtils.hh"
 #include "ScopedTimer.hh"
@@ -17,13 +18,26 @@
 #include <eudaq/FileNamer.hh>
 
 #include <ctime>
+#include <sstream>
+#include <stdexcept>
+#include <vector>
 
 const uint32_t HidraHttpMonitor::m_id_factory = eudaq::cstr2hash("HidraHttpMonitor");
 
 namespace {
 auto _reg = eudaq::Factory<eudaq::Monitor>::Register<HidraHttpMonitor, const std::string&, const std::string&>(
     HidraHttpMonitor::m_id_factory);
+
+// Strip leading/trailing whitespace; returns "" for an all-whitespace string.
+std::string Trim(const std::string& s) {
+  const auto first = s.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return {};
+  }
+  const auto last = s.find_last_not_of(" \t\r\n");
+  return s.substr(first, last - first + 1);
 }
+} // namespace
 
 // ── MonitorContext ──────────────────────────────────────────────────────────
 
@@ -39,7 +53,8 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int fers_value_max,
     int fers_channel_nbins,
     int fers_saturation_threshold,
-    bool fers_per_channel_distributions)
+    bool fers_per_channel_distributions,
+    std::vector<TrackerStationConfig> tracker_stations)
     : publisher(registry, port, pump_interval_ms),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
@@ -53,6 +68,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
   chain.Add(std::make_unique<FERSFiller>(registry, static_cast<unsigned int>(fers_nboards), 64u, fers_value_max,
                                          fers_channel_nbins, fers_saturation_threshold,
                                          fers_per_channel_distributions));
+  chain.Add(std::make_unique<TrackerFiller>(registry, tracker_stations));
   chain.Add(std::make_unique<MetaFiller>(registry));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
@@ -69,6 +85,7 @@ void HidraHttpMonitor::MonitorContext::ResetTelemetry() {
   // decode/fill timers are written by DoReceive which is not running at a run boundary.
   duration_xdc_decode.Reset();
   duration_fers_decode.Reset();
+  duration_tracker_decode.Reset();
   chain.LockWaitTimer().Reset();
   for (const auto& filler : chain.Fillers()) {
     filler->Timer().Reset();
@@ -81,6 +98,7 @@ void HidraHttpMonitor::MonitorContext::LogTelemetry() {
 
   HIDRA_INFO("  " + duration_xdc_decode.Summary());
   HIDRA_INFO("  " + duration_fers_decode.Summary());
+  HIDRA_INFO("  " + duration_tracker_decode.Summary());
 
   // Lock wait — this is the time spent waiting for the histogram lock in FillerChain::Fill(). If this is high, it means
   // the pump thread is contending with DoReceive for the lock, which may indicate that the pump frequency is too high
@@ -190,6 +208,77 @@ void HidraHttpMonitor::DoConfigure() {
     cfg_nboards = 20;
   }
 
+  // Tracker 2D hit maps: one TH2 per station, sized from the run config (like the
+  // FERS sizing above, only consumed on the first configure). `TRACKER_NSTATIONS`
+  // stations all default to the global `TRACKER_X_*` / `TRACKER_Y_*` range and
+  // binning; an optional per-station `TRACKER_STATION<i> = xmin,xmax,ymin,ymax`
+  // overrides the range of that station.
+  std::vector<TrackerStationConfig> tracker_stations;
+  {
+    int n_stations = conf->Get("TRACKER_NSTATIONS", 2);
+    if (n_stations < 0) {
+      HIDRA_WARN("TRACKER_NSTATIONS={} is invalid, forcing 0.", n_stations);
+      n_stations = 0;
+    }
+    TrackerStationConfig def;
+    def.x_nbins = conf->Get("TRACKER_X_NBINS", 100);
+    def.x_min = conf->Get("TRACKER_X_MIN", 0.0);
+    def.x_max = conf->Get("TRACKER_X_MAX", 1000.0);
+    def.y_nbins = conf->Get("TRACKER_Y_NBINS", 100);
+    def.y_min = conf->Get("TRACKER_Y_MIN", 0.0);
+    def.y_max = conf->Get("TRACKER_Y_MAX", 1000.0);
+
+    for (int i = 0; i < n_stations; ++i) {
+      TrackerStationConfig station = def;
+      const std::string override_str = conf->Get(hidra::utils::format("TRACKER_STATION{}", i), std::string(""));
+      // The EUDAQ config parser keeps inline comments on the value (it only
+      // drops whole lines starting with '#'/';'), so strip a trailing "# ..."
+      // or "; ..." before parsing — the repo's .conf files use inline comments.
+      std::string spec = override_str;
+      const auto comment = spec.find_first_of("#;");
+      if (comment != std::string::npos) {
+        spec = spec.substr(0, comment);
+      }
+      if (!Trim(spec).empty()) {
+        // Expect "xmin,xmax,ymin,ymax"; binning stays the global default. Each
+        // token is parsed strictly: trimmed, and the whole token must be a
+        // number (no trailing garbage like "50abc"), else the override is
+        // rejected and the global range kept.
+        std::vector<double> vals;
+        std::stringstream ss(spec);
+        std::string tok;
+        while (std::getline(ss, tok, ',')) {
+          const std::string trimmed = Trim(tok);
+          if (trimmed.empty()) {
+            vals.clear();
+            break;
+          }
+          std::size_t pos = 0;
+          try {
+            const double v = std::stod(trimmed, &pos);
+            if (pos != trimmed.size()) {
+              throw std::invalid_argument("trailing characters");
+            }
+            vals.push_back(v);
+          } catch (const std::exception&) {
+            vals.clear();
+            break;
+          }
+        }
+        if (vals.size() == 4) {
+          station.x_min = vals[0];
+          station.x_max = vals[1];
+          station.y_min = vals[2];
+          station.y_max = vals[3];
+        } else {
+          HIDRA_WARN("TRACKER_STATION{}='{}' is malformed (expected 'xmin,xmax,ymin,ymax'); using global range.", i,
+                     override_str);
+        }
+      }
+      tracker_stations.push_back(station);
+    }
+  }
+
   std::unique_lock<std::shared_mutex> lock(m_state_mutex);
 
   // The FERS histograms are sized once (first configure). On a reconfigure reuse the sizing the histograms were built
@@ -216,7 +305,7 @@ void HidraHttpMonitor::DoConfigure() {
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
                                              std::move(fers_decoder), n_adc_channels, m_noise_update_interval,
                                              cfg_nboards, cfg_value_max, fers_channel_nbins, fers_saturation_threshold,
-                                             fers_per_channel);
+                                             fers_per_channel, std::move(tracker_stations));
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap
@@ -360,6 +449,9 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
     } else if (det_id == 2) {
       // Defer FERS decoding until after the loop (see below).
       fers_payload = std::move(detector_payload);
+    } else if (det_id == 3) {
+      ScopedTimer t(m_ctx->duration_tracker_decode);
+      m_ctx->tracker_decoder.decode(detector_payload, decoded.tracker, subevent->GetTriggerN());
     }
   }
 

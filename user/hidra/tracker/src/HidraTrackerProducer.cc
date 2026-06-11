@@ -9,7 +9,9 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -39,7 +41,13 @@ constexpr std::array<const char*, 10> TRACKER_COLUMNS = {
 
 constexpr const char* TRIGGER_COLUMN = "TriggerId";
 constexpr const char* TIMESTAMP_COLUMN = "Time stamp";
-constexpr std::array<std::size_t, 4> COORDINATE_COLUMN_INDICES = {2, 3, 4, 5};
+// Per-station hit coordinates, as consecutive (x, y) column pairs: station 0 =
+// (X, Y), station 1 = (Column5, Column6), station 2 = (Column7, Column8). The
+// block built in SendRow is therefore one uint32 per entry here, and the
+// number of stations the decoder/monitor sees is `size()/2`.
+// PROVISIONAL: the official production tracker format is not finalised yet —
+// revisit these indices (and `TRACKER_COLUMNS`) together when it is.
+constexpr std::array<std::size_t, 6> COORDINATE_COLUMN_INDICES = {2, 3, 4, 5, 6, 7};
 
 std::string Trim(std::string value) {
   const auto first = value.find_first_not_of(" \t\r\n");
@@ -48,6 +56,32 @@ std::string Trim(std::string value) {
   }
   const auto last = value.find_last_not_of(" \t\r\n");
   return value.substr(first, last - first + 1);
+}
+
+// Expand ${VAR} references in a config value from the process environment, so a
+// path can be written machine-independently (e.g. ${REPO_ROOT}/...). Only the
+// ${...} form is recognised; an unset or unterminated variable is a hard error.
+std::string ExpandEnv(const std::string& value) {
+  std::string out;
+  out.reserve(value.size());
+  for (std::size_t i = 0; i < value.size();) {
+    if (value[i] == '$' && i + 1 < value.size() && value[i + 1] == '{') {
+      const auto end = value.find('}', i + 2);
+      if (end == std::string::npos) {
+        EUDAQ_THROW("Unterminated ${...} in config value: " + value);
+      }
+      const std::string name = value.substr(i + 2, end - (i + 2));
+      const char* env = std::getenv(name.c_str());
+      if (env == nullptr) {
+        EUDAQ_THROW("Environment variable '" + name + "' referenced in config value is not set: " + value);
+      }
+      out += env;
+      i = end + 1;
+    } else {
+      out += value[i++];
+    }
+  }
+  return out;
 }
 
 std::vector<std::string> Split(const std::string& line, char delimiter) {
@@ -91,12 +125,50 @@ uint64_t ParseUnsigned(const std::string& value, const std::string& column, cons
 
 uint32_t ParseUint32(const std::string& value, const std::string& column, const std::filesystem::path& file,
                      std::size_t line_number) {
-  const uint64_t result = ParseUnsigned(value, column, file, line_number);
-  if (result > std::numeric_limits<uint32_t>::max()) {
-    EUDAQ_THROW("Column '" + column + "' is larger than uint32_t at " + file.string() + ":" +
-                std::to_string(line_number));
+  // Trim once up front so trailing whitespace (common in CSVs) doesn't defeat
+  // the "whole token consumed" checks below. (Split already trims its fields,
+  // but keep the parser robust on its own.)
+  const std::string v = Trim(value);
+
+  // Fast path: a plain unsigned integer, parsed exactly.
+  std::size_t parsed = 0;
+  try {
+    const uint64_t result = std::stoull(v, &parsed, 0);
+    if (parsed == v.size()) {
+      if (result > std::numeric_limits<uint32_t>::max()) {
+        EUDAQ_THROW("Column '" + column + "' is larger than uint32_t at " + file.string() + ":" +
+                    std::to_string(line_number) + ": " + v);
+      }
+      return static_cast<uint32_t>(result);
+    }
+  } catch (const std::exception&) {
+    // Not a plain integer; fall through to the float path below.
   }
-  return static_cast<uint32_t>(result);
+
+  // The value carries a fractional/float format (e.g. "12.5"); accept it by
+  // rounding to the nearest integer.
+  std::size_t float_parsed = 0;
+  double real = 0.0;
+  try {
+    real = std::stod(v, &float_parsed);
+  } catch (const std::exception&) {
+    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
+                ": " + v);
+  }
+  if (float_parsed != v.size() || !std::isfinite(real)) {
+    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
+                ": " + v);
+  }
+
+  // Round first, then range-check the integer, so a value just below the max
+  // can't round up past it. Silent: production data is integer-valued, so this
+  // path only triggers on test inputs, where a per-value log would flood the run.
+  const long long rounded = std::llround(real);
+  if (rounded < 0 || rounded > static_cast<long long>(std::numeric_limits<uint32_t>::max())) {
+    EUDAQ_THROW("Column '" + column + "' is out of uint32_t range at " + file.string() + ":" +
+                std::to_string(line_number) + ": " + v);
+  }
+  return static_cast<uint32_t>(rounded);
 }
 
 std::size_t FindColumn(const std::vector<std::string>& headers, const std::string& column) {
@@ -130,7 +202,9 @@ private:
     }
 
     EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
-    m_directory = conf->Get("TRACKER_DIRECTORY", std::string(""));
+    // Expand ${VAR} so the path can be absolute and machine-independent (e.g.
+    // ${REPO_ROOT}/...), instead of depending on the launch working directory.
+    m_directory = ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
     if (m_directory.empty()) {
       EUDAQ_THROW("TRACKER_DIRECTORY is missing from the run configuration");
     }
@@ -321,14 +395,13 @@ private:
                   std::to_string(line_number));
     }
 
-    const uint32_t plane0_x = ParseUint32(values[COORDINATE_COLUMN_INDICES[0]],
-                                          headers[COORDINATE_COLUMN_INDICES[0]], file, line_number);
-    const uint32_t plane0_y = ParseUint32(values[COORDINATE_COLUMN_INDICES[1]],
-                                          headers[COORDINATE_COLUMN_INDICES[1]], file, line_number);
-    const uint32_t plane1_x = ParseUint32(values[COORDINATE_COLUMN_INDICES[2]],
-                                          headers[COORDINATE_COLUMN_INDICES[2]], file, line_number);
-    const uint32_t plane1_y = ParseUint32(values[COORDINATE_COLUMN_INDICES[3]],
-                                          headers[COORDINATE_COLUMN_INDICES[3]], file, line_number);
+    // One uint32 per coordinate column, in order: consecutive (x, y) pairs, one
+    // per station. The decoder reconstructs `size()/2` stations from this block.
+    std::array<uint32_t, COORDINATE_COLUMN_INDICES.size()> coordinates{};
+    for (std::size_t i = 0; i < COORDINATE_COLUMN_INDICES.size(); ++i) {
+      const std::size_t col = COORDINATE_COLUMN_INDICES[i];
+      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number);
+    }
 
     auto event = eudaq::Event::MakeUnique("TrackerRaw");
     event->SetRunN(static_cast<uint32_t>(m_run_number));
@@ -342,7 +415,6 @@ private:
       event->SetTag(headers[index], values[index]);
     }
 
-    const std::array<uint32_t, 4> coordinates = {plane0_x, plane0_y, plane1_x, plane1_y};
     event->AddBlock(0, coordinates.data(), coordinates.size() * sizeof(uint32_t));
     SendEvent(std::move(event));
   }

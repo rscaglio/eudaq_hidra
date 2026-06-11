@@ -286,3 +286,19 @@ tabs:
       - type: histograms
         cols: 2
         histograms: [FERS_HG_board_mean, FERS_LG_board_mean, FERS_HG_board_allzero, FERS_board_time_offset]
+
+  # ---- Tracker -----------------------------------------------------------
+  # One 2D hit map (X vs Y occupancy) per tracker station, published by the
+  # backend TrackerFiller as `Tracker_station<i>` (TH2). The station count and
+  # the per-station X/Y range/binning are set in the monitor `.conf`
+  # (TRACKER_NSTATIONS, TRACKER_X_*/TRACKER_Y_*); keep the names below in sync
+  # with TRACKER_NSTATIONS. `equal_aspect` locks a 1:1 x/y pixel ratio.
+  - id: tracker
+    label: Tracker
+    panels:
+      - type: tracker
+        histograms: [Tracker_station0, Tracker_station1, Tracker_station2]
+        cols: 3              # all three station maps on one row
+        height: 360px
+        equal_aspect: true
+        projections: true    # X and Y distributions below, all stations overlaid

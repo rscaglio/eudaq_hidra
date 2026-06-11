@@ -335,6 +335,21 @@ Append an entry under `tabs:` in `config.yaml`:
   fetching **only the shown variant** from the backend; without it,
   `histogram` is used verbatim (e.g. `FERS_HG_saturation_physics`).
 
+- `tracker` — one **2D hit map** (`go.Heatmap`) per tracker station, from
+  the backend `Tracker_station<i>` `TH2`s, plus (by default) two **projection
+  overlays** below them: the X distribution and the Y distribution, each with
+  one step-line per station superimposed (legend toggles them). The projections
+  are computed in the panel as the `TH2` projections (sum over the other axis),
+  so they need no extra backend histograms; the overlay assumes a shared axis
+  range across stations. Like `detector` it reads the raw ROOT `TH2` buffers
+  directly (the 1D figure builder doesn't handle 2D), so it never goes through
+  `to_figure`. Params: `histograms: [...]` (one heatmap each, in order; keep in
+  sync with the backend `TRACKER_NSTATIONS`); `cols:` (heatmaps per row, default
+  2); `height:` (per map); `equal_aspect: true` locks a 1:1 x/y pixel ratio;
+  `projections:` (default `true`) toggles the X/Y overlay row;
+  `projection_height:` its height. The X/Y range and binning are fixed by the
+  backend (`TRACKER_X_*`/`TRACKER_Y_*`), not here.
+
 - `overlay` — a fixed list of histograms superimposed in one graph (one
   line trace each, legend toggles them). Params: `histograms: [...]`;
   `labels: [...]` (optional); `title:` (optional); `per_channel: true`

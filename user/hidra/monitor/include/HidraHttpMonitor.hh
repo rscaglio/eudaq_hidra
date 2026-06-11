@@ -38,9 +38,11 @@
 #include "FillerChain.hh"
 #include "HistogramPublisher.hh"
 #include "HistogramRegistry.hh"
+#include "TrackerFiller.hh"
 
 #include <HidraXdcDecoder.hh>
 #include <IFersDecoder.hh>
+#include <HidraTrackerDecoder.hh>
 #include <HidraMetaDecoder.hh>
 
 #include <eudaq/Factory.hh>
@@ -107,11 +109,15 @@ private:
     /** Real or random FERS decoder, selected at configure time (FERS_DECODER). */
     std::unique_ptr<hidra::IFersDecoder> fers_decoder;
 
+    /** Stateless tracker decoder (per-station X/Y coordinates from the tracker payload). */
+    hidra::HidraTrackerDecoder tracker_decoder;
+
     /** Stateless decoder that extracts per-event metadata (trigger mask, spill, …) from the EUDAQ event. */
     hidra::HidraMetaDecoder meta_decoder;
 
     DurationAccumulator duration_xdc_decode{"decode_xdc"};
     DurationAccumulator duration_fers_decode{"decode_fers"};
+    DurationAccumulator duration_tracker_decode{"decode_tracker"};
 
     /**
      * FERS histogram sizing this context was built with. The FERS histograms are
@@ -136,7 +142,7 @@ private:
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
                    std::unique_ptr<hidra::IFersDecoder> fers_dec, int n_adc_channels, int noise_update_interval,
                    int fers_nboards, int fers_value_max, int fers_channel_nbins, int fers_saturation_threshold,
-                   bool fers_per_channel_distributions);
+                   bool fers_per_channel_distributions, std::vector<TrackerStationConfig> tracker_stations);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();

@@ -20,6 +20,7 @@ from .histogram_grid import HistogramGridPanel
 from .metric import MetricPanel
 from .overlay import OverlayPanel
 from .rate import RatePanel
+from .tracker import TrackerPanel
 from .sipm_detector import SiPMDetectorPanel
 
 PANEL_TYPES: dict[str, type[Panel]] = {
@@ -31,6 +32,7 @@ PANEL_TYPES: dict[str, type[Panel]] = {
     "sipm_detector": SiPMDetectorPanel,
     "overlay": OverlayPanel,
     "rate": RatePanel,
+    "tracker": TrackerPanel,
 }
 
 

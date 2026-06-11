@@ -25,6 +25,20 @@ EMPTY = "#585b70"
 GRID = "rgba(205, 214, 244, 0.10)"
 ZERO = "rgba(205, 214, 244, 0.16)"
 
+# Catppuccin Mocha accent colours, ordered for good separation when several
+# series are overlaid on the dark background. Cycle through it for per-series
+# line colours (e.g. one per tracker station).
+PALETTE = (
+    PRIMARY,    # blue    #89b4fa
+    "#fab387",  # peach
+    OK,         # green   #a6e3a1
+    ACCENT,     # mauve   #cba6f7
+    WARN,       # yellow  #f9e2af
+    "#94e2d5",  # teal
+    "#f5c2e7",  # pink
+    ERR,        # red     #f38ba8
+)
+
 
 def base_figure_layout(title: str) -> dict:
     # uirevision keyed on the figure title (= histogram name) preserves
