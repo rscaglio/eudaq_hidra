@@ -36,6 +36,6 @@ sleep 1
 
 $BINPATH/euCliProducer -n HidraQTPDProducer -t QTPDProducer &
 
-$BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
+#$BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
 
 # $BINPATH/euCliProducer -n HidraTrackerProducer -t TrackerProducer 

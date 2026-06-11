@@ -9,6 +9,7 @@
 #include "FERSlib.h"
 #include "FERSPayloadSerialization.h"
 #include "HidraUtils.hh"
+#include "Logger.hh"
 
 namespace hidra {
 namespace fers2 {
@@ -42,7 +43,7 @@ FERSBoard::FERSBoard(int board_id,
     FERS_CloseDevice(handle);
     throw FersError("FERS_InitReadout failed for '" + m_connection_path + "'", ret);
   }
-
+  HIDRA_INFO("Init readout on board {}, mode {}, path {}", board_id, readout_mode, m_connection_path);
   // adopt handle
   m_handle = FersHandle(handle);
   m_status.allocated_readout_bytes = allocated_size;
@@ -197,6 +198,7 @@ bool FERSBoard::StartAcquisition(int start_mode, int run_number) {
 
   const int handle = m_handle.get();
   int one_handle[1] = {handle};
+  FERS_FlushData(handle);
   int ret = FERS_StartAcquisition(one_handle, 1, start_mode, run_number);
   m_status.last_return_code = ret;
   if (ret != 0) {
@@ -227,6 +229,7 @@ bool FERSBoard::StopAcquisition(int start_mode, int run_number) {
 
   m_status.state = BoardState::kConfigured;
   m_status.last_error.clear();
+  FERS_FlushData(handle);
   return true;
 }
 

@@ -198,6 +198,16 @@ tabs:
   - id: fers_hg
     label: FERS HG
     panels:
+      # SiPM detector face: every FERS channel at its (column, row) fiber
+      # position, coloured by its mean HG. S/C fibers are interleaved by row
+      # in a single grid (channel -> position from the SiPM mapping). Clicking
+      # a cell opens the FERS channel selector on that channel.
+      - type: sipm_detector
+        histogram: FERS_HG_mean
+        label: "mean HG"
+        height: 420px
+        mode_toggle: true
+        link_tab: fers_channels
       - type: fers_board
         histogram: FERS_HG_mean
         label: "mean HG"
@@ -213,6 +223,12 @@ tabs:
   - id: fers_lg
     label: FERS LG
     panels:
+      - type: sipm_detector
+        histogram: FERS_LG_mean
+        label: "mean LG"
+        height: 420px
+        mode_toggle: true
+        link_tab: fers_channels
       - type: fers_board
         histogram: FERS_LG_mean
         label: "mean LG"
@@ -245,6 +261,14 @@ tabs:
       - type: histograms
         cols: 2
         histograms: [FERS_HG_saturation_physics, FERS_LG_saturation_physics]
+      # SiPM detector face coloured by the HG saturation fraction (physics).
+      # Saturation is physics-only (pedestal events don't saturate), so no
+      # mode toggle here.
+      - type: sipm_detector
+        histogram: FERS_HG_saturation_physics
+        label: "sat. fraction (physics)"
+        height: 420px
+        link_tab: fers_channels
       - type: fers_board
         histogram: FERS_HG_saturation_physics
         label: "sat. fraction (physics)"
