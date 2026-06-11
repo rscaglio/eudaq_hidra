@@ -381,9 +381,7 @@ private:
     return;
   }
 
-  const uint16_t boardId = ReadReg(0x0000, m_eventSyncBase);
-  ThrowIfVmeError("Event-sync board ID read failed");
-
+  const uint16_t boardId = ReadReg(0x0000, m_eventSyncBase, cvA24_U_DATA); 
   EUDAQ_INFO("Event-sync board enabled at " + hex32(m_eventSyncBase) +
              ", ID = 0x" + hex16(boardId));
 
@@ -403,18 +401,18 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
 
   // THIS IS THE ESSENTIAL OPERATION:
   const uint16_t trigger16 = static_cast<uint16_t>(triggerNumber & 0xFFFFu);
-  WriteReg(EVSYNC_LOW_WRITE_REG, trigger16, m_eventSyncBase);
+  WriteReg(EVSYNC_LOW_WRITE_REG, trigger16, m_eventSyncBase, cvA24_U_DATA);
   ThrowIfVmeError("Event-sync low trigger write failed");
   //////
 
   if (m_eventSyncWriteHighMarker) {
-    WriteReg(EVSYNC_HIGH_WRITE_REG, m_eventSyncHighMarker, m_eventSyncBase);
+    WriteReg(EVSYNC_HIGH_WRITE_REG, m_eventSyncHighMarker, m_eventSyncBase, cvA24_U_DATA);
     ThrowIfVmeError("Event-sync high marker write failed");
   }
 
   if (m_eventSyncReadback || m_eventSyncDebug) {
-    const uint16_t lowLoopback = ReadReg(EVSYNC_LOW_LOOPBACK_REG, m_eventSyncBase);
-    const uint16_t lowReg = ReadReg(EVSYNC_LOW_READBACK_REG, m_eventSyncBase);
+    const uint16_t lowLoopback = ReadReg(EVSYNC_LOW_LOOPBACK_REG, m_eventSyncBase, cvA24_U_DATA);
+    const uint16_t lowReg = ReadReg(EVSYNC_LOW_READBACK_REG, m_eventSyncBase, cvA24_U_DATA);
     ThrowIfVmeError("Event-sync low trigger readback failed");
 
     if (m_eventSyncDebug) {
@@ -732,9 +730,9 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     m_handle = INVALID_HANDLE;
   }
 
-  uint16_t ReadReg(uint16_t regAddr, uint32_t baseAddr) {
+  uint16_t ReadReg(uint16_t regAddr, uint32_t baseAddr, CVAddressModifier am = cvA32_U_DATA) {
     uint16_t data = 0;
-    const CVErrorCodes ret = CAENVME_ReadCycle(m_handle, baseAddr + regAddr, &data, cvA32_U_DATA, cvD16);
+    const CVErrorCodes ret = CAENVME_ReadCycle(m_handle, baseAddr + regAddr, &data, am, cvD16);
     if (ret != cvSuccess) {
       m_errorString = "Cannot read at address " + hex32(baseAddr + regAddr);
       m_vmeError = true;
@@ -742,8 +740,8 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     return data;
   }
 
-  void WriteReg(uint16_t regAddr, uint16_t data, uint32_t baseAddr) {
-    const CVErrorCodes ret = CAENVME_WriteCycle(m_handle, baseAddr + regAddr, &data, cvA32_U_DATA, cvD16);
+  void WriteReg(uint16_t regAddr, uint16_t data, uint32_t baseAddr, CVAddressModifier am = cvA32_U_DATA) {
+    const CVErrorCodes ret = CAENVME_WriteCycle(m_handle, baseAddr + regAddr, &data, am, cvD16);
     if (ret != cvSuccess) {
       m_errorString = "Cannot write at address " + hex32(baseAddr + regAddr);
       m_vmeError = true;
