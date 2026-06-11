@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -400,7 +401,7 @@ private:
 }
 
 uint32_t ReadEventSyncTstamp24(){
-  if (!m_eventSyncEnabled) return 0;
+  if (!m_eventSyncEnabled) return std::numeric_limits<uint32_t>::max();
 
     uint16_t xhigh = ReadRegSyncModule(EVSYNC_HIGH_READ_REG, m_eventSyncBase);
     uint16_t xlow = ReadRegSyncModule(EVSYNC_LOW_READ_REG, m_eventSyncBase);
@@ -654,7 +655,6 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         if (m_TriggerMask == 0b01) m_evt_phy++;
         if (m_TriggerMask == 0b10) m_evt_ped++;
 
-	uint32_t tracker_time = ReadEventSyncTstamp24();
         WriteEventSyncTrigger16(m_evt); // PROPAGATE NEXT TRIGGER (COUNTER IS ALREADY INCREMENTED) NUMBER TO TRACKER SYNC MODULE
 
         // TODO: veto is still active and we can do what we want.. but slowing down. Remove and create a dedicated thread
@@ -851,6 +851,8 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
       return false;
     }
 
+    m_tracker_time = ReadEventSyncTstamp24();
+
 
     SendDataEvent(byteCount);
     return true;
@@ -873,7 +875,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     event->SetTag("triggerMask", std::to_string(m_TriggerMask));
     event->SetTag("endianness", "BE32");
     event->SetTimestamp(m_evtTimeNs, m_evtTimeNs + 100ULL);
-    event->SetTag("nativeTimestampBegin", std::to_string(m_evtTimeNs));
+    event->SetTag("nativeTimestampBegin", std::to_string(m_tracker_time));
     event->SetTag("detectorDataSize", std::to_string(raw.size()));
     SendEvent(std::move(event));
   }
@@ -1044,6 +1046,7 @@ private:
   bool m_eventSyncDebug = false;
   bool m_eventSyncWriteHighMarker = false;
   uint16_t m_eventSyncHighMarker = 0xB0B0;
+  uint32_t m_tracker_time = std::numeric_limits<uint32_t>::max();
 
   //V560 scaler
   uint16_t m_triggerCount_560 = 0;

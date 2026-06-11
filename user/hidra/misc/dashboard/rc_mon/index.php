@@ -305,10 +305,31 @@ function tagValue(tags, key) {
   return tags && tags[key] !== undefined ? tags[key] : null;
 }
 
+function findTagValue(devices, deviceName, keys) {
+  const preferredTags = devices[deviceName]?.tags;
+  for (const key of keys) {
+    const value = tagValue(preferredTags, key);
+    if (value !== null) return value;
+  }
+
+  for (const device of Object.values(devices)) {
+    for (const key of keys) {
+      const value = tagValue(device.tags, key);
+      if (value !== null) return value;
+    }
+  }
+
+  return null;
+}
+
+function isOkStatus(status) {
+  return String(status).trim().toUpperCase() === "OK";
+}
+
 function updateBoardsMonStatus(devices) {
-  const boardsMon = tagValue(devices["HidraFERS2Producer"]?.tags, "BoardsMon");
+  const boardsMon = findTagValue(devices, "HidraFERS2Producer", ["BoardsMon", "BoardStatus"]);
   const status = boardsMon === null ? "—" : String(boardsMon);
-  const isOk = status === "OK";
+  const isOk = isOkStatus(status);
 
   const valueEl = document.getElementById("boardsMon");
   valueEl.textContent = status;
