@@ -16,12 +16,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from .calo_mapping import ADCMapping
+from .sipm_mapping import SiPMMapping
 
 _MAPPING_DIR = Path(__file__).parent
 _ADC_CHANNELS_FILE = _MAPPING_DIR / "adc_channels.json"
 _MODULES_FILE = _MAPPING_DIR / "modules.json"
+_SIPM_CHANNELS_FILE = _MAPPING_DIR / "sipm_channels.json"
 
 _default_mapping: ADCMapping | None = None
+_default_sipm_mapping: SiPMMapping | None = None
 
 
 def default_mapping() -> ADCMapping:
@@ -41,4 +44,24 @@ def get_pmt_channel_info() -> dict[int, dict[str, int | str]]:
     return default_mapping().get_pmt_channels_info()
 
 
-__all__ = ["ADCMapping", "default_mapping", "get_pmt_channel_info"]
+def default_sipm_mapping() -> SiPMMapping:
+    """Return the process-wide `SiPMMapping` built from the bundled JSON."""
+    global _default_sipm_mapping
+    if _default_sipm_mapping is None:
+        _default_sipm_mapping = SiPMMapping(_SIPM_CHANNELS_FILE)
+    return _default_sipm_mapping
+
+
+def get_sipm_channel_info() -> dict[int, dict[str, int | str]]:
+    """FERS channel index -> {channel, column, row, type, module}."""
+    return default_sipm_mapping().get_sipm_channels_info()
+
+
+__all__ = [
+    "ADCMapping",
+    "SiPMMapping",
+    "default_mapping",
+    "default_sipm_mapping",
+    "get_pmt_channel_info",
+    "get_sipm_channel_info",
+]
