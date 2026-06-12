@@ -314,7 +314,6 @@ private:
     m_last_event_read = std::chrono::steady_clock::time_point::min();
     m_polled_monitor_out_of_spill = false;
     m_alignment_wait_trigger = 0;
-    m_alignment_wait_start_ns = 0;
     m_alignment_wait_active = false;
     for (const auto& board : m_board_manager->boards()) {
       m_event_queues[board.board_id()] = {};
@@ -377,7 +376,6 @@ private:
     m_event_queues.clear();
     m_monitor_status.clear();
     m_alignment_wait_trigger = 0;
-    m_alignment_wait_start_ns = 0;
     m_alignment_wait_active = false;
   }
 

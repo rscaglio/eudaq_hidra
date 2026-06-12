@@ -280,6 +280,7 @@ bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string* err
   handles.reserve(m_boards.size());
   for (const auto& board : m_boards) {
     handles.push_back(board.handle());
+    FERS_FlushData(board.handle());
   }
   handles.push_back(-1); //rscaglio fix from gemini
 
