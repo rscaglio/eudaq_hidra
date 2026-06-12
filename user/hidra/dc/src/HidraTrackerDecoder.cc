@@ -19,27 +19,31 @@ void HidraTrackerDecoder::decode(const std::vector<uint8_t>& payload, HidraTrack
     return;
   }
 
-  if (payload_size % sizeof(std::uint32_t) != 0) {
-    HIDRA_ERROR("Tracker payload size {} is not a multiple of 4 bytes. Aborting", payload_size);
+  if (payload_size % sizeof(double) != 0) {
+    HIDRA_ERROR("Tracker payload size {} is not a multiple of {} bytes. Aborting", payload_size, sizeof(double));
     return;
   }
-  const std::size_t word_count = payload_size / sizeof(std::uint32_t);
+  const std::size_t value_count = payload_size / sizeof(double);
 
-  if (word_count % kValuesPerPlane != 0) {
-    HIDRA_ERROR("Tracker payload has {} words, not a whole number of (x, y) plane pairs. Aborting", word_count);
+  if (value_count % kValuesPerPlane != 0) {
+    HIDRA_ERROR("Tracker payload has {} values, not a whole number of (x, y) plane pairs. Aborting", value_count);
     return;
   }
 
-  std::vector<std::uint32_t> words(word_count);
-  std::memcpy(words.data(), payload.data(), word_count * sizeof(std::uint32_t));
+  std::vector<double> values(value_count);
+  std::memcpy(values.data(), payload.data(), value_count * sizeof(double));
 
-  const std::size_t n_planes = word_count / kValuesPerPlane;
+  const std::size_t n_planes = value_count / kValuesPerPlane;
+  // Coordinates are in cm. Every value is decoded and kept as-is, including the
+  // producer's large-negative "no hit" sentinels (e.g. -5000/-6000): the ROOT
+  // writer records them all; only the monitor hit-map filler skips the negative
+  // ones so a "no hit" isn't drawn as a hit at -5000.
   std::vector<double> X(n_planes, -1);
   std::vector<double> Y(n_planes, -1);
 
   for (std::size_t plane = 0; plane < n_planes; ++plane) {
-    X[plane] = static_cast<double>(words[plane * kValuesPerPlane + 0]);
-    Y[plane] = static_cast<double>(words[plane * kValuesPerPlane + 1]);
+    X[plane] = values[plane * kValuesPerPlane + 0];
+    Y[plane] = values[plane * kValuesPerPlane + 1];
   }
 
   event.X = std::move(X);
