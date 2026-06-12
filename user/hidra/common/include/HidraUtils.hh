@@ -18,8 +18,8 @@ namespace hidra::utils {
 struct HidraEventFlags {
   static constexpr std::uint32_t None = 0;
 
-  // avoid the first 8 bits used by Event class
   static constexpr std::uint32_t FERSMisaligned = 1u << 1;
+  static constexpr std::uint32_t FERSIncomplete = 1u << 2;
   // keep a few reserved for FERS 
   // keep a few reserved for XDC 
   // keep a few more 
@@ -46,7 +46,7 @@ inline void SetEventFlagMask(eudaq::Event& event, std::uint32_t flags) {
 }
 
 inline std::uint32_t GetEventFlagMask(const eudaq::Event& event) {
-  return event.GetFlag() >> 8; // shift to ignore the first 8 bits used by Event class
+  return (event.GetFlag() & 0xFFFFFF00); // ignore the first 8 bits used by Event class
 }
 
 

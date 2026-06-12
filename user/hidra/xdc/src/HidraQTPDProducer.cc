@@ -676,8 +676,6 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           m_spillCount++;
         }
 
-        
-
         ClearV977FlipFlops(); // this will release the Trigger veto and clear the spill pattern as well
       }
 
