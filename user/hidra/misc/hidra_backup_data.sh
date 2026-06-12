@@ -16,8 +16,8 @@ LOCAL_DIR_DATA="${EUDAQHIDRA}/run/out_data"
 BACKUP_DIR_DATA="/home/eudaq/cernbox/TB2026_H8/raw"
 LOCAL_DIR_LOG="${EUDAQHIDRA}/run/logs"
 BACKUP_DIR_LOG="/home/eudaq/cernbox/TB2026_H8/logs"
-LOCAL_DIR_TRACKER_DATA="/home/eudaq/TB2026_TrackerData"
-BACKUP_DIR_TRACKER_DATA="/home/eudaq/cernbox/TB2026_H8/tracker_data"
+LOCAL_DIR_TRACKER_DATA="/home/eudaq/TB2026_TrackerData/ascii_dream_2026"
+BACKUP_DIR_TRACKER_DATA="/home/eudaq/cernbox/TB2026_H8/tracker_data/ascii_dream_2026"
 BACKUP_DATE_FILE="/home/eudaq/TB2026_H8_last_backup_dates.log"
 
 # Shared rsync options, used for every transfer so they stay consistent.
