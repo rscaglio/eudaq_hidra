@@ -4,7 +4,7 @@ BINPATH=../../../bin
 TMUX_SESSION="hidra_run_monitoring"
 DASHBOARD_DIR="$EUDAQHIDRA/misc/dashboard/rc_mon"
 
-mkdir -p out_data logs
+mkdir -p /home/eudaq/daq/TB2026_HidraData/HidraData /home/eudaq/daq/TB2026_HidraData/Logs
 
 if [ -z "$EUDAQHIDRA" ]; then
     echo "Error: EUDAQHIDRA is not set."
@@ -29,13 +29,13 @@ $BINPATH/euRun -n HidraRunControl &
 sleep 1
 $BINPATH/hidraLog &
 sleep 1
-$BINPATH/euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
+#$BINPATH/euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
 sleep 1
 $BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
 
 $BINPATH/euCliProducer -n HidraQTPDProducer -t QTPDProducer &
 
-#$BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
+$BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
 
 # $BINPATH/euCliProducer -n HidraTrackerProducer -t TrackerProducer 

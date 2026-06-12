@@ -97,7 +97,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       ADCHeaderWord W{word};
 
       if (W.type() != expected_word_mask) {
-        HIDRA_ERROR("Unexpected XDC word type: {:08X} - type {}. Should be Header Word {}. Aborting", word, W.type(), expected_word_mask);
+        HIDRA_ERROR("Geo {}. Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Aborting", W.geo(), word, W.type(), expected_word_mask);
         return;
       }
 
@@ -122,7 +122,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
         if (module_type == "V792" || module_type == "V792N" || module_type == "V862") {
           V792Word V{word};
           if (V.type() != expected_word_mask) {
-            HIDRA_ERROR("Unexpected XDC word type: {:08X} - type {}. Should be Channel Word {}. Aborting", word, V.type(), expected_word_mask);
+            HIDRA_ERROR("Geo {}. Unexpected (A)XDC word type: {:08X} - type {}. Should be Channel Word {}. Aborting", V.geo(), word, V.type(), expected_word_mask);
             return;
           }
           if (V.geo() != W.geo()) {
@@ -144,7 +144,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
         else if (module_type == "V775" || module_type == "V775N") {
           V775Word V{word};
           if (V.type() != expected_word_mask) {
-            HIDRA_ERROR("Unexpected XDC word type: {:08X} - type {}. Should be Channel Word {}. Aborting", word, V.type(), expected_word_mask);
+            HIDRA_ERROR("Geo {}. Unexpected (T)XDC word type: {:08X} - type {}. Should be Channel Word {}. Aborting", V.geo(),  word, V.type(), expected_word_mask);
             return;
           }
           if (V.geo() != W.geo()) {
