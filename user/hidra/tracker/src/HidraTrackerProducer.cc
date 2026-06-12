@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -125,6 +126,12 @@ double ParseDouble(const std::string& value, const RowContext& ctx, std::size_t 
     const double result = std::stod(value, &parsed);
     if (parsed != value.size()) {
       throw std::invalid_argument("trailing characters");
+    }
+    if (!std::isfinite(result)) {
+      // A non-finite coordinate should never occur in real data; warn (but still
+      // keep the value, like every other field) so a corrupt input is flagged.
+      EUDAQ_WARN("Non-finite tracker coordinate (column " + std::to_string(column + 1) + ") at " + ctx.file.string() +
+                 ":" + std::to_string(ctx.line) + ": " + value);
     }
     return result;
   } catch (const std::exception&) {
