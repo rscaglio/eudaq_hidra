@@ -1,5 +1,6 @@
 #include "FERSBoardManager.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <set>
@@ -397,6 +398,7 @@ std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_total_ev
 
     FERSEvent event;
     event.timestamp_us = timestamp_us;
+    event.acq_time = std::chrono::steady_clock::now();
     // `board_index` is the vendor-provided index returned by FERS_GetEvent.
     const int vendor_index = board_index;
     const int logical_board_id = m_boards[board_index].board_id();
