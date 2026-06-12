@@ -95,6 +95,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   fullEvt->SetTag("N_SOURCES", std::to_string(pending.events_by_source.size()));
   
   uint8_t detectormask = 0x0;
+  uint32_t detectorFlagsOnly = 0x0;
 
   for (const auto& is : m_expected_sources_map) {
     // will be overwritten if source is in the event
@@ -138,6 +139,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
     spillNum = sourceSpillNum;
     fullEvt->AddSubEvent(std::move(it->second.event));
     detectormask |= (1 << (it->first));
+    detectorFlagsOnly |= (hidra::utils::GetEventFlagMask(*it->second.event));
   }
 
   fullEvt->SetTimestamp(ts_begin, std::max(ts_begin, ts_end)); // do not allow ts_end < ts_bing
@@ -156,10 +158,8 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   }
 
   uint32_t mergedEventFlags = pending.flags;
-  // TODO make OR with per-event flags
+  mergedEventFlags |= detectorFlagsOnly;
   hidra::utils::SetEventFlagMask(*fullEvt, mergedEventFlags);
-
-
 
   return fullEvt;
 }

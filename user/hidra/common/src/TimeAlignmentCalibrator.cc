@@ -11,6 +11,9 @@ namespace hidra::timealignment {
 
 std::vector<int> makeOffsetScanOrder(int maxAbsTrgOffset) {
   std::vector<int> offsets;
+
+  // TODO to be enabled once understood
+  /* 
   offsets.reserve(2 * maxAbsTrgOffset + 1);
 
   offsets.push_back(0);
@@ -19,6 +22,9 @@ std::vector<int> makeOffsetScanOrder(int maxAbsTrgOffset) {
     offsets.push_back(+k);
     offsets.push_back(-k);
   }
+  */
+
+  offsets.push_back(0);
 
   return offsets;
 
