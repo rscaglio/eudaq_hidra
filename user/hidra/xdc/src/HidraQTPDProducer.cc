@@ -841,13 +841,13 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
 
     if (byteCount <= 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      HIDRA_ERROR("BCNT = 0, controller replied with 0 bytes. Ret code of BLT was {}", ret);
+      HIDRA_ERROR("BCNT = 0, controller replied with 0 bytes. Ret code of BLT was {}", static_cast<int>(ret));
       return false;
     }
 
     const int wordCount = byteCount / 4;
     if (wordCount <= 0) {
-      HIDRA_ERROR("BCNT = 0, controller replied with less than 4 bytes. Ret code of BLT was {}", ret);
+      HIDRA_ERROR("BCNT = 0, controller replied with less than 4 bytes. Ret code of BLT was {}", static_cast<int>(ret));
       return false;
     }
 
