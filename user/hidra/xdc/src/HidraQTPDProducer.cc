@@ -411,7 +411,7 @@ uint32_t ReadEventSyncTstamp24(){
     uint16_t xhigh = ReadRegSyncModule(EVSYNC_HIGH_READ_REG, m_eventSyncBase);
     uint16_t xlow = ReadRegSyncModule(EVSYNC_LOW_READ_REG, m_eventSyncBase);
     uint32_t tstamp = (static_cast<uint32_t>(xhigh << 16)) | xlow;
-    HIDRA_WARN("SYNC READ TSTAMP {} -- valid {} (should be 0)", tstamp, (xhigh >> 15));
+    HIDRA_DEBUG("SYNC READ TSTAMP {} -- valid {} (should be 0)", tstamp, (xhigh >> 15));
     return tstamp; 
 }
 
@@ -426,7 +426,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   ThrowIfVmeError("Event-sync low trigger write failed");
   //////
 
-  HIDRA_WARN("SYNC WRITTEN TRIG {}", trigger16);
+  HIDRA_DEBUG("SYNC WRITTEN TRIG {}", trigger16);
 
   if (m_eventSyncWriteHighMarker) {
     WriteReg(EVSYNC_HIGH_WRITE_REG, m_eventSyncHighMarker, m_eventSyncBase, cvA24_U_DATA);
@@ -669,6 +669,9 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         }
         HIDRA_DEBUG("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}", m_evt, m_TriggerMask, eventHandlingOk, m_evt_phy, m_evt_ped, m_spillCount);
         /////////////////
+
+	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+	//HIDRA_INFO("SLEEEEEEEEEPING");
       
         // Set pedestal veto if we want pedestal next;
         SetSingleV977OutputReg(!requestPedestalNext(), V977OUT::cPedVeto); // TODO r-m-w not needed if this is the only controlled output

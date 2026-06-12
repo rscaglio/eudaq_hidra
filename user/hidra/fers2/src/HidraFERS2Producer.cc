@@ -304,6 +304,8 @@ private:
     m_exit_of_run = false;
     m_evt_f = 0;
     m_stamp_last_sent_ns = 0;
+    m_evt_incomplete = 0;
+    SetStatusTag("PartialEvts", std::to_string(m_evt_incomplete));
     m_run_number = GetRunNumber();
     m_event_queues.clear();
     m_monitor_status.clear();
@@ -697,6 +699,8 @@ private:
       if (!all_matched) {
         HIDRA_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
                    ", proceeding with available boards only");
+        ++m_evt_incomplete;
+        SetStatusTag("PartialEvts", std::to_string(m_evt_incomplete));
       }
 
       ResetAlignmentWaitState();
@@ -717,6 +721,7 @@ private:
   int m_start_mode = STARTRUN_ASYNC;
   uint64_t m_evt_f;
   uint64_t m_max_total_events;
+  uint64_t m_evt_incomplete;
   int m_poll_sleep_us = 1000;
   int m_status_poll_interval_s = 0;
   bool m_poll_monitor_out_of_spill = false;

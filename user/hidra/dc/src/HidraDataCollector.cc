@@ -137,9 +137,9 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
     }
     trigMask = sourceTrigMask;
     spillNum = sourceSpillNum;
-    fullEvt->AddSubEvent(std::move(it->second.event));
     detectormask |= (1 << (it->first));
     detectorFlagsOnly |= (hidra::utils::GetEventFlagMask(*it->second.event));
+    fullEvt->AddSubEvent(std::move(it->second.event));
   }
 
   fullEvt->SetTimestamp(ts_begin, std::max(ts_begin, ts_end)); // do not allow ts_end < ts_bing
