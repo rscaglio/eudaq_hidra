@@ -456,7 +456,13 @@ private:
       }
     }
 
-    SetStatusTag("BoardsMon", monitorstatus == 0 ? "OK" : "NOK_" + std::to_string(monitorstatus));
+    if (statuses.empty()) {
+      SetStatusTag("BoardsMon", "NOK_READFAIL");
+    }
+    else{
+      SetStatusTag("BoardsMon", monitorstatus == 0 ? "OK" : "NOK_" + std::to_string(monitorstatus));
+    }
+    
     SendStatus();
 
     if (m_status_poll_interval_s > 0) {
