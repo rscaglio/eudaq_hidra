@@ -25,31 +25,44 @@
 
 namespace {
 
-// Change these names when the final tracker file format is known.
-constexpr std::array<const char*, 10> TRACKER_COLUMNS = {
-    "TriggerId",
-    "Time stamp",
-    "X",
-    "Y",
-    "Column5",
-    "Column6",
-    "Column7",
-    "Column8",
-    "Column9",
-    "Column10",
-};
+// Official tracker file format: whitespace-separated, no header, one event per
+// line, 29 fields:
+//   [0..5]   x1 y1 x2 y2 x3 y3  - measured coordinates (cm, double, E-notation);
+//                                 a large negative value (e.g. -5000/-6000) is a
+//                                 "no hit" sentinel for that coordinate.
+//   [6..17]  12 cluster strip counts (two-digit, one per module).
+//   [18..28] 11 hex fields:
+//     18 event number from start of run
+//     19 constant marker 0x50ABCDEF
+//     20 silicon timestamp, low 16 bits
+//     21 silicon timestamp, upper 8 bits
+//     22 timestamp sent to DREAM, low 16 bits
+//     23 timestamp sent to DREAM, upper 8 bits
+//     24 timestamp sent to DREAM, packed
+//     25 event number from start of run + 1
+//     26 DREAM event number   <-- the cross-detector alignment key (trigger)
+//     27 event number within the spill
+//     28 global event number
+constexpr std::size_t TRACKER_NFIELDS = 29;
+constexpr std::size_t NCOORDS = 6; // x1,y1,x2,y2,x3,y3 -> 3 stations
+constexpr std::size_t STRIP_FIRST_INDEX = 6;
+constexpr std::size_t STRIP_COUNT = 12;
 
-constexpr const char* TRIGGER_COLUMN = "TriggerId";
-constexpr const char* TIMESTAMP_COLUMN = "Time stamp";
-// Per-station hit coordinates, as consecutive (x, y) column pairs: station 0 =
-// (X, Y), station 1 = (Column5, Column6), station 2 = (Column7, Column8). The
-// block built in SendRow is therefore one uint32 per entry here, and the
-// number of stations the decoder/monitor sees is `size()/2`.
-// PROVISIONAL: the official production tracker format is not finalised yet —
-// revisit these indices (and `TRACKER_COLUMNS`) together when it is.
-constexpr std::array<std::size_t, 6> COORDINATE_COLUMN_INDICES = {2, 3, 4, 5, 6, 7};
+constexpr std::size_t EVENT_FROM_START_INDEX = 18;
+constexpr std::size_t MARKER_INDEX = 19;
+constexpr std::size_t SILICON_TS_LOW_INDEX = 20;
+constexpr std::size_t SILICON_TS_HIGH_INDEX = 21;
+constexpr std::size_t DREAM_TS_LOW_INDEX = 22;
+constexpr std::size_t DREAM_TS_HIGH_INDEX = 23;
+constexpr std::size_t DREAM_TS_PACKED_INDEX = 24;
+constexpr std::size_t EVENT_FROM_START_PLUS1_INDEX = 25;
+constexpr std::size_t DREAM_EVENT_NUMBER_INDEX = 26; // alignment key -> SetTriggerN
+constexpr std::size_t EVENT_IN_SPILL_INDEX = 27;
+constexpr std::size_t GLOBAL_EVENT_NUMBER_INDEX = 28;
 
-std::string Trim(std::string value) {
+constexpr std::uint32_t TRACKER_MARKER = 0x50ABCDEF;
+
+std::string Trim(const std::string& value) {
   const auto first = value.find_first_not_of(" \t\r\n");
   if (first == std::string::npos) {
     return {};
@@ -84,103 +97,74 @@ std::string ExpandEnv(const std::string& value) {
   return out;
 }
 
-std::vector<std::string> Split(const std::string& line, char delimiter) {
+// Split a line on runs of whitespace (the official format is space-separated).
+std::vector<std::string> Tokenize(const std::string& line) {
   std::vector<std::string> fields;
-  std::stringstream stream(line);
+  std::istringstream stream(line);
   std::string field;
-  while (std::getline(stream, field, delimiter)) {
-    fields.push_back(Trim(field));
-  }
-  if (!line.empty() && line.back() == delimiter) {
-    fields.emplace_back();
+  while (stream >> field) {
+    fields.push_back(field);
   }
   return fields;
 }
 
-std::string JoinColumns() {
-  std::ostringstream stream;
-  for (std::size_t index = 0; index < TRACKER_COLUMNS.size(); ++index) {
-    if (index != 0) {
-      stream << ',';
-    }
-    stream << TRACKER_COLUMNS[index];
-  }
-  return stream.str();
+// Where a field came from, for error messages — bundled so the per-field
+// parsers don't each take file + line separately.
+struct RowContext {
+  const std::filesystem::path& file;
+  std::size_t line;
+};
+
+[[noreturn]] void ThrowParse(const char* what, const std::string& value, const RowContext& ctx, std::size_t column) {
+  EUDAQ_THROW("Cannot parse tracker " + std::string(what) + " (column " + std::to_string(column + 1) + ") at " +
+              ctx.file.string() + ":" + std::to_string(ctx.line) + ": " + value);
 }
 
-uint64_t ParseUnsigned(const std::string& value, const std::string& column, const std::filesystem::path& file,
-                       std::size_t line_number) {
+double ParseDouble(const std::string& value, const RowContext& ctx, std::size_t column) {
   std::size_t parsed = 0;
   try {
-    const auto result = std::stoull(value, &parsed, 0);
+    const double result = std::stod(value, &parsed);
+    if (parsed != value.size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+    if (!std::isfinite(result)) {
+      // A non-finite coordinate should never occur in real data; warn (but still
+      // keep the value, like every other field) so a corrupt input is flagged.
+      EUDAQ_WARN("Non-finite tracker coordinate (column " + std::to_string(column + 1) + ") at " + ctx.file.string() +
+                 ":" + std::to_string(ctx.line) + ": " + value);
+    }
+    return result;
+  } catch (const std::exception&) {
+    ThrowParse("coordinate", value, ctx, column);
+  }
+}
+
+std::uint64_t ParseHex(const std::string& value, const RowContext& ctx, std::size_t column) {
+  std::size_t parsed = 0;
+  try {
+    const std::uint64_t result = std::stoull(value, &parsed, 16);
     if (parsed != value.size()) {
       throw std::invalid_argument("trailing characters");
     }
     return result;
   } catch (const std::exception&) {
-    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
-                ": " + value);
+    ThrowParse("hex field", value, ctx, column);
   }
-}
-
-uint32_t ParseUint32(const std::string& value, const std::string& column, const std::filesystem::path& file,
-                     std::size_t line_number) {
-  // Trim once up front so trailing whitespace (common in CSVs) doesn't defeat
-  // the "whole token consumed" checks below. (Split already trims its fields,
-  // but keep the parser robust on its own.)
-  const std::string v = Trim(value);
-
-  // Fast path: a plain unsigned integer, parsed exactly.
-  std::size_t parsed = 0;
-  try {
-    const uint64_t result = std::stoull(v, &parsed, 0);
-    if (parsed == v.size()) {
-      if (result > std::numeric_limits<uint32_t>::max()) {
-        EUDAQ_THROW("Column '" + column + "' is larger than uint32_t at " + file.string() + ":" +
-                    std::to_string(line_number) + ": " + v);
-      }
-      return static_cast<uint32_t>(result);
-    }
-  } catch (const std::exception&) {
-    // Not a plain integer; fall through to the float path below.
-  }
-
-  // The value carries a fractional/float format (e.g. "12.5"); accept it by
-  // rounding to the nearest integer.
-  std::size_t float_parsed = 0;
-  double real = 0.0;
-  try {
-    real = std::stod(v, &float_parsed);
-  } catch (const std::exception&) {
-    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
-                ": " + v);
-  }
-  if (float_parsed != v.size() || !std::isfinite(real)) {
-    EUDAQ_THROW("Cannot parse column '" + column + "' at " + file.string() + ":" + std::to_string(line_number) +
-                ": " + v);
-  }
-
-  // Round first, then range-check the integer, so a value just below the max
-  // can't round up past it. Silent: production data is integer-valued, so this
-  // path only triggers on test inputs, where a per-value log would flood the run.
-  const long long rounded = std::llround(real);
-  if (rounded < 0 || rounded > static_cast<long long>(std::numeric_limits<uint32_t>::max())) {
-    EUDAQ_THROW("Column '" + column + "' is out of uint32_t range at " + file.string() + ":" +
-                std::to_string(line_number) + ": " + v);
-  }
-  return static_cast<uint32_t>(rounded);
-}
-
-std::size_t FindColumn(const std::vector<std::string>& headers, const std::string& column) {
-  const auto found = std::find(headers.begin(), headers.end(), column);
-  if (found == headers.end()) {
-    EUDAQ_THROW("Required tracker column is missing: " + column);
-  }
-  return static_cast<std::size_t>(found - headers.begin());
 }
 
 } // namespace
 
+// EUDAQ producer for the silicon tracker.
+//
+// The tracker writes ASCII files into a watched directory; this producer tails
+// that directory from a background thread and turns every complete data line
+// into one `TrackerRaw` event:
+//   * the three stations' (x, y) coordinates (cm) are packed into block 0 as
+//     doubles (see HidraTrackerDecoder, which reads them back);
+//   * the DREAM event number becomes the EUDAQ trigger number, so the
+//     DataCollector can align the tracker with the other detectors;
+//   * the remaining per-event counters and timestamps are attached as tags.
+// The per-field layout is documented at the top of this file.
 class HidraTrackerProducer : public eudaq::Producer {
 public:
   HidraTrackerProducer(const std::string& name, const std::string& runcontrol)
@@ -202,8 +186,9 @@ private:
     }
 
     EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
-    // Expand ${VAR} so the path can be absolute and machine-independent (e.g.
-    // ${REPO_ROOT}/...), instead of depending on the launch working directory.
+    // TRACKER_DIRECTORY: directory tailed for tracker files (required). ${VAR}
+    // is expanded from the environment so the path can be machine-independent
+    // (e.g. ${REPO_ROOT}/...); REPO_ROOT is exported by misc/setup.sh.
     m_directory = ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
     if (m_directory.empty()) {
       EUDAQ_THROW("TRACKER_DIRECTORY is missing from the run configuration");
@@ -212,13 +197,11 @@ private:
       EUDAQ_THROW("TRACKER_DIRECTORY is not a directory: " + m_directory.string());
     }
 
-    const std::string delimiter = conf->Get("TRACKER_DELIMITER", std::string(","));
-    if (delimiter.size() != 1) {
-      EUDAQ_THROW("TRACKER_DELIMITER must contain exactly one character");
-    }
-    m_delimiter = delimiter.front();
+    // TRACKER_FILE_EXTENSION: only files with this extension are read.
     m_extension = conf->Get("TRACKER_FILE_EXTENSION", std::string(".csv"));
+    // TRACKER_POLL_INTERVAL_MS: directory re-scan period (>= 1 ms).
     m_poll_interval_ms = std::max(1, conf->Get("TRACKER_POLL_INTERVAL_MS", 100));
+    // TRACKER_TIMESTAMP_SCALE_NS: multiplier from DREAM timestamp ticks to ns.
     m_timestamp_scale_ns = conf->Get("TRACKER_TIMESTAMP_SCALE_NS", uint64_t{1});
     if (m_timestamp_scale_ns == 0) {
       EUDAQ_THROW("TRACKER_TIMESTAMP_SCALE_NS must be greater than zero");
@@ -238,7 +221,6 @@ private:
     bore->SetBORE();
     bore->SetRunN(static_cast<uint32_t>(m_run_number));
     bore->SetTag("Producer", "HidraTrackerProducer");
-    bore->SetTag("Columns", JoinColumns());
     bore->SetTag("Directory", m_directory.string());
     SendEvent(std::move(bore));
 
@@ -269,6 +251,8 @@ private:
     StopWorker();
   }
 
+  // Background worker: re-scan the directory every poll interval until stopped.
+  // A scan failure is logged but doesn't kill the loop (the next scan retries).
   void MainLoop() {
     while (m_running) {
       try {
@@ -280,7 +264,7 @@ private:
     }
   }
 
-  void  ScanDirectory() {
+  void ScanDirectory() {
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(m_directory)) {
       if (!entry.is_regular_file()) {
@@ -296,9 +280,12 @@ private:
     for (const auto& file : files) {
       const auto key = file.string();
       if (m_processed_files.count(key) != 0) {
-        continue;
+        continue; // already turned into events
       }
 
+      // Only read a file once its size has stayed the same across two
+      // consecutive scans, so we never read one the tracker is still writing.
+      // A new or growing file is just recorded now and reconsidered next scan.
       const auto size = std::filesystem::file_size(file);
       const auto previous = m_observed_sizes.find(key);
       if (previous == m_observed_sizes.end() || previous->second != size) {
@@ -319,103 +306,97 @@ private:
     }
 
     std::string line;
-    if (!std::getline(input, line)) {
-      EUDAQ_WARN("Ignoring empty tracker file: " + file.string());
-      return;
-    }
-
-    const auto headers = Split(line, m_delimiter);
-    ValidateHeaders(headers, file);
-
-    std::size_t line_number = 1;
-    uint64_t rows_processed_for_file = 0;
+    std::size_t line_number = 0;
     uint64_t rows_sent_for_file = 0;
 
+    // The official format has no header: every non-empty line is one event.
     while (m_running && std::getline(input, line)) {
       ++line_number;
       if (Trim(line).empty()) {
         continue;
       }
 
-      const auto values = Split(line, m_delimiter);
-      if (values.size() != headers.size()) {
-        EUDAQ_WARN("Ignoring tracker row with " + std::to_string(values.size()) + " columns at " + file.string() +
-                   ":" + std::to_string(line_number) + "; expected " + std::to_string(headers.size()));
+      const auto fields = Tokenize(line);
+      if (fields.size() != TRACKER_NFIELDS) {
+        EUDAQ_WARN("Ignoring tracker row with " + std::to_string(fields.size()) + " fields at " + file.string() + ":" +
+                   std::to_string(line_number) + "; expected " + std::to_string(TRACKER_NFIELDS));
         continue;
       }
-      // Attempt to send the row; only count as sent if SendRow completes without throwing.
-      SendRow(headers, values, file, line_number);
-      ++rows_processed_for_file;
+
+      SendRow(fields, file, line_number);
       ++rows_sent_for_file;
       ++m_events_sent;
-      EUDAQ_INFO("Processed line number " + std::to_string(line_number));
     }
 
-    if (rows_sent_for_file == rows_processed_for_file) {
-      EUDAQ_INFO("Finished processing tracker file " + file.filename().string() + " with " + std::to_string(rows_sent_for_file) + " data");
-    } else {
-      EUDAQ_WARN("Mismatch between processed rows of file " + file.filename().string() + " with " + std::to_string(rows_processed_for_file) + " data and " + std::to_string(rows_sent_for_file) + " events sent");
-    }
-
-    if (rows_processed_for_file == (line_number - 1)) {
-      EUDAQ_INFO("Finished processing all lines of tracker file " + file.filename().string());
-    } else {
-      EUDAQ_WARN("Mismatch in processing tracker file " + file.filename().string() + " with " + std::to_string(rows_processed_for_file) + " data rows processed and " + std::to_string(line_number - 1) + " total lines");
-    }
-  
-    
+    EUDAQ_INFO("Finished processing tracker file " + file.filename().string() + " with " +
+               std::to_string(rows_sent_for_file) + " events");
   }
 
-  void ValidateHeaders(const std::vector<std::string>& headers, const std::filesystem::path& file) const {
-    if (headers.size() != TRACKER_COLUMNS.size()) {
-      EUDAQ_THROW("Tracker file " + file.string() + " has " + std::to_string(headers.size()) +
-                  " columns; expected " + std::to_string(TRACKER_COLUMNS.size()));
-    }
-    for (std::size_t index = 0; index < headers.size(); ++index) {
-      if (headers[index] != TRACKER_COLUMNS[index]) {
-        EUDAQ_THROW("Tracker file " + file.string() + " column " + std::to_string(index + 1) + " is '" +
-                    headers[index] + "'; expected '" + TRACKER_COLUMNS[index] + "'");
-      }
-    }
-  }
+  void SendRow(const std::vector<std::string>& fields, const std::filesystem::path& file, std::size_t line_number) {
+    const RowContext ctx{file, line_number};
+    const auto dbl = [&](std::size_t column) { return ParseDouble(fields[column], ctx, column); };
+    const auto hex = [&](std::size_t column) { return ParseHex(fields[column], ctx, column); };
 
-  void SendRow(const std::vector<std::string>& headers, const std::vector<std::string>& values,
-               const std::filesystem::path& file, std::size_t line_number) {
-    const auto trigger_index = FindColumn(headers, TRIGGER_COLUMN);
-    const auto timestamp_index = FindColumn(headers, TIMESTAMP_COLUMN);
-    const uint64_t trigger = ParseUnsigned(values[trigger_index], TRIGGER_COLUMN, file, line_number);
-    const uint64_t timestamp = ParseUnsigned(values[timestamp_index], TIMESTAMP_COLUMN, file, line_number);
-
-    if (trigger > std::numeric_limits<uint32_t>::max()) {
-      EUDAQ_THROW("TriggerId is larger than the EUDAQ uint32 trigger number at " + file.string() + ":" +
-                  std::to_string(line_number));
+    // Sanity check the constant marker so a mis-parsed/garbled line is dropped
+    // rather than turned into a bogus event.
+    const std::uint64_t marker = hex(MARKER_INDEX);
+    if (marker != TRACKER_MARKER) {
+      std::ostringstream msg;
+      msg << "Tracker row at " << file.string() << ":" << line_number << " has marker 0x" << std::hex << std::uppercase
+          << marker << ", expected 0x" << TRACKER_MARKER << "; skipping";
+      EUDAQ_WARN(msg.str());
+      return;
     }
-    if (timestamp > (std::numeric_limits<uint64_t>::max() - 1) / m_timestamp_scale_ns) {
-      EUDAQ_THROW("Time stamp overflows after TRACKER_TIMESTAMP_SCALE_NS at " + file.string() + ":" +
+
+    // Measured coordinates (cm) as double, in (x, y) pairs per station.
+    std::array<double, NCOORDS> coordinates{};
+    for (std::size_t i = 0; i < NCOORDS; ++i) {
+      coordinates[i] = dbl(i);
+    }
+
+    // The DREAM event number is the cross-detector alignment key (the trigger
+    // the DataCollector merges on).
+    const std::uint64_t dream_event = hex(DREAM_EVENT_NUMBER_INDEX);
+    if (dream_event > std::numeric_limits<uint32_t>::max()) {
+      EUDAQ_THROW("DREAM event number is larger than the EUDAQ uint32 trigger number at " + file.string() + ":" +
                   std::to_string(line_number));
     }
 
-    // One uint32 per coordinate column, in order: consecutive (x, y) pairs, one
-    // per station. The decoder reconstructs `size()/2` stations from this block.
-    std::array<uint32_t, COORDINATE_COLUMN_INDICES.size()> coordinates{};
-    for (std::size_t i = 0; i < COORDINATE_COLUMN_INDICES.size(); ++i) {
-      const std::size_t col = COORDINATE_COLUMN_INDICES[i];
-      coordinates[i] = ParseUint32(values[col], headers[col], file, line_number);
+    const std::uint64_t dream_ts = hex(DREAM_TS_PACKED_INDEX);
+    if (dream_ts > (std::numeric_limits<uint64_t>::max() - 1) / m_timestamp_scale_ns) {
+      EUDAQ_THROW("DREAM timestamp overflows after TRACKER_TIMESTAMP_SCALE_NS at " + file.string() + ":" +
+                  std::to_string(line_number));
     }
 
     auto event = eudaq::Event::MakeUnique("TrackerRaw");
     event->SetRunN(static_cast<uint32_t>(m_run_number));
-    event->SetTriggerN(static_cast<uint32_t>(trigger));
-    event->SetEventN(static_cast<uint32_t>(trigger));
-    const uint64_t timestamp_ns = timestamp * m_timestamp_scale_ns;
+    event->SetTriggerN(static_cast<uint32_t>(dream_event));
+    event->SetEventN(static_cast<uint32_t>(dream_event));
+    const uint64_t timestamp_ns = dream_ts * m_timestamp_scale_ns;
     event->SetTimestamp(timestamp_ns, timestamp_ns + 1);
+
     event->SetTag("Producer", "HidraTrackerProducer");
     event->SetTag("SourceFile", file.filename().string());
-    for (std::size_t index = 0; index < headers.size(); ++index) {
-      event->SetTag(headers[index], values[index]);
+    // Keep the auxiliary per-event identifiers/timestamps as tags for offline use.
+    event->SetTag("DreamEventNumber", std::to_string(dream_event));
+    event->SetTag("GlobalEventNumber", std::to_string(hex(GLOBAL_EVENT_NUMBER_INDEX)));
+    event->SetTag("EventInSpill", std::to_string(hex(EVENT_IN_SPILL_INDEX)));
+    event->SetTag("EventFromStart", std::to_string(hex(EVENT_FROM_START_INDEX)));
+    event->SetTag("SiliconTimestampLow", std::to_string(hex(SILICON_TS_LOW_INDEX)));
+    event->SetTag("SiliconTimestampHigh", std::to_string(hex(SILICON_TS_HIGH_INDEX)));
+    event->SetTag("DreamTimestamp", std::to_string(dream_ts));
+    // Cluster strip counts, space-joined in module order.
+    std::ostringstream strips;
+    for (std::size_t i = 0; i < STRIP_COUNT; ++i) {
+      if (i != 0) {
+        strips << ' ';
+      }
+      strips << fields[STRIP_FIRST_INDEX + i];
     }
+    event->SetTag("StripCounts", strips.str());
 
-    event->AddBlock(0, coordinates.data(), coordinates.size() * sizeof(uint32_t));
+    // Coordinate block: NCOORDS doubles (x1,y1,x2,y2,x3,y3), native byte order.
+    event->AddBlock(0, coordinates.data(), coordinates.size() * sizeof(double));
     SendEvent(std::move(event));
   }
 
@@ -426,17 +407,16 @@ private:
     }
   }
 
-  std::filesystem::path m_directory;
-  std::string m_extension = ".csv";
-  char m_delimiter = ',';
-  int m_poll_interval_ms = 100;
-  uint64_t m_timestamp_scale_ns = 1;
-  std::atomic<bool> m_running{false};
-  std::thread m_worker;
+  std::filesystem::path m_directory;     // watched directory (TRACKER_DIRECTORY)
+  std::string m_extension = ".csv";      // file extension filter
+  int m_poll_interval_ms = 100;          // directory re-scan period
+  uint64_t m_timestamp_scale_ns = 1;     // DREAM timestamp ticks -> ns
+  std::atomic<bool> m_running{false};    // worker run flag (also stops mid-file)
+  std::thread m_worker;                  // background directory watcher
   uint32_t m_run_number = 0;
   uint64_t m_events_sent = 0;
-  std::unordered_set<std::string> m_processed_files;
-  std::map<std::string, uintmax_t> m_observed_sizes;
+  std::unordered_set<std::string> m_processed_files; // files already consumed
+  std::map<std::string, uintmax_t> m_observed_sizes; // last-seen size, for the stability check
 };
 
 namespace {

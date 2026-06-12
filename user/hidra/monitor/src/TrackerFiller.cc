@@ -48,7 +48,10 @@ void TrackerFiller::Fill(const HidraEvent& event) {
   for (std::size_t i = 0; i < n; ++i) {
     const double x = tracker.X[i];
     const double y = tracker.Y[i];
-    // -1 is the decoder's "no value" sentinel; real coordinates are >= 0.
+    // Skip no-hit coordinates so they don't appear as a hit: the producer marks
+    // a missing measurement with a negative "no hit" sentinel (e.g. -5000/-6000)
+    // and real cm coordinates are >= 0. (The raw values, sentinels included, are
+    // still kept by the decoder and written to the ROOT output.)
     if (x < 0.0 || y < 0.0) {
       continue;
     }
