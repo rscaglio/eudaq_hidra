@@ -65,10 +65,14 @@ euCliMonitor -n HidraHttpMonitor
   publishes the mean over the board's channels for each gain
   (`FERS_HG_board_mean` / `FERS_LG_board_mean`) and the fraction of events in
   which every HG channel of the board reads zero (`FERS_HG_board_allzero`, a
-  board present but producing no signal). Finally, `FERS_board_time_offset`
+  board present but producing no signal). `FERS_board_time_offset`
   (`TProfile` indexed by board): each board's
   `rel_tsamp_us` minus the **median** over the boards present in the event, so a
-  board out of time sync stands out. The data is consumed from `HidraEvent::fers`
+  board out of time sync stands out. Finally, `FERS_trigger_id_consistency`
+  (2-bin `TH1I`, one count per event): all boards of an event are triggered
+  together, so every present channel should report the same `FERStrigger_id`;
+  the event lands in `consistent` when they all agree, else in `mismatch` (a
+  desynced board). The data is consumed from `HidraEvent::fers`
   regardless of which FERS decoder produced it (see `FERS_DECODER` below).
 - `TrackerFiller.*` - tracker hit maps: one 2D occupancy histogram
   (`Tracker_station<i>`, X vs Y) per station, filled from `HidraEvent::tracker`
