@@ -161,6 +161,8 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   mergedEventFlags |= detectorFlagsOnly;
   hidra::utils::SetEventFlagMask(*fullEvt, mergedEventFlags);
 
+  uint64_t m_max_trigger_built = std::max(m_max_trigger_built, pending.trigger_number);
+
   return fullEvt;
 }
 
@@ -174,15 +176,21 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
 
     uint64_t age_ns = hidra::utils::getTimens() - it->second.first_seen_ns;
 
-    if (age_ns <= m_sync_timeout_us * 1000) {
+    bool is_old_time = age_ns > m_sync_timeout_us*1000;
+    bool is_old_trg = (m_max_trigger_seen - it->second.trigger_number) > 64000; // we have to flush to free the buffer for new "trigger & 0xFFFF" 
+
+    if (!is_old_time && !is_old_trg) {
       ++it;
       continue;
     }
 
-    uint64_t trigger = it->first;
+    if (is_old_trg && !is_old_time){
+      HIDRA_WARN("Trg {}: event building timeout not exceeded but there are more than 64000 trigger numbers in the buffer: building", it->second.trigger_number);
+    }
+
 
     HIDRA_WARN(
-        "Timeout waiting for complete event for trigger {}: {} > {} ns", trigger, age_ns, m_sync_timeout_us * 1000);
+        "Timeout waiting for complete event for trigger {}: {} > {} ns", it->second.trigger_number, age_ns, m_sync_timeout_us * 1000);
 
     // if one wants to discard:
     // it = m_pending_events.erase(it);
@@ -190,7 +198,7 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
     auto mergedEvt = BuildFullEvent(it->second);
 
     if (!mergedEvt) {
-      HIDRA_WARN("Failed to build incomplete event for trigger {}", trigger);
+      HIDRA_WARN("Failed to build incomplete event for trigger {}", it->second.trigger_number);
       it = m_pending_events.erase(it);
       return;
     }
@@ -528,6 +536,11 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   uint64_t trigger_number = ev->GetTriggerN();
   uint64_t timestamp_begin_ns = ev->GetTimestampBegin();
   uint64_t timestamp_end_ns = ev->GetTimestampEnd();
+  m_max_trigger_seen = std::max(m_max_trigger_seen, trigger_number);
+
+  if (trigger_number <= m_max_trigger_built && detectorID < 3){ // Old triggers can happen for tracker!
+    HIDRA_ERROR("Receiving trigger {} from det ID {}, older than the last trigger built {}", trigger_number, detectorID, m_max_trigger_built);
+  }
 
   uint64_t timestamp = timestamp_begin_ns; // TODO: decide what to do in case of spread between begin and end (if not
                                            // addressed in the producers)
@@ -552,7 +565,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
     }
   }
 
-  auto& pending = m_pending_events[trigger_number]; // creates a default if trigger_number
+  auto& pending = m_pending_events[trigger_number & 0xFFFF]; // creates a default if trigger_number
                                                     // does not exist
 
   ////////////// BUFFERING PENDING //////////
@@ -561,6 +574,9 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   if (pending.events_by_source.empty()) {
     pending.trigger_number = trigger_number;
     pending.first_seen_ns = hidra::utils::getTimens();
+  }
+  else{
+    pending.trigger_number = std::max(pending.trigger_number, trigger_number); // If XDC > 2^16 there is no risk to assign the tracker trigger to the full event
   }
 
   // ... check if source duplicates ...

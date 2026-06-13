@@ -92,6 +92,9 @@ private:
   uint64_t m_sync_timeout_us = 1000000;
   uint64_t m_tstamp_window_ns = 50000;
 
+  uint64_t m_max_trigger_built = 0;
+  uint64_t m_max_trigger_seen = 0;
+
   std::map<int, std::string> m_vme_geo_map;
 
   bool m_single_producer_mode = false; // when no sources are specified, only the first one is accepted and DetectorID 0 is assigned.
