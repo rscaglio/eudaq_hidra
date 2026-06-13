@@ -75,9 +75,12 @@ euCliMonitor -n HidraHttpMonitor
   (decoded by `HidraTrackerDecoder` from the tracker sub-event, detID 3). The
   number of stations and the per-station X/Y range and binning are configurable
   (`TRACKER_NSTATIONS`, `TRACKER_X_*`/`TRACKER_Y_*`, optional per-station
-  `TRACKER_STATION<i>` range override — see Configuration). Events without a
-  tracker sub-event leave the tracker coordinates empty, so the filler is a no-op
-  for them.
+  `TRACKER_STATION<i>` range override — see Configuration). It also books a
+  `Tracker_errors` counter (TH1): one labelled bin per station counting events
+  where that station's X or Y is the producer's negative no-hit sentinel, plus a
+  final `any` bin for the OR over all stations. Events without a tracker
+  sub-event leave the tracker coordinates empty, so the filler is a no-op for
+  them.
 - `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
 
 ## Event metadata
@@ -194,10 +197,10 @@ Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in
 | `FERS_CHANNEL_NBINS` | `1024` | Bins for the per-channel HG/LG distributions over `[0, FERS_VALUE_MAX)` (1024 → 4 ADC/bin). |
 | `FERS_SATURATION_THRESHOLD` | `3800` | A channel is counted as saturated when its HG/LG value exceeds this (feeds `FERS_HG_saturation` / `FERS_LG_saturation`). Clamped to `[0, FERS_VALUE_MAX)`. |
 | `FERS_PER_CHANNEL_DISTRIBUTIONS` | `1` | `1` books the per-channel HG/LG distributions (`FERS_{HG,LG}_channel_<N>_*`, needed for the frontend channel dropdown); `0` skips them to cut memory / startup / THttpServer load. Means, saturation, inclusive and per-board histograms are unaffected. |
-| `TRACKER_NSTATIONS` | `2` | Number of tracker stations (planes); books one `Tracker_station<i>` 2D hit map (X vs Y) each. Sizing only consumed on the first configure. |
-| `TRACKER_X_NBINS` / `TRACKER_Y_NBINS` | `100` | Bins on the X / Y axis of every station hit map. |
-| `TRACKER_X_MIN` / `TRACKER_X_MAX` | `0` / `1000` | Global X-axis range of the station hit maps. |
-| `TRACKER_Y_MIN` / `TRACKER_Y_MAX` | `0` / `1000` | Global Y-axis range of the station hit maps. |
+| `TRACKER_NSTATIONS` | `3` | Number of tracker stations (planes); books one `Tracker_station<i>` 2D hit map (X vs Y) each. Sizing only consumed on the first configure. |
+| `TRACKER_X_NBINS` / `TRACKER_Y_NBINS` | `110` | Bins on the X / Y axis of every station hit map. With the default `[0, 11]` cm range this gives 0.1 cm/bin. |
+| `TRACKER_X_MIN` / `TRACKER_X_MAX` | `0` / `11` | Global X-axis range of the station hit maps, in cm (official tracker format). |
+| `TRACKER_Y_MIN` / `TRACKER_Y_MAX` | `0` / `11` | Global Y-axis range of the station hit maps, in cm. |
 | `TRACKER_STATION<i>` | (empty) | Optional per-station range override `xmin,xmax,ymin,ymax` (binning stays the global `TRACKER_*_NBINS`); e.g. `TRACKER_STATION0 = 0,50,0,50`. |
 
 ## Threading & locking model

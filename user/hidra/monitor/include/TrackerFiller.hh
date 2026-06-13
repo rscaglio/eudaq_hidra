@@ -3,6 +3,7 @@
 #include "HistogramRegistry.hh"
 #include "IHistogramFiller.hh"
 
+#include <TH1.h>
 #include <TH2.h>
 
 #include <vector>
@@ -33,6 +34,12 @@ struct TrackerStationConfig {
  * `Tracker_station<i>`; the number of stations and the per-station X/Y range and
  * binning are configurable (see TrackerStationConfig).
  *
+ * It also books a single `Tracker_errors` counter: a negative coordinate is the
+ * producer's "no hit" sentinel, counted here as an error. One labelled bin per
+ * station counts the events where that station has a negative X or Y, plus a
+ * final `any` bin counting the events where at least one station is in error
+ * (the OR over all stations).
+ *
  * Events without a tracker sub-event leave `tracker.X` empty, so Fill() is a
  * no-op for them.
  */
@@ -44,4 +51,7 @@ public:
 private:
   // One occupancy map per station (x = X coordinate, y = Y coordinate).
   std::vector<TH2I*> m_station_hist;
+  // Negative-coordinate (no-hit) counter: one bin per station + a final "any"
+  // bin for the OR over all stations. Null when no stations are configured.
+  TH1I* m_error_hist = nullptr;
 };

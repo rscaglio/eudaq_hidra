@@ -6,11 +6,18 @@ This is the panel type you reference with `type: histograms` in
     - type: histograms
       cols: 2                                # optional, default 2
       histograms: [hist_name_1, hist_name_2, ...]
+      bin_labels: [label0, label1, ...]      # optional categorical x tick labels
 
 It's a thin object: declare which histograms it wants, declare its
 Dash layout (one `dcc.Graph` per histogram, arranged in rows of
 `cols`), and on each poll receive a `figs` dict and return the figures
 in the same order as the graph slots.
+
+`bin_labels` (optional) writes categorical tick labels under the bars
+(one per bin, in order) — handy for counter histograms whose bins are
+categories rather than a numeric range. It's applied here in the
+frontend using the bars' own bin centres as tick positions, so the
+backend histogram doesn't need ROOT bin labels.
 
 For anything fancier (channel selector, event display, multi-row
 custom layout) write a new Panel subclass — see `panels/base.py` and
@@ -74,4 +81,31 @@ class HistogramGridPanel(Panel):
         # the framework is exactly what we want to show. If a histogram
         # is missing from `figs` we fall back to the styled placeholder
         # so the slot doesn't go blank-white.
-        return [figs.get(n, theme.placeholder_figure(n)) for n in self.histogram_names()]
+        bin_labels = self.params.get("bin_labels")
+        out = []
+        for n in self.histogram_names():
+            fig = figs.get(n)
+            if fig is None:
+                out.append(theme.placeholder_figure(n))
+                continue
+            if bin_labels:
+                _apply_bin_labels(fig, bin_labels)
+            out.append(fig)
+        return out
+
+
+def _apply_bin_labels(fig, labels) -> None:
+    """Label the bars with categorical x ticks, using the bars' own bin centres
+    as the tick positions. Frontend-only: no backend bin labels required."""
+    if not hasattr(fig, "data"):
+        return
+    centres = None
+    for trace in fig.data:
+        x = getattr(trace, "x", None)
+        if x is not None and len(x):
+            centres = list(x)
+            break
+    if not centres:
+        return
+    k = min(len(centres), len(labels))
+    fig.update_xaxes(tickmode="array", tickvals=centres[:k], ticktext=list(labels)[:k])
