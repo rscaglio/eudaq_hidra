@@ -317,6 +317,12 @@ Append an entry under `tabs:` in `config.yaml`:
   the top-level `fers:` config section) and skip the calo mapping — used by
   FERS, whose channel indices would otherwise pick up unrelated ADC module
   names.
+  Each plot's hover toolbar carries a **segmented rebin control**
+  (`×1`/`×2`/`×4`/`×8`, default `×1`): it merges that many adjacent bins in the
+  frontend (no backend change), per slot and independent across slots. The
+  figure is rebuilt from the coarser bins, so the y-axis adapts and the x range
+  stays put; in projection mode a change triggers one refetch (like switching
+  channel).
 
 - `detector` — a 2D calorimeter map: one cell per module at its (row,
   column) position, coloured by a per-channel value. Emits two heatmaps

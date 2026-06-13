@@ -35,7 +35,7 @@ import re
 from typing import Optional
 
 import numpy as np
-from dash import Dash, Input, Output, dcc, html
+from dash import ALL, Dash, Input, Output, ctx, dcc, html
 
 from .. import theme
 from ..decoders import DecoderError, get_decoder
@@ -61,6 +61,33 @@ TRIGGER_SPLIT_SERIES = [
 # subset/order of series via the `split_suffixes` config param (e.g. FERS has
 # only physics/pedestal per channel, no inclusive "total").
 _SPLIT_SUFFIX_INFO = {suffix: (label, color) for suffix, label, color in TRIGGER_SPLIT_SERIES}
+
+
+def _update_rebin_state(rebin: dict[int, int], inputs_list: list) -> bool:
+    """Fold the rebin radios' values (Dash `ctx.inputs_list[0]`) into `rebin`.
+
+    Each item is `{"id": {..., "index": i}, "value": factor}`. Updates the
+    per-slot factor in place and returns True iff anything changed (so the caller
+    knows whether to trigger a refetch). Defensive against malformed items.
+    """
+    changed = False
+    for item in inputs_list:
+        if not isinstance(item, dict):
+            continue
+        iid = item.get("id")
+        val = item.get("value")
+        if not (isinstance(iid, dict) and "index" in iid and val is not None):
+            continue
+        try:
+            idx = int(iid["index"])
+            factor = int(val)
+        except (TypeError, ValueError):
+            # Non-numeric index/value (shouldn't happen from Dash): skip it.
+            continue
+        if rebin.get(idx, 1) != factor:
+            rebin[idx] = factor
+            changed = True
+    return changed
 
 
 def _template_regex(template: str) -> re.Pattern:
@@ -166,6 +193,10 @@ class ChannelSelectorPanel(Panel):
         # and keep the last figures cached instead of polling continuously.
         self._needs_fetch = True
         self._last_figs: Optional[list] = None
+        # Per-slot rebin factor (slot index -> 1/2/4/8) from the segmented control.
+        # Server-side instance state (like _selected_ch), the source of truth used
+        # by render(); a change triggers one refetch+rebuild via _needs_fetch.
+        self._rebin: dict[int, int] = {}
 
     @staticmethod
     def _build_split_series(suffixes) -> list[tuple[str, str, str]]:
@@ -388,7 +419,7 @@ class ChannelSelectorPanel(Panel):
                         style={"height": "420px"},
                         config={"displayModeBar": False},
                     ),
-                    controls_overlay(self.panel_id, i),
+                    controls_overlay(self.panel_id, i, rebin=True, rebin_value=self._rebin.get(i, 1)),
                 ],
             )
             for i, (template, ch) in enumerate(self._slot_specs())
@@ -410,9 +441,11 @@ class ChannelSelectorPanel(Panel):
         return html.Div(
             header
             + rows
-            # Throwaway sink: the selection callback must write to at least one
-            # Output. The real state lives in self._selected_ch.
+            # Throwaway sinks: the selection / rebin callbacks must write to at
+            # least one Output. The real state lives in self._selected_ch /
+            # self._rebin.
             + [dcc.Store(id={"type": "channel-select-sink", "panel": self.panel_id})]
+            + [dcc.Store(id={"type": "graph-rebin-sink", "panel": self.panel_id})]
             + extra_children
         )
 
@@ -425,11 +458,12 @@ class ChannelSelectorPanel(Panel):
         if self._projection and not self._needs_fetch and self._last_figs is not None:
             return self._last_figs
         out = []
-        for template, ch in slot_specs:
+        for slot_index, (template, ch) in enumerate(slot_specs):
             title = self._slot_title(template, ch)
             if ch is None:
                 out.append(theme.placeholder_figure(title))
                 continue
+            rebin = self._rebin.get(slot_index, 1)
             # Threshold annotation (independent of split mode): put the fraction
             # above the threshold into the title; the marker is added after the
             # figure is built. The raw threshold-series payload is fetched by
@@ -444,7 +478,7 @@ class ChannelSelectorPanel(Panel):
                     (payloads.get(self._token(template, suffix, ch)), color, label)
                     for suffix, label, color in self._split_series
                 ]
-                fig = overlay_figure(self._decoder, specs, title)
+                fig = overlay_figure(self._decoder, specs, title, rebin=rebin)
             else:
                 fig = figs.get(self._token(template, "", ch))
                 if fig is None:
@@ -526,3 +560,19 @@ class ChannelSelectorPanel(Panel):
                 # Manual refresh: fetch the current channel once on the next poll.
                 self._needs_fetch = True
                 return n_clicks
+
+        # Per-slot rebin control (segmented ×1/×2/×4/×8). One callback per panel
+        # matches all its rebin radios via the index wildcard; we read each slot's
+        # value from ctx so the per-slot factor is updated independently.
+        @app.callback(
+            Output({"type": "graph-rebin-sink", "panel": self.panel_id}, "data"),
+            Input({"type": "graph-ctl-rebin", "panel": self.panel_id, "index": ALL}, "value"),
+            prevent_initial_call=True,
+        )
+        def _on_rebin(values):
+            inputs = ctx.inputs_list[0] if ctx.inputs_list else []
+            if _update_rebin_state(self._rebin, inputs):
+                # Projection mode fetches on change only: rebuild with the new
+                # binning on the next poll (like a channel change / refresh).
+                self._needs_fetch = True
+            return values
