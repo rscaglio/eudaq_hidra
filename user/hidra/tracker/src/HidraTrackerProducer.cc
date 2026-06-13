@@ -3,7 +3,7 @@
 #include <eudaq/Factory.hh>
 #include <eudaq/Logger.hh>
 #include <eudaq/Producer.hh>
-
+#include "HidraUtils.hh"
 
 #include <algorithm>
 #include <array>
@@ -385,6 +385,7 @@ private:
     event->SetTag("SiliconTimestampLow", std::to_string(hex(SILICON_TS_LOW_INDEX)));
     event->SetTag("SiliconTimestampHigh", std::to_string(hex(SILICON_TS_HIGH_INDEX)));
     event->SetTag("DreamTimestamp", std::to_string(dream_ts));
+    event->SetTag("endianness", m_machine_endianness); // TODO review this tag
     // Cluster strip counts, space-joined in module order.
     std::ostringstream strips;
     for (std::size_t i = 0; i < STRIP_COUNT; ++i) {
@@ -419,6 +420,7 @@ private:
   uint64_t m_events_sent = 0;
   std::unordered_set<std::string> m_processed_files; // files already consumed
   std::map<std::string, uintmax_t> m_observed_sizes; // last-seen size, for the stability check
+  std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };
 
 namespace {
