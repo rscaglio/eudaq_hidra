@@ -76,12 +76,17 @@ def _update_rebin_state(rebin: dict[int, int], inputs_list: list) -> bool:
             continue
         iid = item.get("id")
         val = item.get("value")
-        if isinstance(iid, dict) and "index" in iid and val is not None:
+        if not (isinstance(iid, dict) and "index" in iid and val is not None):
+            continue
+        try:
             idx = int(iid["index"])
             factor = int(val)
-            if rebin.get(idx, 1) != factor:
-                rebin[idx] = factor
-                changed = True
+        except (TypeError, ValueError):
+            # Non-numeric index/value (shouldn't happen from Dash): skip it.
+            continue
+        if rebin.get(idx, 1) != factor:
+            rebin[idx] = factor
+            changed = True
     return changed
 
 
