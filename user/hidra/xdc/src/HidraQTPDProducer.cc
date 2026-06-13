@@ -86,7 +86,7 @@ constexpr uint16_t V792_MCST_MIDDLE = 0x03;
 constexpr uint16_t V792_MCST_LAST = 0x01;
 
 // V775/V775N TDC mode bit in Bit Set/Clear 2. Set = common stop, clear = common start.
-constexpr uint16_t V775_COMMON_STOP_BIT = 0x0800;
+constexpr uint16_t V775_COMMON_STOP_BIT = 0x0400;
 
 // CAEN V560 registers used by this producer
 constexpr uint16_t V560_STATUS_REG = 0x58;
