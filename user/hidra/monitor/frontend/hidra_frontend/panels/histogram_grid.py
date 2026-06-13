@@ -26,6 +26,7 @@ the README section "Custom panels".
 
 from __future__ import annotations
 
+import plotly.graph_objects as go
 from dash import dcc, html
 
 from .. import theme
@@ -89,16 +90,21 @@ class HistogramGridPanel(Panel):
                 out.append(theme.placeholder_figure(n))
                 continue
             if bin_labels:
-                _apply_bin_labels(fig, bin_labels)
+                fig = _with_bin_labels(fig, bin_labels)
             out.append(fig)
         return out
 
 
-def _apply_bin_labels(fig, labels) -> None:
-    """Label the bars with categorical x ticks, using the bars' own bin centres
-    as the tick positions. Frontend-only: no backend bin labels required."""
+def _with_bin_labels(fig, labels):
+    """Return `fig` with categorical x tick labels, using the bars' own bin
+    centres as the tick positions. Frontend-only: no backend bin labels needed.
+
+    The poll callback builds one Figure per histogram and shares it across every
+    panel that references that histogram, so we copy before relabelling to avoid
+    leaking the ticks into other panels/tabs that show the same histogram
+    without `bin_labels`."""
     if not hasattr(fig, "data"):
-        return
+        return fig
     centres = None
     for trace in fig.data:
         x = getattr(trace, "x", None)
@@ -106,6 +112,8 @@ def _apply_bin_labels(fig, labels) -> None:
             centres = list(x)
             break
     if not centres:
-        return
+        return fig
     k = min(len(centres), len(labels))
+    fig = go.Figure(fig)  # copy; leaves the shared original untouched
     fig.update_xaxes(tickmode="array", tickvals=centres[:k], ticktext=list(labels)[:k])
+    return fig
