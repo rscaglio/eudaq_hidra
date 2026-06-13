@@ -338,3 +338,9 @@ tabs:
         height: 360px
         equal_aspect: true
         projections: true    # X and Y distributions below, all stations overlaid
+      # No-hit (negative coordinate) counter: one bar per station plus an `any`
+      # bar (the OR over all stations), published by TrackerFiller. The bins are
+      # categories, so label them in the frontend.
+      - type: histograms
+        histograms: [Tracker_errors]
+        bin_labels: [station0, station1, station2, any]
