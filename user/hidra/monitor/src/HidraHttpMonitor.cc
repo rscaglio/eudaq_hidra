@@ -215,18 +215,22 @@ void HidraHttpMonitor::DoConfigure() {
   // overrides the range of that station.
   std::vector<TrackerStationConfig> tracker_stations;
   {
-    int n_stations = conf->Get("TRACKER_NSTATIONS", 2);
+    int n_stations = conf->Get("TRACKER_NSTATIONS", 3);
     if (n_stations < 0) {
       HIDRA_WARN("TRACKER_NSTATIONS={} is invalid, forcing 0.", n_stations);
       n_stations = 0;
     }
     TrackerStationConfig def;
-    def.x_nbins = conf->Get("TRACKER_X_NBINS", 100);
+    // Coordinates are in cm (official format). Range [0, 11] with 110 bins gives
+    // a clean 0.1 cm/bin (0 and 10 land on bin edges); the upper margin to 11
+    // leaves room above the ~10 cm detector. Use doubles for every default so a
+    // fractional override isn't truncated by the int Get() overload.
+    def.x_nbins = conf->Get("TRACKER_X_NBINS", 110);
     def.x_min = conf->Get("TRACKER_X_MIN", 0.0);
-    def.x_max = conf->Get("TRACKER_X_MAX", 1000.0);
-    def.y_nbins = conf->Get("TRACKER_Y_NBINS", 100);
+    def.x_max = conf->Get("TRACKER_X_MAX", 11.0);
+    def.y_nbins = conf->Get("TRACKER_Y_NBINS", 110);
     def.y_min = conf->Get("TRACKER_Y_MIN", 0.0);
-    def.y_max = conf->Get("TRACKER_Y_MAX", 1000.0);
+    def.y_max = conf->Get("TRACKER_Y_MAX", 11.0);
 
     for (int i = 0; i < n_stations; ++i) {
       TrackerStationConfig station = def;
