@@ -145,8 +145,8 @@ tabs:
         split_suffixes: ["", "_physics", "_pedestal"]
         show_trigger_split: true
 
-  # Muon counter: a single dedicated ADC channel (index 193, "Muon" in
-  # mapping/adc_channels.json). Reuses the channel_selector in projection mode
+  # Muon counter: a single dedicated ADC channel (index 161, "Muon" in
+  # hidra_frontend/mapping/adc_channels.json). Reuses the channel_selector in projection mode
   # but pinned to one channel (no dropdown), overlaying the full spectrum
   # ("total") and the pedestal-only copy. Like the ADC channels tab it fetches a
   # server-side ProjectionY on tab-open / Refresh (issue #153), not every poll.
@@ -157,15 +157,15 @@ tabs:
         projection_templates: ["ADC_dist"]
         split_suffixes: ["", "_pedestal"]   # overlay: total + pedestal-only
         show_trigger_split: true
-        fixed_channel: 193
-        title: "Muon counter · ch 193"
+        fixed_channel: 161
+        title: "Muon counter · ch 161"
         # Fraction of *physics* events above this ADC value, shown in the title
         # with a vertical marker at the threshold.
         threshold: 500
         threshold_series: "_physics"
 
   # Cherenkov chambers: three dedicated ADC channels (Cher1/Cher2/Cher3 =
-  # 194/195/196 in mapping/adc_channels.json), one fixed-channel spectrum each,
+  # 162/163/164 in hidra_frontend/mapping/adc_channels.json), one fixed-channel spectrum each,
   # overlaying total + pedestal (no threshold/fraction). Like the ADC channels /
   # muon tabs, each fetches a server-side ProjectionY on tab-open / Refresh.
   - id: cherenkov
@@ -178,7 +178,7 @@ tabs:
         projection_templates: ["ADC_dist"]
         split_suffixes: ["", "_pedestal"]
         show_trigger_split: true
-        fixed_channels: [194, 195, 196]
+        fixed_channels: [162, 163, 164]
         cols: 3
 
   - id: adc_saturation
