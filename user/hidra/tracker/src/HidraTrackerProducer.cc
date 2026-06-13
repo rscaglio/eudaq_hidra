@@ -378,7 +378,7 @@ private:
     event->SetEventN(static_cast<uint32_t>(dream_event));
     const uint64_t timestamp_ns = dream_ts * m_timestamp_scale_ns;
     event->SetTimestamp(timestamp_ns, timestamp_ns + 1);
-
+    event->SetTag("nativeTimestampBegin", std::to_string(timestamp_ns));
     event->SetTag("Producer", "HidraTrackerProducer");
     event->SetTag("SourceFile", file.filename().string());
     // Keep the auxiliary per-event identifiers/timestamps as tags for offline use.
@@ -397,6 +397,8 @@ private:
 
     // Coordinate block: NCOORDS doubles (x1,y1,x2,y2,x3,y3), native byte order.
     event->AddBlock(0, coordinates.data(), coordinates.size() * sizeof(double));
+    event->SetTag("detectorDataSize", std::to_string(event->GetBlock(0).size()));
+    
     SendEvent(std::move(event));
   }
 
