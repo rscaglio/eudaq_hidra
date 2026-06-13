@@ -12,9 +12,9 @@ if [[ -z "${EUDAQHIDRA:-}" ]]; then
 fi
 
 
-LOCAL_DIR_DATA="${EUDAQHIDRA}/run/out_data"
+LOCAL_DIR_DATA="/home/eudaq/daq/TB2026_HidraData/HidraData"
 BACKUP_DIR_DATA="/home/eudaq/cernbox/TB2026_H8/raw"
-LOCAL_DIR_LOG="${EUDAQHIDRA}/run/logs"
+LOCAL_DIR_LOG="/home/eudaq/daq/TB2026_HidraData/Logs"
 BACKUP_DIR_LOG="/home/eudaq/cernbox/TB2026_H8/logs"
 LOCAL_DIR_TRACKER_DATA="/home/eudaq/TB2026_TrackerData/ascii_dream_2026"
 BACKUP_DIR_TRACKER_DATA="/home/eudaq/cernbox/TB2026_H8/tracker_data/ascii_dream_2026"
