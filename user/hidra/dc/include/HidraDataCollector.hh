@@ -55,7 +55,7 @@ private:
 
   eudaq::EventSP BuildFullEvent(PendingTrigger& pending);
   bool EnqueueMergedEvent(const eudaq::EventSP& event);
-  std::string MakeOutputFile(const std::string& extension) const;
+  std::string MakeOutputFile(const std::string& extension, const std::string& directory) const;
   void FlushOldIncompleteEvents();
   void CheckMaxEvents();
   void UpdateStatusTags();
@@ -100,6 +100,12 @@ private:
   uint64_t m_writer_flush_interval_ms = 50;
 
   std::string m_filePattern;
+  // Optional output directories: when non-empty, the merged file name built
+  // from m_filePattern is placed inside this directory (created if missing),
+  // so the .raw and .root streams can be written to different locations. When
+  // empty, the pattern is used as-is (its embedded path, if any, still applies).
+  std::string m_binary_output_dir;
+  std::string m_root_output_dir;
   std::string m_fwType;
   std::string m_xdc_config_json;
   std::string m_binary_output_file;
