@@ -275,7 +275,11 @@ private:
       }
       files.push_back(entry.path());
     }
-    std::sort(files.begin(), files.end());
+
+    // Keep only the last files in alphabetic order.
+    // It shoud be the last spill in the last run
+    std::sort(files.begin(), files.end(), std::greater<std::string>());
+    files.resize(1);	
 
     for (const auto& file : files) {
       const auto key = file.string();
@@ -378,10 +382,6 @@ private:
     event->SetTag("Producer", "HidraTrackerProducer");
     event->SetTag("SourceFile", file.filename().string());
     // Keep the auxiliary per-event identifiers/timestamps as tags for offline use.
-    event->SetTag("DreamEventNumber", std::to_string(dream_event));
-    event->SetTag("GlobalEventNumber", std::to_string(hex(GLOBAL_EVENT_NUMBER_INDEX)));
-    event->SetTag("EventInSpill", std::to_string(hex(EVENT_IN_SPILL_INDEX)));
-    event->SetTag("EventFromStart", std::to_string(hex(EVENT_FROM_START_INDEX)));
     event->SetTag("SiliconTimestampLow", std::to_string(hex(SILICON_TS_LOW_INDEX)));
     event->SetTag("SiliconTimestampHigh", std::to_string(hex(SILICON_TS_HIGH_INDEX)));
     event->SetTag("DreamTimestamp", std::to_string(dream_ts));
