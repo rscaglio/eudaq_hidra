@@ -322,6 +322,11 @@ tabs:
       - type: histograms
         cols: 2
         histograms: [FERS_HG_board_mean, FERS_LG_board_mean, FERS_HG_board_allzero, FERS_board_time_offset]
+      # Per-event trigger-ID consistency: all boards of an event are triggered
+      # together, so every present channel should carry the same FERStrigger_id.
+      - type: histograms
+        histograms: [FERS_trigger_id_consistency]
+        bin_labels: [consistent, mismatch]
 
   # ---- Tracker -----------------------------------------------------------
   # One 2D hit map (X vs Y occupancy) per tracker station, published by the

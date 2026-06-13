@@ -29,7 +29,12 @@
  *     the fraction of events in which every HG channel of the board reads zero
  *     (`FERS_HG_board_allzero`, e.g. a board that stopped responding);
  *   - board-time compatibility: per board, the offset of its timestamp from the
- *     median over all boards present in the event (TProfile, x = board).
+ *     median over all boards present in the event (TProfile, x = board);
+ *   - trigger-ID consistency: a per-event 2-bin counter
+ *     (`FERS_trigger_id_consistency`, consistent / mismatch). All boards of an
+ *     event are triggered together, so every present channel should carry the
+ *     same `FERStrigger_id`; a board reading a different trigger id (desync)
+ *     lands the event in the "mismatch" bin.
  *
  * The data source is identical regardless of how `fers` was produced (the real
  * HidraFersDecoder or the random test decoder).
@@ -48,6 +53,7 @@ public:
 private:
   void FillBoardTime(const HidraFersEvent& fers);
   void FillBoardAllZeroHG(const HidraFersEvent& fers);
+  void FillTriggerIdConsistency(const HidraFersEvent& fers);
 
   unsigned int m_n_boards;
   unsigned int m_channels_per_board;
@@ -95,4 +101,8 @@ private:
 
   // Board time offset vs the per-event median (x = board).
   TProfile* m_board_time_offset;
+
+  // Per-event trigger-ID consistency: 2-bin counter (bin 1 "consistent", bin 2
+  // "mismatch"). All present channels of an event should share one FERStrigger_id.
+  TH1I* m_trigger_id_consistency;
 };
