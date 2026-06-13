@@ -181,9 +181,9 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
 
     uint64_t trigger = it->first;
 
-    HIDRA_WARN(
+    /*HIDRA_WARN(
         "Timeout waiting for complete event for trigger {}: {} > {} ns", trigger, age_ns, m_sync_timeout_us * 1000);
-
+*/
     // if one wants to discard:
     // it = m_pending_events.erase(it);
 
