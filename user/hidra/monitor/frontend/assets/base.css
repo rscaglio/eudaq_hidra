@@ -66,6 +66,43 @@ body {
   background: #3a3f49;
 }
 
+/* Segmented rebin control (×1/×2/×4/×8). The dcc.RadioItems renders one
+   <label><input> per factor; we hide the radio inputs and style the labels as a
+   joined button group, highlighting the selected one (the default ×1). */
+.plot-ctl-rebin {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #555;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.plot-ctl-rebin label {
+  margin: 0;
+  padding: 1px 6px;
+  background: #2b2f37;
+  color: #ddd;
+  border-left: 1px solid #555;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.plot-ctl-rebin label:first-child {
+  border-left: none;
+}
+.plot-ctl-rebin input {
+  display: none;
+}
+.plot-ctl-rebin label:hover {
+  background: #3a3f49;
+}
+/* Active factor: relies on :has() (supported by current browsers). */
+.plot-ctl-rebin label:has(input:checked) {
+  background: #89b4fa; /* theme PRIMARY */
+  color: #1e1e2e;
+  font-weight: bold;
+}
+
 /* "Wow" header cards: rounded, with a soft accent glow and a subtle lift on
    hover. Colours reuse the existing palette (OK green / PRIMARY blue) only as
    a halo — the card background stays the plot's own colour. */

@@ -21,7 +21,7 @@ import plotly.graph_objects as go
 
 from . import theme
 from .config import HistogramDisplayCfg
-from .decoders import Decoder, DecodedHist, DecoderError
+from .decoders import Decoder, DecodedHist, DecoderError, rebin_decoded
 from .perf import Phase
 
 logger = logging.getLogger(__name__)
@@ -273,6 +273,7 @@ def overlay_figure(
     specs: list[tuple[Optional[dict], str, str]],
     title: str,
     per_channel: bool = False,
+    rebin: int = 1,
 ) -> go.Figure:
     """Render several histograms superimposed on a single figure.
 
@@ -281,6 +282,13 @@ def overlay_figure(
     `None` if it was missing on the server). Every successfully decoded
     histogram becomes one `go.Scatter` trace; the legend is shown so the
     user can click an entry to hide/show it (all visible by default).
+
+    `rebin` (> 1) merges groups of that many bins before building the
+    traces (frontend rebin control). Applied to the decoded 1D histograms
+    only — skipped for the per-channel comparison whose x is a channel
+    index, and a no-op on TProfile (see `rebin_decoded`). The traces are
+    rebuilt from the coarser edges/counts, so widths and the y autorange
+    adapt while the x range stays put.
 
     * Default (distributions): an **edge-aligned step line** — the step
       boundaries sit on the ROOT bin edges, so several overlaid spectra
@@ -293,6 +301,9 @@ def overlay_figure(
     Decode/render failures for one spec are logged and skipped rather
     than failing the whole figure.
     """
+    # Note the active rebin factor in the title so it's clear the bins were merged.
+    if rebin > 1:
+        title = f"{title} · rebin ×{rebin}"
     layout = theme.base_figure_layout(title)
     layout["showlegend"] = True
     layout["legend"] = dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11))
@@ -312,6 +323,10 @@ def overlay_figure(
         except Exception:
             logger.exception("overlay decode of %s failed", label)
             continue
+
+        # Coarsen the binning if requested (no-op for factor 1 / per-channel / TProfile).
+        if rebin > 1 and not per_channel:
+            decoded = rebin_decoded(decoded, rebin)
 
         edges = decoded.edges
         if edges.size < 2:
