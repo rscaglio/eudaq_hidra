@@ -102,7 +102,11 @@ def _indicator_figure(name: str, value: Optional[float]) -> go.Figure:
     indicator = go.Indicator(
         mode="number",
         value=(value if value is not None else 0),
-        number={"font": {"size": 56, "color": theme.PRIMARY}, "valueformat": ",.0f"},
+        # Font size 40 (not 56): a 6-digit grouped value like "100,000" fits the
+        # ~200px-wide card without overflowing sideways, while staying fixed so a
+        # small value (e.g. "98") doesn't auto-scale up and shove the title off
+        # the top of the card.
+        number={"font": {"size": 40, "color": theme.PRIMARY}, "valueformat": ",.0f"},
         title={"text": name, "font": {"size": 16, "color": theme.FG}},
     )
     # Single-shot construction (data=/layout=) avoids the validation cost

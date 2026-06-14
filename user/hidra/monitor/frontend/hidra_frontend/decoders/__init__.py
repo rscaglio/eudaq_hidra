@@ -7,7 +7,7 @@ installed.
 
 from __future__ import annotations
 
-from .base import Decoder, DecodedHist, DecoderError
+from .base import Decoder, DecodedHist, DecoderError, rebin_decoded
 from .pure import PureDecoder
 
 DECODERS: dict[str, type[Decoder]] = {"pure": PureDecoder}
@@ -30,4 +30,4 @@ def get_decoder(name: str) -> Decoder:
     return cls()
 
 
-__all__ = ["Decoder", "DecodedHist", "DecoderError", "DECODERS", "get_decoder"]
+__all__ = ["Decoder", "DecodedHist", "DecoderError", "rebin_decoded", "DECODERS", "get_decoder"]

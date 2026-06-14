@@ -74,6 +74,16 @@ of the `.conf` file:
 
 - `WRITE_BINARY_OUTPUT` - enable or disable the standard binary output
 - `WRITE_ROOT_OUTPUT` - enable or disable the ROOT ntuple output
+- `EUDAQ_FW_PATTERN` - file-name template (`$R` run number, `$D` timestamp, `$X`
+  extension; an optional width prefix pads, e.g. `$3R`, `$12D`). The same
+  pattern is used for both the `.raw` and `.root` streams.
+- `BINARY_OUTPUT_DIR` - optional directory for the `.raw` file. When set, the
+  name built from `EUDAQ_FW_PATTERN` is written inside this directory (created
+  if missing). When empty (default), the pattern path is used as-is.
+- `ROOT_OUTPUT_DIR` - optional directory for the `.root` file, same semantics.
+  Set `BINARY_OUTPUT_DIR` and `ROOT_OUTPUT_DIR` to different paths to send the
+  two streams to separate directories; with both empty the files stay together
+  in the pattern's directory as before.
 - `WRITER_FLUSH_INTERVAL_MS` - polling / flush interval used by the writers
 - `WRITER_FLUSH_EVERY_EVENTS` - flush after this many queued events
 - `XDC_CONFIG_JSON` - optional path to a JSON file used by the XDC payload decoders
@@ -83,7 +93,10 @@ Example:
 ```ini
 [DataCollector.HidraDataCollector]
 EUDAQ_FW = native
-EUDAQ_FW_PATTERN = out_data/run$3R_$12D$X
+# Pattern is now just the base name; the directories below place each stream.
+EUDAQ_FW_PATTERN = run$3R_$12D$X
+BINARY_OUTPUT_DIR = out_data/raw
+ROOT_OUTPUT_DIR = out_data/root
 WRITE_BINARY_OUTPUT = 1
 WRITE_ROOT_OUTPUT = 0
 WRITER_FLUSH_INTERVAL_MS = 50

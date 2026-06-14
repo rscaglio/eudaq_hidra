@@ -34,6 +34,48 @@ class DecodedHist:
     z: Optional[np.ndarray] = None
 
 
+def rebin_decoded(hist: DecodedHist, factor: int) -> DecodedHist:
+    """Merge groups of ``factor`` adjacent bins into a coarser 1D histogram.
+
+    Used by the frontend rebin control (×1/×2/×4/×8). A no-op when ``factor``
+    is <= 1, the histogram isn't a 1D TH1 (TProfile means / 2D have different
+    semantics and must not be summed), or there are no bins. Counts are summed
+    per group; if the bin count isn't a multiple of ``factor`` the trailing
+    remainder is merged into the last bin (like ROOT's TH1::Rebin). Errors, when
+    present, are combined in quadrature. under/overflow and metadata are kept.
+    """
+    if factor <= 1 or not hist.typename.startswith("TH1"):
+        return hist
+    edges = np.asarray(hist.edges, dtype=np.float64)
+    counts = np.asarray(hist.counts, dtype=np.float64)
+    n = counts.size
+    if n < 2 or edges.size != n + 1:
+        return hist
+
+    # Group boundaries 0, factor, 2*factor, ...; reduceat sums [start:next).
+    starts = np.arange(0, n, factor)
+    new_counts = np.add.reduceat(counts, starts)
+    # New edges: the left edge of each group plus the original last edge.
+    new_edges = np.append(edges[starts], edges[-1])
+
+    new_errors = None
+    if hist.errors is not None:
+        err = np.asarray(hist.errors, dtype=np.float64)
+        if err.size == n:
+            new_errors = np.sqrt(np.add.reduceat(err * err, starts))
+
+    return DecodedHist(
+        name=hist.name,
+        title=hist.title,
+        typename=hist.typename,
+        edges=new_edges,
+        counts=new_counts,
+        errors=new_errors,
+        underflow=hist.underflow,
+        overflow=hist.overflow,
+    )
+
+
 class DecoderError(Exception):
     pass
 

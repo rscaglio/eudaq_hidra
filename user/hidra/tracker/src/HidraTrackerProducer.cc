@@ -3,7 +3,7 @@
 #include <eudaq/Factory.hh>
 #include <eudaq/Logger.hh>
 #include <eudaq/Producer.hh>
-
+#include "HidraUtils.hh"
 
 #include <algorithm>
 #include <array>
@@ -275,7 +275,11 @@ private:
       }
       files.push_back(entry.path());
     }
-    std::sort(files.begin(), files.end());
+
+    // Keep only the last files in alphabetic order.
+    // It shoud be the last spill in the last run
+    std::sort(files.begin(), files.end(), std::greater<std::string>());
+    files.resize(1);	
 
     for (const auto& file : files) {
       const auto key = file.string();
@@ -374,17 +378,14 @@ private:
     event->SetEventN(static_cast<uint32_t>(dream_event));
     const uint64_t timestamp_ns = dream_ts * m_timestamp_scale_ns;
     event->SetTimestamp(timestamp_ns, timestamp_ns + 1);
-
+    event->SetTag("nativeTimestampBegin", std::to_string(timestamp_ns));
     event->SetTag("Producer", "HidraTrackerProducer");
     event->SetTag("SourceFile", file.filename().string());
     // Keep the auxiliary per-event identifiers/timestamps as tags for offline use.
-    event->SetTag("DreamEventNumber", std::to_string(dream_event));
-    event->SetTag("GlobalEventNumber", std::to_string(hex(GLOBAL_EVENT_NUMBER_INDEX)));
-    event->SetTag("EventInSpill", std::to_string(hex(EVENT_IN_SPILL_INDEX)));
-    event->SetTag("EventFromStart", std::to_string(hex(EVENT_FROM_START_INDEX)));
     event->SetTag("SiliconTimestampLow", std::to_string(hex(SILICON_TS_LOW_INDEX)));
     event->SetTag("SiliconTimestampHigh", std::to_string(hex(SILICON_TS_HIGH_INDEX)));
     event->SetTag("DreamTimestamp", std::to_string(dream_ts));
+    event->SetTag("endianness", m_machine_endianness); // TODO review this tag
     // Cluster strip counts, space-joined in module order.
     std::ostringstream strips;
     for (std::size_t i = 0; i < STRIP_COUNT; ++i) {
@@ -397,6 +398,8 @@ private:
 
     // Coordinate block: NCOORDS doubles (x1,y1,x2,y2,x3,y3), native byte order.
     event->AddBlock(0, coordinates.data(), coordinates.size() * sizeof(double));
+    event->SetTag("detectorDataSize", std::to_string(event->GetBlock(0).size()));
+    
     SendEvent(std::move(event));
   }
 
@@ -417,6 +420,7 @@ private:
   uint64_t m_events_sent = 0;
   std::unordered_set<std::string> m_processed_files; // files already consumed
   std::map<std::string, uintmax_t> m_observed_sizes; // last-seen size, for the stability check
+  std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };
 
 namespace {

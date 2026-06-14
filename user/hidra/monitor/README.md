@@ -65,19 +65,26 @@ euCliMonitor -n HidraHttpMonitor
   publishes the mean over the board's channels for each gain
   (`FERS_HG_board_mean` / `FERS_LG_board_mean`) and the fraction of events in
   which every HG channel of the board reads zero (`FERS_HG_board_allzero`, a
-  board present but producing no signal). Finally, `FERS_board_time_offset`
+  board present but producing no signal). `FERS_board_time_offset`
   (`TProfile` indexed by board): each board's
   `rel_tsamp_us` minus the **median** over the boards present in the event, so a
-  board out of time sync stands out. The data is consumed from `HidraEvent::fers`
+  board out of time sync stands out. Finally, `FERS_trigger_id_consistency`
+  (2-bin `TH1I`, one count per event): all boards of an event are triggered
+  together, so every present channel should report the same `FERStrigger_id`;
+  the event lands in `consistent` when they all agree, else in `mismatch` (a
+  desynced board). The data is consumed from `HidraEvent::fers`
   regardless of which FERS decoder produced it (see `FERS_DECODER` below).
 - `TrackerFiller.*` - tracker hit maps: one 2D occupancy histogram
   (`Tracker_station<i>`, X vs Y) per station, filled from `HidraEvent::tracker`
   (decoded by `HidraTrackerDecoder` from the tracker sub-event, detID 3). The
   number of stations and the per-station X/Y range and binning are configurable
   (`TRACKER_NSTATIONS`, `TRACKER_X_*`/`TRACKER_Y_*`, optional per-station
-  `TRACKER_STATION<i>` range override — see Configuration). Events without a
-  tracker sub-event leave the tracker coordinates empty, so the filler is a no-op
-  for them.
+  `TRACKER_STATION<i>` range override — see Configuration). It also books a
+  `Tracker_errors` counter (TH1): one labelled bin per station counting events
+  where that station's X or Y is the producer's negative no-hit sentinel, plus a
+  final `any` bin for the OR over all stations. Events without a tracker
+  sub-event leave the tracker coordinates empty, so the filler is a no-op for
+  them.
 - `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
 
 ## Event metadata
@@ -194,10 +201,10 @@ Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in
 | `FERS_CHANNEL_NBINS` | `1024` | Bins for the per-channel HG/LG distributions over `[0, FERS_VALUE_MAX)` (1024 → 4 ADC/bin). |
 | `FERS_SATURATION_THRESHOLD` | `3800` | A channel is counted as saturated when its HG/LG value exceeds this (feeds `FERS_HG_saturation` / `FERS_LG_saturation`). Clamped to `[0, FERS_VALUE_MAX)`. |
 | `FERS_PER_CHANNEL_DISTRIBUTIONS` | `1` | `1` books the per-channel HG/LG distributions (`FERS_{HG,LG}_channel_<N>_*`, needed for the frontend channel dropdown); `0` skips them to cut memory / startup / THttpServer load. Means, saturation, inclusive and per-board histograms are unaffected. |
-| `TRACKER_NSTATIONS` | `2` | Number of tracker stations (planes); books one `Tracker_station<i>` 2D hit map (X vs Y) each. Sizing only consumed on the first configure. |
-| `TRACKER_X_NBINS` / `TRACKER_Y_NBINS` | `100` | Bins on the X / Y axis of every station hit map. |
-| `TRACKER_X_MIN` / `TRACKER_X_MAX` | `0` / `1000` | Global X-axis range of the station hit maps. |
-| `TRACKER_Y_MIN` / `TRACKER_Y_MAX` | `0` / `1000` | Global Y-axis range of the station hit maps. |
+| `TRACKER_NSTATIONS` | `3` | Number of tracker stations (planes); books one `Tracker_station<i>` 2D hit map (X vs Y) each. Sizing only consumed on the first configure. |
+| `TRACKER_X_NBINS` / `TRACKER_Y_NBINS` | `110` | Bins on the X / Y axis of every station hit map. With the default `[0, 11]` cm range this gives 0.1 cm/bin. |
+| `TRACKER_X_MIN` / `TRACKER_X_MAX` | `0` / `11` | Global X-axis range of the station hit maps, in cm (official tracker format). |
+| `TRACKER_Y_MIN` / `TRACKER_Y_MAX` | `0` / `11` | Global Y-axis range of the station hit maps, in cm. |
 | `TRACKER_STATION<i>` | (empty) | Optional per-station range override `xmin,xmax,ymin,ymax` (binning stays the global `TRACKER_*_NBINS`); e.g. `TRACKER_STATION0 = 0,50,0,50`. |
 
 ## Threading & locking model

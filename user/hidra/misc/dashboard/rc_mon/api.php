@@ -66,6 +66,19 @@ function last_valid_json_line(string $file, int $maxBytes = 524288): ?array {
     return null;
 }
 
+function run_summary(string $file): array {
+    $firstValid = first_valid_json_line($file);
+    $lastValid  = last_valid_json_line($file);
+
+    return [
+        "file" => basename($file),
+        "file_mtime" => filemtime($file),
+        "file_size" => filesize($file),
+        "run_start_unix_ns" => $firstValid["time_unix_ns"] ?? null,
+        "entry" => $lastValid,
+    ];
+}
+
 if (!is_dir($WATCH_DIR) || !is_readable($WATCH_DIR)) {
     fail_json("Directory not readable: $WATCH_DIR");
 }
@@ -74,24 +87,21 @@ $files = glob(rtrim($WATCH_DIR, "/") . "/" . $GLOB);
 $files = array_filter($files, fn($f) => is_file($f) && is_readable($f));
 
 if (!$files) {
-    echo json_encode(["ok" => true, "file" => null, "entry" => null]);
+    echo json_encode(["ok" => true, "file" => null, "entry" => null, "runs" => []]);
     exit;
 }
 
 usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
-$file = $files[0];
-
-$firstValid = first_valid_json_line($file);
-$lastValid  = last_valid_json_line($file);
-
-$run_start_unix_ns = $firstValid["time_unix_ns"] ?? null;
+$runs = array_map(fn($file) => run_summary($file), $files);
+$current = $runs[0];
 
 echo json_encode([
     "ok" => true,
-    "file" => basename($file),
-    "file_mtime" => filemtime($file),
-    "file_size" => filesize($file),
-    "run_start_unix_ns" => $run_start_unix_ns,
-    "entry" => $lastValid,
+    "file" => $current["file"],
+    "file_mtime" => $current["file_mtime"],
+    "file_size" => $current["file_size"],
+    "run_start_unix_ns" => $current["run_start_unix_ns"],
+    "entry" => $current["entry"],
+    "runs" => $runs,
     "server_time" => time()
 ]);

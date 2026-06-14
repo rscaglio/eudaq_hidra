@@ -280,8 +280,10 @@ bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string* err
   for (const auto& board : m_boards) {
     handles.push_back(board.handle());
   }
+  handles.push_back(-1); //rscaglio fix from gemini
 
-  int ret = FERS_StartAcquisition(handles.data(), static_cast<int>(handles.size()), start_mode, run_number);
+
+  int ret = FERS_StartAcquisition(handles.data(), static_cast<int>(handles.size()-1), start_mode, run_number);
   if (ret != 0) {
     if (error != nullptr) {
       *error = "FERS_StartAcquisition failed with code " + std::to_string(ret);
@@ -302,7 +304,7 @@ bool FERSBoardManager::StopAll(int start_mode, int run_number, std::string* erro
     handles.push_back(board.handle());
   }
 
-  int ret = FERS_StopAcquisition(handles.data(), static_cast<int>(handles.size()), start_mode, run_number);
+  int ret = FERS_StopAcquisition(handles.data(), static_cast<int>(handles.size()-1), start_mode, run_number);
   if (ret != 0) {
     if (error != nullptr) {
       *error = "FERS_StopAcquisition failed with code " + std::to_string(ret);
@@ -365,9 +367,12 @@ std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_total_ev
     if (ret == 0 || ret == 2) {
       break;
     }
-    if (ret < 0) {
+    if (ret == FERSLIB_ERR_READOUT_ERROR && nb == 0) {
+      HIDRA_DEBUG("FERS_GetEvent failed with code {}, data red {}. Continuing data acquisition...\n", ret, nb);
+      return {}; // DO NOT SET ERROR HERE AS WE SHOULD BE ABLE TO KEEP ON READING
+    } else if (ret < 0) {
       if (error != nullptr) {
-        *error = "FERS_GetEvent failed with code " + std::to_string(ret);
+        *error = "FERS_GetEvent failed with code " + std::to_string(ret) + " with data red " + std::to_string(nb);
       }
       return {};
     }

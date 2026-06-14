@@ -113,6 +113,15 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
   // Board-time compatibility: per-board offset from the per-event median.
   m_board_time_offset = reg.Add(std::make_unique<TProfile>(
       "FERS_board_time_offset", "Board time offset vs median;board;rel. time offset [#mus]", m_n_boards, 0, m_n_boards));
+
+  // Per-event trigger-ID consistency: one count per event into "consistent"
+  // (bin 1) or "mismatch" (bin 2). ROOT bin labels for the JSROOT/snapshot view;
+  // the Dash frontend labels the bars itself via the panel `bin_labels` key.
+  m_trigger_id_consistency = reg.Add(std::make_unique<TH1I>(
+      "FERS_trigger_id_consistency", "FERS trigger ID consistency;;events", 2, 0, 2));
+  m_trigger_id_consistency->SetCanExtend(TH1::kNoAxis);
+  m_trigger_id_consistency->GetXaxis()->SetBinLabel(1, "consistent");
+  m_trigger_id_consistency->GetXaxis()->SetBinLabel(2, "mismatch");
 }
 
 void FERSFiller::Fill(const HidraEvent& event) {
@@ -181,6 +190,35 @@ void FERSFiller::Fill(const HidraEvent& event) {
 
   FillBoardAllZeroHG(fers);
   FillBoardTime(fers);
+  FillTriggerIdConsistency(fers);
+}
+
+void FERSFiller::FillTriggerIdConsistency(const HidraFersEvent& fers) {
+  // All boards of an event are triggered together, so every present channel
+  // should report the same FERStrigger_id. Take the first present channel as the
+  // reference and check the rest; absent channels carry the -1 sentinel and are
+  // skipped. One count per event: "consistent" (bin 1) or "mismatch" (bin 2).
+  const std::size_t n = std::min<std::size_t>(fers.FERStrigger_id.size(), m_n_channels);
+  double reference = -1.0;
+  bool have_reference = false;
+  bool mismatch = false;
+  for (std::size_t i = 0; i < n; ++i) {
+    const double trig = fers.FERStrigger_id[i];
+    if (trig < 0) { // absent channel
+      continue;
+    }
+    if (!have_reference) {
+      reference = trig;
+      have_reference = true;
+    } else if (trig != reference) {
+      mismatch = true;
+      break;
+    }
+  }
+  if (!have_reference) {
+    return; // no FERS data this event -> nothing to check
+  }
+  m_trigger_id_consistency->Fill(mismatch ? 1.0 : 0.0);
 }
 
 void FERSFiller::FillBoardAllZeroHG(const HidraFersEvent& fers) {

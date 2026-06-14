@@ -29,13 +29,13 @@ $BINPATH/euRun -n HidraRunControl &
 sleep 1
 $BINPATH/hidraLog &
 sleep 1
-#$BINPATH/euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
+$BINPATH/euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
 sleep 1
 $BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &
 sleep 1
 
 $BINPATH/euCliProducer -n HidraQTPDProducer -t QTPDProducer &
 
-$BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
+#$BINPATH/euCliProducer -n HidraFERS2Producer -t FERS2Producer 
 
 # $BINPATH/euCliProducer -n HidraTrackerProducer -t TrackerProducer 

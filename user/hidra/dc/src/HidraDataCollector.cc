@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <filesystem>
 #include <map>
 #include <numeric>
 #include <string>
@@ -37,13 +38,30 @@ bool HidraDataCollector::IsComplete(PendingTrigger& pending) {
   return true;
 }
 
-std::string HidraDataCollector::MakeOutputFile(const std::string& extension) const {
+std::string HidraDataCollector::MakeOutputFile(const std::string& extension, const std::string& directory) const {
   std::time_t time_now = std::time(nullptr);
   char time_buff[13];
   time_buff[12] = 0;
   std::strftime(time_buff, sizeof(time_buff), "%y%m%d%H%M%S", std::localtime(&time_now));
 
-  return eudaq::FileNamer(m_filePattern).Set('X', extension).Set('R', GetRunNumber()).Set('D', std::string(time_buff));
+  std::string name =
+      eudaq::FileNamer(m_filePattern).Set('X', extension).Set('R', GetRunNumber()).Set('D', std::string(time_buff));
+
+  // No directory override: keep the pattern as-is (it may carry its own path).
+  if (directory.empty()) {
+    return name;
+  }
+
+  // Place the file inside the requested directory, creating it if needed so the
+  // run doesn't fail just because the destination doesn't exist yet.
+  std::filesystem::path dir(directory);
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  if (ec) {
+    HIDRA_ERROR("Could not create output directory {}: {}. Falling back to pattern path.", directory, ec.message());
+    return name;
+  }
+  return (dir / name).string();
 }
 
 bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event) {
@@ -189,9 +207,9 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
     }
 
 
-    HIDRA_WARN(
-        "Timeout waiting for complete event for trigger {}: {} > {} ns", it->second.trigger_number, age_ns, m_sync_timeout_us * 1000);
-
+    /*HIDRA_WARN(
+        "Timeout waiting for complete event for trigger {}: {} > {} ns", trigger, age_ns, m_sync_timeout_us * 1000);
+*/
     // if one wants to discard:
     // it = m_pending_events.erase(it);
 
@@ -295,6 +313,10 @@ void HidraDataCollector::DoConfigure() {
   }
 
   m_filePattern = conf->Get("EUDAQ_FW_PATTERN", "$12D_run$6R$X");
+  // Optional separate output directories for the binary (.raw) and ROOT (.root)
+  // streams. Empty -> use the pattern path as before (both files together).
+  m_binary_output_dir = conf->Get("BINARY_OUTPUT_DIR", "");
+  m_root_output_dir = conf->Get("ROOT_OUTPUT_DIR", "");
   m_fwType = conf->Get("EUDAQ_FW", "native");
   m_write_binary_output = conf->Get("WRITE_BINARY_OUTPUT", 1);
   m_write_root_output = conf->Get("WRITE_ROOT_OUTPUT", 0);
@@ -382,7 +404,7 @@ void HidraDataCollector::DoStartRun() {
   m_root_writer.reset();
 
   if (m_write_binary_output) {
-    m_binary_output_file = MakeOutputFile(".raw");
+    m_binary_output_file = MakeOutputFile(".raw", m_binary_output_dir);
     HIDRA_INFO("Output_file: {}", m_binary_output_file);
     auto binary_writer =
         std::make_unique<hidra::HidraMergedBinaryWriter>(m_binary_output_file, m_writer_flush_interval_ms);
@@ -398,7 +420,7 @@ void HidraDataCollector::DoStartRun() {
   }
 
   if (m_write_root_output) {
-    m_root_output_file = MakeOutputFile(".root");
+    m_root_output_file = MakeOutputFile(".root", m_root_output_dir);
     auto root_writer = std::make_unique<hidra::HidraRootEventWriter>(
         m_root_output_file, m_writer_flush_interval_ms, 32, m_vme_geo_map);
     root_writer->Start();

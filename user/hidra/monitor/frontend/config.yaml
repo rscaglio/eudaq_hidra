@@ -145,8 +145,8 @@ tabs:
         split_suffixes: ["", "_physics", "_pedestal"]
         show_trigger_split: true
 
-  # Muon counter: a single dedicated ADC channel (index 193, "Muon" in
-  # mapping/adc_channels.json). Reuses the channel_selector in projection mode
+  # Muon counter: a single dedicated ADC channel (index 161, "Muon" in
+  # hidra_frontend/mapping/adc_channels.json). Reuses the channel_selector in projection mode
   # but pinned to one channel (no dropdown), overlaying the full spectrum
   # ("total") and the pedestal-only copy. Like the ADC channels tab it fetches a
   # server-side ProjectionY on tab-open / Refresh (issue #153), not every poll.
@@ -157,15 +157,15 @@ tabs:
         projection_templates: ["ADC_dist"]
         split_suffixes: ["", "_pedestal"]   # overlay: total + pedestal-only
         show_trigger_split: true
-        fixed_channel: 193
-        title: "Muon counter · ch 193"
+        fixed_channel: 161
+        title: "Muon counter · ch 161"
         # Fraction of *physics* events above this ADC value, shown in the title
         # with a vertical marker at the threshold.
         threshold: 500
         threshold_series: "_physics"
 
   # Cherenkov chambers: three dedicated ADC channels (Cher1/Cher2/Cher3 =
-  # 194/195/196 in mapping/adc_channels.json), one fixed-channel spectrum each,
+  # 162/163/164 in hidra_frontend/mapping/adc_channels.json), one fixed-channel spectrum each,
   # overlaying total + pedestal (no threshold/fraction). Like the ADC channels /
   # muon tabs, each fetches a server-side ProjectionY on tab-open / Refresh.
   - id: cherenkov
@@ -178,7 +178,7 @@ tabs:
         projection_templates: ["ADC_dist"]
         split_suffixes: ["", "_pedestal"]
         show_trigger_split: true
-        fixed_channels: [194, 195, 196]
+        fixed_channels: [162, 163, 164]
         cols: 3
 
   - id: adc_saturation
@@ -322,6 +322,11 @@ tabs:
       - type: histograms
         cols: 2
         histograms: [FERS_HG_board_mean, FERS_LG_board_mean, FERS_HG_board_allzero, FERS_board_time_offset]
+      # Per-event trigger-ID consistency: all boards of an event are triggered
+      # together, so every present channel should carry the same FERStrigger_id.
+      - type: histograms
+        histograms: [FERS_trigger_id_consistency]
+        bin_labels: [consistent, mismatch]
 
   # ---- Tracker -----------------------------------------------------------
   # One 2D hit map (X vs Y occupancy) per tracker station, published by the
@@ -338,3 +343,9 @@ tabs:
         height: 360px
         equal_aspect: true
         projections: true    # X and Y distributions below, all stations overlaid
+      # No-hit (negative coordinate) counter: one bar per station plus an `any`
+      # bar (the OR over all stations), published by TrackerFiller. The bins are
+      # categories, so label them in the frontend.
+      - type: histograms
+        histograms: [Tracker_errors]
+        bin_labels: [station0, station1, station2, any]
