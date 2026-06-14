@@ -42,9 +42,10 @@ enum V977OUT {
 
 enum V560CHAN {
   sFastGate = 0,
-  sSpill = 1,
-  sIsPhys = 2,
-  sIsPed = 3
+  sIsPhys = 1,
+  sIsPed = 2,
+  sWW = 3,
+  sEndOfSpill = 4
 };
 ////////////////////
 
@@ -63,13 +64,14 @@ constexpr uint16_t V977_OUTPUT_CLEAR_REG = 0x0010; // A dummy write access to th
 constexpr uint16_t V977_SINGLE_READ_REG = 0x0006;
 
 
-// CAEN V792/QDC registers used by this producer.
+// CAEN V7xx registers used by this producer.
 constexpr uint16_t V792_GEO_ADDRESS_REG = 0x1002;
 constexpr uint16_t V792_BIT_SET_1_REG = 0x1006;
 constexpr uint16_t V792_BIT_CLEAR_1_REG = 0x1008;
 constexpr uint16_t V792_BLT_EVENT_NUMBER_REG = 0x1004;
 constexpr uint16_t V792_CRATE_SELECT_REG = 0x103C;
 constexpr uint16_t V792_IPED_REG = 0x1060;
+constexpr uint16_t V775_FULL_SCALE_RANGE_REG = 0x1060;
 constexpr uint16_t V792_CONTROL_1_REG = 0x1010;
 constexpr uint16_t V792_BIT_SET_2_REG = 0x1032;
 constexpr uint16_t V792_BIT_CLEAR_2_REG = 0x1034;
@@ -82,6 +84,9 @@ constexpr uint16_t V792_STATUS_1_REG = 0x100E;
 constexpr uint16_t V792_MCST_FIRST = 0x02;
 constexpr uint16_t V792_MCST_MIDDLE = 0x03;
 constexpr uint16_t V792_MCST_LAST = 0x01;
+
+// V775/V775N TDC mode bit in Bit Set/Clear 2. Set = common stop, clear = common start.
+constexpr uint16_t V775_COMMON_STOP_BIT = 0x0400;
 
 // CAEN V560 registers used by this producer
 constexpr uint16_t V560_STATUS_REG = 0x58;
@@ -114,6 +119,9 @@ struct BoardConfig {
   uint16_t geoAddr;
   uint16_t crateNr;
   std::string type;
+  uint16_t tdcFullScale;
+  std::string tdcMode;
+  bool debugRaw;
   uint16_t multicastRole;
   std::string multicastRoleName;
 };
@@ -172,6 +180,14 @@ std::string uppercase_ascii(std::string value) {
     }
   }
   return value;
+}
+
+bool is_qdc_board_type(const std::string& type) {
+  return type == "V792" || type == "V792N" || type == "V862";
+}
+
+bool is_tdc_board_type(const std::string& type) {
+  return type == "V775" || type == "V775N";
 }
 
 bool board_enable_key_index(const std::string& key, std::size_t* index) {
@@ -275,7 +291,7 @@ private:
     ResetRunState();
 
     for(const auto& board : m_boards) {
-      SetandClearV792BitSet2(board);
+      ClearBoardData(board);
     }
 
     m_running = true;
@@ -293,6 +309,13 @@ private:
   void DoStopRun() override {
     m_running = false;
     StopAcquisitionThread();
+    /*if (m_v560Enabled) {
+      m_fastGateCount_560 = ReadV560FastGate();
+      m_physicsCount_560 = ReadV560Physics();
+      m_pedestalCount_560 = ReadV560Pedestal();
+      m_wwCount_560 = ReadV560WW();
+      m_endOfSpillCount_560 = ReadV560EndOfSpill();
+    }*/
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
     VetoTrigger();
@@ -542,16 +565,65 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     ThrowIfVmeError("V560 clear failed");
   }
 
-  uint16_t ReadV560Channel(uint16_t channel) {
+  uint32_t ReadV560Counter(uint16_t channel) {
     if (!m_v560Enabled) {
       return 0;
     }
-    uint16_t reg = 0x10 + 0x4 * channel;
-    uint16_t value = ReadReg(channel, m_v560Base);
+    const uint16_t reg = 0x10 + 0x4 * channel;
+    uint32_t data = 0;
+    const CVErrorCodes ret = CAENVME_ReadCycle(m_handle, m_v560Base + reg, &data, cvA32_U_DATA, cvD32);
+    if (ret != cvSuccess) {
+      m_errorString = "Cannot read V560 channel at address " + hex32(m_v560Base + reg);
+      m_vmeError = true;
+    }
     ThrowIfVmeError("V560 channel read failed");
-    return value;
+    return data;
   }
-  
+
+  uint32_t ReadV560FastGate() {
+    if (!m_v560Enabled) {
+      return 0;
+    }
+    const uint32_t fastgate_count = ReadV560Counter(V560CHAN::sFastGate);
+    HIDRA_DEBUG("V560 FastGate count: {}", fastgate_count);
+    return fastgate_count;
+  }
+
+  uint32_t ReadV560Physics() {
+    if (!m_v560Enabled) {
+      return 0;
+    }
+    const uint32_t physics_count = ReadV560Counter(V560CHAN::sIsPhys);
+    HIDRA_DEBUG("V560 Physics count: {}", physics_count);
+    return physics_count;
+  }
+
+  uint32_t ReadV560Pedestal() {
+    if (!m_v560Enabled) {
+      return 0;
+    }
+    const uint32_t pedestal_count = ReadV560Counter(V560CHAN::sIsPed);
+    HIDRA_DEBUG("V560 Pedestal count: {}", pedestal_count);
+    return pedestal_count;
+  }
+
+  uint32_t ReadV560WW() {
+    if (!m_v560Enabled) {
+      return 0;
+    }
+    const uint32_t ww_count = ReadV560Counter(V560CHAN::sWW);
+    HIDRA_DEBUG("V560 WW count: {}", ww_count);
+    return ww_count;
+  }
+
+  uint32_t ReadV560EndOfSpill() {
+    if (!m_v560Enabled) {
+      return 0;
+    }
+    const uint32_t eos_count = ReadV560Counter(V560CHAN::sEndOfSpill);
+    HIDRA_DEBUG("V560 End of Spill count: {}", eos_count);
+    return eos_count;
+  }  
 
   void VetoTrigger() {
     uint16_t setBitMask = 0x0000 | (1u << V977OUT::cVeto) | (1u << V977OUT::cPedVeto);
@@ -641,16 +713,15 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
 
-	      if (m_v560Enabled){
-          m_triggerCount_560 = ReadV560Channel(V560CHAN::sFastGate);
-          m_spillCount_560 = ReadV560Channel(V560CHAN::sSpill);
-	      }
+	      /*if (m_v560Enabled){
+          m_triggerCount_560 = ReadV560FastGate();
+	      }*/
 
         HIDRA_DEBUG("Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_triggerCount_560, m_evt & 0xFFFF);
 
-        if (m_v560Enabled && m_triggerCount_560 != (m_evt & 0xFFFF)) {
+        /*if (m_v560Enabled && m_triggerCount_560 != (m_evt & 0xFFFF)) {
           HIDRA_ERROR("Mismatch between trigger count from V560 ({}) and expected from event pattern ({}). You are probably loosing events.", m_triggerCount_560, m_evt & 0xFFFF);
-        }
+        }*/
 
         bool eventHandlingOk = ReadOneBlockAndSendEvent();
         m_evt++;
@@ -714,14 +785,46 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     ThrowIfVmeError("V977 OUTPUT CLEAR write failed");
   }
 
-  void SetandClearV792BitSet2(const BoardConfig& board) {
-  
-       WriteReg(V792_BIT_SET_2_REG, 0x4, board.baseAddr);
-       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-       WriteReg(V792_BIT_CLEAR_2_REG, 0x4004, board.baseAddr);
-  
+  void ClearBoardData(const BoardConfig& board) {
+    WriteReg(V792_BIT_SET_2_REG, 0x0004, board.baseAddr);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    WriteReg(V792_BIT_CLEAR_2_REG, 0x0004, board.baseAddr);
+    ThrowIfVmeError("Board data clear failed");
+  }
 
-      ThrowIfVmeError("V792 BIT SET/CLEAR 2 write failed");
+  void ConfigureQdcBoard(const BoardConfig& board) {
+    WriteReg(V792_IPED_REG, static_cast<uint16_t>(m_iped), board.baseAddr);
+    WriteReg(V792_CONTROL_1_REG, 0x60, board.baseAddr);
+    WriteReg(V792_BIT_SET_2_REG, 0x0010, board.baseAddr); // disable zero suppression
+    WriteReg(V792_BIT_SET_2_REG, 0x0008, board.baseAddr); // disable overrange suppression
+    WriteReg(V792_BIT_SET_2_REG, 0x1000, board.baseAddr); // enable empty events
+    WriteReg(V792_EVENT_COUNTER_RESET_REG, 0x0, board.baseAddr);
+    ClearBoardData(board);
+    ThrowIfVmeError("QDC board configuration failed");
+    HIDRA_INFO("Configured QDC Board{} ({}) with Iped {}", board.configIndex, board.type, m_iped);
+  }
+
+  void ConfigureTdcBoard(const BoardConfig& board) {
+    WriteReg(V775_FULL_SCALE_RANGE_REG, board.tdcFullScale, board.baseAddr);
+    WriteReg(V792_CONTROL_1_REG, 0x60, board.baseAddr);
+    WriteReg(V792_BIT_SET_2_REG, 0x0010, board.baseAddr); // disable zero suppression
+    WriteReg(V792_BIT_SET_2_REG, 0x0008, board.baseAddr); // disable overflow suppression
+    WriteReg(V792_BIT_SET_2_REG, 0x1000, board.baseAddr); // enable empty events
+
+    if (board.tdcMode == "COMMON_STOP") {
+      WriteReg(V792_BIT_SET_2_REG, V775_COMMON_STOP_BIT, board.baseAddr);
+    } else {
+      WriteReg(V792_BIT_CLEAR_2_REG, V775_COMMON_STOP_BIT, board.baseAddr);
+    }
+
+    WriteReg(V792_EVENT_COUNTER_RESET_REG, 0x0, board.baseAddr);
+    ClearBoardData(board);
+    ThrowIfVmeError("TDC board configuration failed");
+    HIDRA_INFO("Configured TDC Board{} ({}) with full-scale register {} and mode {}",
+               board.configIndex,
+               board.type,
+               board.tdcFullScale,
+               board.tdcMode);
   }
 
   void OpenController() {
@@ -802,15 +905,14 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     EUDAQ_INFO("Board model at " + hex32(board.baseAddr) + ": " + std::to_string(model));
 
     WriteReg(V792_CRATE_SELECT_REG, board.crateNr, board.baseAddr);
-    WriteReg(V792_IPED_REG, static_cast<uint16_t>(m_iped), board.baseAddr);
-    WriteReg(V792_CONTROL_1_REG, 0x60, board.baseAddr);
-    WriteReg(V792_BIT_SET_2_REG, 0x0010, board.baseAddr);
-    WriteReg(V792_BIT_SET_2_REG, 0x0008, board.baseAddr);
-    WriteReg(V792_BIT_SET_2_REG, 0x1000, board.baseAddr);
-    WriteReg(V792_EVENT_COUNTER_RESET_REG, 0x0, board.baseAddr);
-    SetandClearV792BitSet2(board);
-    //WriteReg(V792_BIT_SET_2_REG, 0x4, board.baseAddr);
-    //WriteReg(V792_BIT_CLEAR_2_REG, 0x4004, board.baseAddr);
+
+    if (is_qdc_board_type(board.type)) {
+      ConfigureQdcBoard(board);
+    } else if (is_tdc_board_type(board.type)) {
+      ConfigureTdcBoard(board);
+    } else {
+      EUDAQ_THROW("Unsupported Board" + std::to_string(board.configIndex) + ".Type: " + board.type);
+    }
 
     const uint16_t bitSet2 = ReadReg(V792_BIT_SET_2_REG, board.baseAddr);
     EUDAQ_INFO("Board programmed 0x" + hex16(bitSet2));
@@ -858,9 +960,50 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
 
     m_tracker_time = ReadEventSyncTstamp24();
 
+    DumpDebugRawWords(byteCount);
 
     SendDataEvent(byteCount);
     return true;
+  }
+
+  void DumpDebugRawWords(int byteCount) const {
+    const int wordCount = byteCount / 4;
+    if (wordCount <= 0) {
+      return;
+    }
+
+    for (const auto& board : m_boards) {
+      if (!board.debugRaw) {
+        continue;
+      }
+
+      std::ostringstream words;
+      int matchedWords = 0;
+      for (int index = 0; index < wordCount; ++index) {
+        const uint32_t word = m_buffer[index];
+        if ((word & 0xFE000000) == 0xFE000000) {
+          continue;
+        }
+
+        const uint8_t geo = static_cast<uint8_t>((word >> 27) & 0x1F);
+        if (geo != board.geoAddr) {
+          continue;
+        }
+
+        if (matchedWords > 0) {
+          words << " ";
+        }
+        words << hex32(word);
+        ++matchedWords;
+      }
+
+      HIDRA_INFO("Raw XDC words for Board{} geo {} type {} evt {}: {}",
+                 board.configIndex,
+                 board.geoAddr,
+                 board.type,
+                 m_evt,
+                 matchedWords > 0 ? words.str() : std::string("<none>"));
+    }
   }
 
   void SendDataEvent(int byteCount) {
@@ -899,6 +1042,10 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
       bore->SetTag("Board" + std::to_string(i) + "_Geo", std::to_string(m_boards[i].geoAddr));
       //bore->SetTag("Board" + std::to_string(i) + "_Crate", std::to_string(m_boards[i].crateNr));
       bore->SetTag("Board" + std::to_string(i) + "_Type", m_boards[i].type);
+      if (is_tdc_board_type(m_boards[i].type)) {
+        bore->SetTag("Board" + std::to_string(i) + "_TdcFullScale", std::to_string(m_boards[i].tdcFullScale));
+        bore->SetTag("Board" + std::to_string(i) + "_TdcMode", m_boards[i].tdcMode);
+      }
       //bore->SetTag("Board" + std::to_string(i) + "_MulticastRoleName", m_boards[i].multicastRoleName);
     }
 
@@ -911,6 +1058,13 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     eore->SetEORE();
     eore->SetRunN(static_cast<uint32_t>(m_runNumber));
     eore->SetTag("EventsSent", std::to_string(m_evt));
+    /*if (m_v560Enabled) {
+      eore->SetTag("V560FastGate", std::to_string(m_fastGateCount_560));
+      eore->SetTag("V560Physics", std::to_string(m_physicsCount_560));
+      eore->SetTag("V560Pedestal", std::to_string(m_pedestalCount_560));
+      eore->SetTag("V560WW", std::to_string(m_wwCount_560));
+      eore->SetTag("V560EndOfSpill", std::to_string(m_endOfSpillCount_560));
+    }*/
 
     const auto runStop = std::chrono::steady_clock::now();
     const auto elapsed = runStop - m_runStart;
@@ -958,11 +1112,19 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     board.geoAddr = parse_u16(RequiredConfigValue(conf, prefix + "GeoAddress"));
     board.crateNr = parse_u16(RequiredConfigValue(conf, prefix + "CrateNumber"));
     board.type = uppercase_ascii(RequiredConfigValue(conf, prefix + "Type"));
-    /* TODO: protect from typos
-    if (board.type != "V792" && board.type != ....) {
+    board.tdcFullScale = parse_u16(conf.Get(prefix + "TdcFullScale", std::string("100")));
+    board.tdcMode = uppercase_ascii(conf.Get(prefix + "TdcMode", std::string("COMMON_STOP")));
+    board.debugRaw = conf.Get(prefix + "DebugRaw", std::string("0")) == "1";
+
+    if (!is_qdc_board_type(board.type) && !is_tdc_board_type(board.type)) {
       EUDAQ_THROW("Unsupported " + prefix + "Type: " + board.type);
     }
-    */
+
+    if (is_tdc_board_type(board.type) && board.tdcMode != "COMMON_START" && board.tdcMode != "COMMON_STOP") {
+      EUDAQ_THROW("Unsupported " + prefix + "TdcMode: " + board.tdcMode +
+                  " (expected COMMON_START or COMMON_STOP)");
+    }
+
     m_boards.push_back(board);
   }
 
@@ -1014,6 +1176,13 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     m_evt = m_evt_ped = m_evt_phy = 0;
     m_spillCount = 0;
     m_evtTimeNs = 0;
+    m_triggerCount_560 = 0;
+    m_spillCount_560 = 0;
+    m_fastGateCount_560 = 0;
+    m_physicsCount_560 = 0;
+    m_pedestalCount_560 = 0;
+    m_wwCount_560 = 0;
+    m_endOfSpillCount_560 = 0;
   }
 
   void ResetReadoutBuffers() {
@@ -1054,8 +1223,13 @@ private:
   uint32_t m_tracker_time = std::numeric_limits<uint32_t>::max();
 
   //V560 scaler
-  uint16_t m_triggerCount_560 = 0;
-  uint16_t m_spillCount_560 = 0;
+  uint32_t m_triggerCount_560 = 0;
+  uint32_t m_spillCount_560 = 0;
+  uint32_t m_fastGateCount_560 = 0;
+  uint32_t m_physicsCount_560 = 0;
+  uint32_t m_pedestalCount_560 = 0;
+  uint32_t m_wwCount_560 = 0;
+  uint32_t m_endOfSpillCount_560 = 0;
 
   std::chrono::steady_clock::time_point m_runStart;
 
