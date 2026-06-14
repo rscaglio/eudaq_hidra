@@ -29,8 +29,13 @@ polling:
 
 overlay:
   enabled: true
-  # Frontend scans this directory for *.root files. Future backend will
-  # write reference snapshots here.
+  # Directory of reference snapshots for the overlay. Normally this is taken
+  # automatically from the running monitor over HTTP (its HISTO_OUTPUT_PATTERN
+  # folder, exposed as /histo_output_dir), so nothing needs configuring. The
+  # value below is only a fallback used when the monitor is unreachable or
+  # doesn't expose it. The dropdown lists every file in the active directory (a
+  # non-ROOT pick just shows no overlay). May be absolute; a relative path is
+  # resolved against this config file's directory (monitor/frontend/).
   search_dir: reference
   default_file: null
   # How live and reference are scaled for comparison:

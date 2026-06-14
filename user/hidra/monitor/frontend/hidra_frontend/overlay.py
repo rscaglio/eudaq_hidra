@@ -31,10 +31,24 @@ class OverlayStore:
         self.search_dir = Path(search_dir)
         self._cache: dict[tuple[str, str], Optional[DecodedHist]] = {}
 
+    def set_search_dir(self, search_dir: Path) -> None:
+        """Point the store at a different directory (e.g. the one the backend
+        reports). Clears the decoded-histogram cache when the dir changes, since
+        a given file name may now resolve to a different file."""
+        new = Path(search_dir)
+        if new != self.search_dir:
+            self.search_dir = new
+            self._cache.clear()
+
     def available_files(self) -> list[str]:
+        """Every regular file in the search dir (any extension), sorted by name.
+
+        We list all files rather than just ``*.root`` so nothing in the
+        configured folder is hidden from the dropdown. A non-ROOT selection is
+        handled gracefully by `get()` (uproot fails to open it -> no overlay)."""
         if not self.search_dir.is_dir():
             return []
-        return sorted(p.name for p in self.search_dir.glob("*.root"))
+        return sorted(p.name for p in self.search_dir.iterdir() if p.is_file())
 
     def get(self, file_name: Optional[str], hist_name: str) -> Optional[DecodedHist]:
         if not file_name:

@@ -157,6 +157,9 @@ def load_config(path: str | Path) -> Config:
     )
 
     o = raw.get("overlay") or {}
+    # Overlay reference directory: only a fallback (the running monitor reports
+    # the real snapshot dir over HTTP). May be absolute; a relative path is
+    # resolved against the config file's directory, not the launch CWD.
     search_dir = Path(o.get("search_dir", "reference"))
     if not search_dir.is_absolute():
         search_dir = (config_dir / search_dir).resolve()
