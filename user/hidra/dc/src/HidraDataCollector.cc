@@ -179,7 +179,7 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   mergedEventFlags |= detectorFlagsOnly;
   hidra::utils::SetEventFlagMask(*fullEvt, mergedEventFlags);
 
-  uint64_t m_max_trigger_built = std::max(m_max_trigger_built, pending.trigger_number);
+  m_max_trigger_built = std::max(m_max_trigger_built, pending.trigger_number);
 
   return fullEvt;
 }
@@ -390,6 +390,8 @@ void HidraDataCollector::DoStartRun() {
   m_running = true;
   m_n_complete_events = 0;
   m_n_incomplete_events = 0;
+  m_max_trigger_seen = 0;
+  m_max_trigger_built = 0;
   m_pending_events.clear();
   m_calib_timing_events.clear();
   m_calib_timing_events.assign(
@@ -721,7 +723,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
 
   if (!mergedEvt) {
     HIDRA_WARN("Failed to build full event for trigger {}", trigger_number);
-    m_pending_events.erase(trigger_number);
+    m_pending_events.erase(trigger_number & 0xFFFF);
     return;
   }
 
@@ -734,7 +736,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   EnqueueMergedEvent(mergedEvt);
   WriteEvent(mergedEvt);
 
-  m_pending_events.erase(trigger_number);
+  m_pending_events.erase(trigger_number & 0xFFFF);
 
   CheckMaxEvents();
 
