@@ -99,6 +99,28 @@ h1 {
   font-size: 14px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+button {
+  color: var(--text);
+  background: rgba(255,255,255,.075);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(255,255,255,.12);
+}
+
 main {
   padding: 24px;
   display: grid;
@@ -198,6 +220,145 @@ main {
   font-size: 13px;
 }
 
+.run-history {
+  display: none;
+  background: rgba(16,28,45,.88);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.run-history.open {
+  display: block;
+}
+
+.run-history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.run-history-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.run-history-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.run-table-wrap {
+  overflow-x: auto;
+}
+
+.run-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.run-table th,
+.run-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.run-table th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  background: rgba(255,255,255,.035);
+}
+
+.run-table tbody tr:hover {
+  background: rgba(255,255,255,.045);
+}
+
+.run-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-table .run-num,
+.run-table .event-num {
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.run-table .event-num {
+  color: var(--text);
+}
+
+.run-table .bad {
+  color: var(--bad);
+  font-weight: 750;
+}
+
+.run-table .ok {
+  color: var(--ok);
+  font-weight: 750;
+}
+
+.run-table .started {
+  color: var(--ok);
+  font-weight: 750;
+}
+
+.run-table .warn {
+  color: var(--warn);
+  font-weight: 750;
+}
+
+.run-table .devices-cell {
+  min-width: 420px;
+  white-space: normal;
+}
+
+.history-device {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 1px 0;
+}
+
+.history-device + .history-device {
+  border-top: 1px solid rgba(255,255,255,.045);
+}
+
+.history-device-name {
+  font-weight: 800;
+}
+
+.history-tag {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.history-tag {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
+
+.history-tag.ok {
+  color: var(--ok);
+}
+
+.history-tag.bad {
+  color: var(--bad);
+}
+
 .error {
   color: var(--bad);
   font-weight: 700;
@@ -219,7 +380,10 @@ main {
     <h1><span id="liveDot" class="status-dot"></span>HIDRA Run Monitoring</h1>
     <div class="sub" id="subtitle">Waiting for data...</div>
   </div>
-  <div class="sub" id="clock"></div>
+  <div class="header-actions">
+    <button id="historyToggle" type="button" aria-expanded="false">Runs</button>
+    <div class="sub" id="clock"></div>
+  </div>
 </header>
 
 <main>
@@ -265,6 +429,30 @@ main {
 
   <section class="devices" id="devices"></section>
 
+  <section class="run-history" id="runHistory">
+    <div class="run-history-head">
+      <div class="run-history-title">Run snapshots</div>
+      <div class="run-history-count" id="runHistoryCount">0 runs</div>
+    </div>
+    <div class="run-table-wrap">
+      <table class="run-table">
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>Start</th>
+            <th>Last snapshot</th>
+            <th>Duration</th>
+            <th class="num">Events</th>
+            <th>Devices and tags</th>
+          </tr>
+        </thead>
+        <tbody id="runHistoryBody">
+          <tr><td colspan="6">Waiting for data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <div class="footer" id="footer"></div>
 </main>
 
@@ -272,6 +460,7 @@ main {
 const API = "api.php";
 const POLL_MS = 1000;
 const HIDDEN_TAGS = new Set(["MonitorEventN"]);
+let historyVisible = false;
 
 function nsToDate(ns) {
   if (!ns) return null;
@@ -283,6 +472,19 @@ function fmtAge(seconds) {
   if (seconds < 1) return "<1 s";
   if (seconds < 60) return `${seconds.toFixed(0)} s`;
   return `${(seconds / 60).toFixed(1)} min`;
+}
+
+function fmtDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+
+  const totalSeconds = Math.round(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function stateClass(state) {
@@ -340,6 +542,10 @@ function updateBoardsMonStatus(devices) {
   led.classList.toggle("bad", !isOk);
 }
 
+function eventsOnDisk(devices) {
+  return Number(findTagValue(devices, "HidraDataCollector", ["EventsOnDisk"])) || 0;
+}
+
 function escapeHtml(x) {
   return String(x)
     .replaceAll("&", "&amp;")
@@ -347,6 +553,97 @@ function escapeHtml(x) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function tagStatusClass(key, value) {
+  const text = String(value).trim().toLowerCase();
+  const name = String(key).trim().toLowerCase();
+
+  if (text === "ok" || text === "true" || text === "ready") return "ok";
+  if (
+    text.includes("error") ||
+    text.includes("fail") ||
+    text.includes("dead") ||
+    text.includes("bad") ||
+    text.includes("not ok") ||
+    text === "false"
+  ) return "bad";
+  if (text.includes("warn")) return "warn";
+  if (name.includes("status") && text && text !== "ok") return "bad";
+
+  return "";
+}
+
+function renderDeviceTagSummary(devices) {
+  const names = Object.keys(devices).sort();
+
+  if (!names.length) {
+    return `<span class="sub">No devices</span>`;
+  }
+
+  return names.map(name => {
+    const dev = devices[name] || {};
+    const tags = Object.entries(dev.tags || {})
+      .filter(([key]) => !HIDDEN_TAGS.has(key))
+      .sort(([a], [b]) => a.localeCompare(b));
+
+    const tagHtml = tags.map(([key, value]) => {
+      const klass = tagStatusClass(key, value);
+      const label = `${key}=${value}`;
+      return `<span class="history-tag ${klass}">${escapeHtml(label)}</span>`;
+    }).join("");
+
+    return `
+      <div class="history-device">
+        <span class="history-device-name">${escapeHtml(name)}</span>
+        ${tagHtml || `<span class="history-tag">no tags</span>`}
+      </div>
+    `;
+  }).join("");
+}
+
+function summarizeRun(item) {
+  const entry = item.entry || {};
+  const devices = entry.devices || {};
+  const lastDate = nsToDate(entry.time_unix_ns);
+  const startDate = item.run_start_unix_ns ? nsToDate(item.run_start_unix_ns) : null;
+
+  return {
+    run: entry.run ?? "—",
+    start: startDate ? startDate.toLocaleString() : "—",
+    last: lastDate ? lastDate.toLocaleString() : "—",
+    duration: startDate && lastDate ? fmtDuration(lastDate - startDate) : "—",
+    events: eventsOnDisk(devices),
+    devicesHtml: renderDeviceTagSummary(devices),
+  };
+}
+
+function renderRunHistory(runs) {
+  const body = document.getElementById("runHistoryBody");
+  const count = document.getElementById("runHistoryCount");
+  const list = Array.isArray(runs) ? runs : [];
+
+  count.textContent = `${list.length} run${list.length === 1 ? "" : "s"}`;
+
+  if (!list.length) {
+    body.innerHTML = `<tr><td colspan="6">No JSONL files found</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = list.map(item => {
+    const row = summarizeRun(item);
+
+    return `
+      <tr>
+        <td class="num run-num">${escapeHtml(row.run)}</td>
+        <td>${escapeHtml(row.start)}</td>
+        <td>${escapeHtml(row.last)}</td>
+        <td>${escapeHtml(row.duration)}</td>
+        <td class="num event-num">${escapeHtml(row.events)}</td>
+        <td class="devices-cell">${row.devicesHtml}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function computeGlobalStatus(deviceNames, devices, now, daqAgeSec) {
@@ -387,6 +684,7 @@ function render(data) {
   }
 
   const entry = data.entry;
+  renderRunHistory(data.runs);
 
   if (!entry) {
     document.getElementById("subtitle").innerHTML =
@@ -435,7 +733,7 @@ function render(data) {
     }
   }
     */
-    totalEvents = Number(tagValue(devices["HidraDataCollector"].tags,"EventsOnDisk")) || 0;
+    totalEvents = eventsOnDisk(devices);
 
   document.getElementById("totalEvents").textContent = totalEvents;
   updateBoardsMonStatus(devices);
@@ -510,6 +808,12 @@ async function poll() {
 setInterval(() => {
   document.getElementById("clock").textContent = new Date().toLocaleString();
 }, 500);
+
+document.getElementById("historyToggle").addEventListener("click", () => {
+  historyVisible = !historyVisible;
+  document.getElementById("runHistory").classList.toggle("open", historyVisible);
+  document.getElementById("historyToggle").setAttribute("aria-expanded", String(historyVisible));
+});
 
 poll();
 setInterval(poll, POLL_MS);
