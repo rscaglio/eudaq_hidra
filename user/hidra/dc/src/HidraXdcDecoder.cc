@@ -81,6 +81,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   std::vector<double> TDCflags(m_n_tdc_channels, -1);
 
   uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
+  uint8_t empty_datum_word_mask = 0b110; // Invalid datum
 
   for (auto it = words.begin(); it != words.end(); ++it) {
 
@@ -98,7 +99,11 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
 
       if (W.type() != expected_word_mask) {
         HIDRA_ERROR("Geo {}. Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Aborting", W.geo(), word, W.type(), expected_word_mask);
-        return;
+        if(W.type() == empty_datum_word_mask) {
+          continue;
+        } else {
+          return;
+        }
       }
 
       int nchan = W.cnt();
