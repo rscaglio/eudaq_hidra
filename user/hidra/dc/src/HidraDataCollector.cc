@@ -562,9 +562,9 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   uint64_t timestamp_end_ns = ev->GetTimestampEnd();
   m_max_trigger_seen = std::max(m_max_trigger_seen, trigger_number);
 
-  if (trigger_number <= m_max_trigger_built && detectorID < 3){ // Old triggers can happen for tracker!
+  /*if (trigger_number <= m_max_trigger_built && detectorID < 3){ // Old triggers can happen for tracker!
     HIDRA_ERROR("Receiving trigger {} from det ID {}, older than the last trigger built {}", trigger_number, detectorID, m_max_trigger_built);
-  }
+  }*/
 
   uint64_t timestamp = timestamp_begin_ns; // TODO: decide what to do in case of spread between begin and end (if not
                                            // addressed in the producers)
