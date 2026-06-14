@@ -98,10 +98,10 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       ADCHeaderWord W{word};
 
       if (W.type() != expected_word_mask) {
-        HIDRA_ERROR("Geo {}. Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Aborting", W.geo(), word, W.type(), expected_word_mask);
         if(W.type() == empty_datum_word_mask) {
-          continue;
+          HIDRA_WARN("Geo {}. Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Should be safe for TDC", W.geo(), word, W.type(), expected_word_mask);          continue;
         } else {
+          HIDRA_ERROR("Geo {}. Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Aborting, may result in some ADC missing.", W.geo(), word, W.type(), expected_word_mask);
           return;
         }
       }

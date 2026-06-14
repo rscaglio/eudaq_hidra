@@ -813,6 +813,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
 
     if (board.tdcMode == "COMMON_STOP") {
       WriteReg(V792_BIT_SET_2_REG, V775_COMMON_STOP_BIT, board.baseAddr);
+      HIDRA_INFO("Setting TDC Board to COMMON_STOP");
     } else {
       WriteReg(V792_BIT_CLEAR_2_REG, V775_COMMON_STOP_BIT, board.baseAddr);
     }
