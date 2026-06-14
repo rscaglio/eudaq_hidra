@@ -46,6 +46,23 @@ logger = logging.getLogger(__name__)
 # 20 polls × 500 ms = roughly every 10 seconds with the default rate.
 PERF_LOG_EVERY_POLLS = 20
 
+# Total event counter shown in the header on every tab. Fetched every poll
+# regardless of the active tab (same histogram the Summary tab's count card uses).
+HEADER_COUNT_HIST = "event_count"
+
+
+def _event_count_text(payload) -> str:
+    """Format the single-bin event counter for the header (e.g. "1,234").
+
+    Reads the bin content straight from the TBufferJSON payload (same trick as
+    the rate/metric panels); shows an em dash when it's missing/unavailable."""
+    if payload and "_typename" in payload:
+        arr = payload.get("fArray") or []
+        nbins = payload.get("fXaxis", {}).get("fNbins", 0)
+        if arr and nbins >= 1:
+            return f"{int(sum(arr[1:nbins + 1])):,}"
+    return "—"
+
 
 def register(
     app: Dash,
@@ -79,6 +96,7 @@ def register(
         # of figures with the same length as the number of matches.
         Output({"type": "panel-graph", "panel": ALL, "index": ALL}, "figure"),
         Output("status-bar", "children"),
+        Output("header-event-count", "children"),
         Input("interval", "n_intervals"),
         Input("tab-mount-state", "data"),
         State("client-state", "data"),
@@ -110,9 +128,16 @@ def register(
                     if name not in wanted:
                         wanted.append(name)
 
+            # Always fetch the header event counter too, so it stays live on
+            # every tab — but keep it out of `wanted` so the status-bar count and
+            # the figure build still reflect only what the active tab asked for.
+            fetch_names = wanted if HEADER_COUNT_HIST in wanted else [*wanted, HEADER_COUNT_HIST]
             with Phase("poll.fetch_multi"):
-                data = client.fetch_multi(wanted) if wanted else {}
-            reachable = data and any(v is not None for v in data.values())
+                data = client.fetch_multi(fetch_names) if fetch_names else {}
+            header_count = _event_count_text(data.get(HEADER_COUNT_HIST))
+            # Reachability is judged on the tab's own histograms only, not the
+            # always-on header counter, so the status bar reads exactly as before.
+            reachable = any(data.get(name) is not None for name in wanted)
 
             overlay_file = client_state.get("overlay_file")
 
@@ -165,7 +190,7 @@ def register(
             # will be coherent.
             expected = len(ctx.outputs_list[0]) if ctx.outputs_list else 0
             if len(figures_out) != expected:
-                return [no_update] * expected, no_update
+                return [no_update] * expected, no_update, header_count
 
             # Apply per-plot controls (log-y toggle + reset-zoom counter)
             # to the figures of the controllable slots. Done here, after
@@ -178,8 +203,10 @@ def register(
         # dot encodes backend health at a glance (green ok / red
         # unreachable / amber idle).
         pump_hint = config.polling.server_pump_ms_hint
-        n_ok = sum(1 for v in data.values() if v is not None)
-        n_total = len(data)
+        # Count only the histograms the active tab asked for (not the always-on
+        # header counter), so the status reads the same as before.
+        n_ok = sum(1 for name in wanted if data.get(name) is not None)
+        n_total = len(wanted)
         overlay_text = f"  ·  overlay: {overlay_file}" if overlay_file else ""
         if not wanted:
             dot, text = theme.WARN, f"no histograms requested  ·  server pump ~{pump_hint} ms"
@@ -203,7 +230,7 @@ def register(
                 logger.info(line)
             PERF.reset()
 
-        return figures_out, status
+        return figures_out, status, header_count
 
 
 def _apply_graph_controls(panels: list[Panel], figures_out: list, reset_data: dict) -> None:

@@ -132,6 +132,21 @@ body {
   box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.45), 0 0 26px rgba(137, 180, 250, 0.30);
 }
 
+/* Header event-count pill: a compact rounded box with the same blue glow as the
+   Summary "Events" count card (glow-count), so the always-on total matches it. */
+.header-count {
+  padding: 2px 14px;
+  border-radius: 10px;
+  background: rgba(137, 180, 250, 0.08);
+  box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.25), 0 0 18px rgba(137, 180, 250, 0.16);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.header-count:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(137, 180, 250, 0.45), 0 0 26px rgba(137, 180, 250, 0.30);
+}
+
 /* Sticky header: a soft shadow underneath so it reads as floating above the
    scrolling panels. */
 .app-header {
