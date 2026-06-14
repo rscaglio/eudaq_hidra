@@ -22,15 +22,18 @@
 #include "DurationAccumulator.hh"
 
 #include <THttpServer.h>
+#include <TNamed.h>
 
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 
 class HistogramPublisher {
 public:
-  explicit HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms = 20);
+  explicit HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms = 20,
+                              std::string http_output_dir = "");
 
   ~HistogramPublisher() { Stop(); }
 
@@ -65,6 +68,12 @@ private:
   HistogramRegistry& m_registry;
   int m_port;
   int m_pump_interval_ms;
+  // Absolute directory where the monitor saves its histogram snapshots
+  // (HISTO_OUTPUT_PATTERN's folder). Empty = not exposed. Published over HTTP as
+  // a dedicated TNamed (`m_output_dir_obj`) so the frontend's overlay can find
+  // the reference files without per-deployment configuration.
+  std::string m_http_output_dir;
+  TNamed m_output_dir_obj;
   std::unique_ptr<THttpServer> m_server;
   std::mutex m_mutex;
   std::thread m_pump_thread;
