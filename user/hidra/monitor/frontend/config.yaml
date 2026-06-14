@@ -328,6 +328,35 @@ tabs:
         histograms: [FERS_trigger_id_consistency]
         bin_labels: [consistent, mismatch]
 
+  # ---- MAXICC ------------------------------------------------------------
+  # Geometric ADC maps of the MAXICC crystal calorimeter (the 3 new FERS boards,
+  # global indices 20/21/22). One gain per tab; each tab shows the 3 readout
+  # planes (front 15µm | rear 15µm | rear 50µm) side by side, each crystal at its
+  # (col, row) position coloured by mean ADC. board_offset = global index of the
+  # first MAXICC board; cells stay grey "no data" until the DAQ reads 23 boards
+  # (FERS_NBOARDS=23). The channel->position map is mapping/maxicc_channels.json.
+  - id: maxicc_hg
+    label: MAXICC HG
+    panels:
+      - type: maxicc_detector
+        histogram: FERS_HG_mean
+        label: "mean HG"
+        mode_toggle: true
+        board_offset: 20
+        height: 360px
+        link_tab: fers_channels   # click a crystal -> open it in FERS channels
+
+  - id: maxicc_lg
+    label: MAXICC LG
+    panels:
+      - type: maxicc_detector
+        histogram: FERS_LG_mean
+        label: "mean LG"
+        mode_toggle: true
+        board_offset: 20
+        height: 360px
+        link_tab: fers_channels   # click a crystal -> open it in FERS channels
+
   # ---- Tracker -----------------------------------------------------------
   # One 2D hit map (X vs Y occupancy) per tracker station, published by the
   # backend TrackerFiller as `Tracker_station<i>` (TH2). The station count and

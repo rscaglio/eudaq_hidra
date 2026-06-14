@@ -17,6 +17,7 @@ from .channel_selector import ChannelSelectorPanel
 from .detector import DetectorPanel
 from .fers_board import FERSBoardPanel
 from .histogram_grid import HistogramGridPanel
+from .maxicc_detector import MAXICCDetectorPanel
 from .metric import MetricPanel
 from .overlay import OverlayPanel
 from .rate import RatePanel
@@ -30,6 +31,7 @@ PANEL_TYPES: dict[str, type[Panel]] = {
     "detector": DetectorPanel,
     "fers_board": FERSBoardPanel,
     "sipm_detector": SiPMDetectorPanel,
+    "maxicc_detector": MAXICCDetectorPanel,
     "overlay": OverlayPanel,
     "rate": RatePanel,
     "tracker": TrackerPanel,
