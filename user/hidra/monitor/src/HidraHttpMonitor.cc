@@ -225,10 +225,10 @@ void HidraHttpMonitor::DoConfigure() {
     // a clean 0.1 cm/bin (0 and 10 land on bin edges); the upper margin to 11
     // leaves room above the ~10 cm detector. Use doubles for every default so a
     // fractional override isn't truncated by the int Get() overload.
-    def.x_nbins = conf->Get("TRACKER_X_NBINS", 110);
+    def.x_nbins = conf->Get("TRACKER_X_NBINS", 55);
     def.x_min = conf->Get("TRACKER_X_MIN", 0.0);
     def.x_max = conf->Get("TRACKER_X_MAX", 11.0);
-    def.y_nbins = conf->Get("TRACKER_Y_NBINS", 110);
+    def.y_nbins = conf->Get("TRACKER_Y_NBINS", 55);
     def.y_min = conf->Get("TRACKER_Y_MIN", 0.0);
     def.y_max = conf->Get("TRACKER_Y_MAX", 11.0);
 
