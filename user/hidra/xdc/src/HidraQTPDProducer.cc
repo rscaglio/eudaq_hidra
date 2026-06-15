@@ -786,6 +786,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   }
 
   void ClearBoardData(const BoardConfig& board) {
+    WriteReg(V792_EVENT_COUNTER_RESET_REG, 0x0, board.baseAddr);
     WriteReg(V792_BIT_SET_2_REG, 0x0004, board.baseAddr);
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     WriteReg(V792_BIT_CLEAR_2_REG, 0x0004, board.baseAddr);
