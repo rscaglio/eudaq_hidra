@@ -1,5 +1,6 @@
 #include "FERSBoardManager.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <set>
@@ -279,6 +280,7 @@ bool FERSBoardManager::StartAll(int start_mode, int run_number, std::string* err
   handles.reserve(m_boards.size());
   for (const auto& board : m_boards) {
     handles.push_back(board.handle());
+    //FERS_FlushData(board.handle()); //TODO Test this, disabled for now
   }
   handles.push_back(-1); //rscaglio fix from gemini
 
@@ -397,6 +399,7 @@ std::vector<FERSEvent> FERSBoardManager::ReadAvailableEvents(size_t max_total_ev
 
     FERSEvent event;
     event.timestamp_us = timestamp_us;
+    event.acq_time = std::chrono::steady_clock::now();
     // `board_index` is the vendor-provided index returned by FERS_GetEvent.
     const int vendor_index = board_index;
     const int logical_board_id = m_boards[board_index].board_id();

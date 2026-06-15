@@ -116,6 +116,9 @@ private:
 
   std::unique_ptr<hidra::HidraMergedBinaryWriter> m_binary_writer;
   std::unique_ptr<hidra::HidraRootEventWriter> m_root_writer;
+  std::chrono::steady_clock::time_point m_last_status_log = std::chrono::steady_clock::time_point::min();
+  std::chrono::steady_clock::time_point m_last_receive_log = std::chrono::steady_clock::time_point::min();
+
 };
 
 namespace {

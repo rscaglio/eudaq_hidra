@@ -26,6 +26,7 @@
 namespace hidra {
 
 #if HIDRA_HAS_ROOT_HEADERS
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -86,6 +87,9 @@ struct HidraRootEventWriter::Impl {
   bool has_error = false;
   std::string error_message;
   std::uint64_t written_events = 0;
+  std::uint64_t tdc_missing_events = 0;
+  std::uint64_t last_warn_tdc_missing_count = 0;
+  std::chrono::steady_clock::time_point last_missing_tdc_warning_time = std::chrono::steady_clock::now();
 
   int run_number = 0;
   std::uint32_t event_number = 0;
@@ -179,6 +183,9 @@ struct HidraRootEventWriter::Impl {
 
     if (xdc_decoder.Matches(detector)) {
       xdc_decoder.Decode(detector, detector.quantities, detector.branches);
+      if(detector.branches["TDCs"].empty()) {
+        ++tdc_missing_events;
+      }
     } else if (fers_decoder.Matches(detector)) {
       fers_decoder.Decode(detector, detector.quantities, detector.branches);
     } else if (tracker_decoder.Matches(detector)) {
@@ -208,6 +215,11 @@ struct HidraRootEventWriter::Impl {
 
     tree->Fill();
     ++written_events;
+    if(std::chrono::steady_clock::now() - last_missing_tdc_warning_time > 15s && tdc_missing_events != last_warn_tdc_missing_count) {
+      last_warn_tdc_missing_count = tdc_missing_events;
+      last_missing_tdc_warning_time = std::chrono::steady_clock::now();
+      HIDRA_WARN("Root payload decoder found {} events with missing TDC words on the total of {} decoded events", tdc_missing_events, written_events);
+    }
   }
 
   void WriterLoop() {
@@ -349,6 +361,11 @@ void HidraRootEventWriter::Stop() {
     m_impl->queue.clear();
     m_impl->running = false;
   }
+
+  if (m_impl->last_warn_tdc_missing_count != m_impl->tdc_missing_events) {
+    HIDRA_WARN("Root payload decoder found {} events with missing TDC words on the total of {} decoded events", m_impl->tdc_missing_events, m_impl->written_events);
+  }
+
 }
 
 bool HidraRootEventWriter::EnqueueEvent(eudaq::EventSP event) {

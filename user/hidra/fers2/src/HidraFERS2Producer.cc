@@ -29,6 +29,7 @@ using hidra::fers2::BoardMonitorStatus;
 using hidra::fers2::FERSBoardManager;
 using hidra::fers2::FERSConfiguration;
 using hidra::fers2::FERSEvent;
+using namespace std::chrono_literals;
 
 std::string FormatSummary(const FERSEvent& event) {
   std::ostringstream oss;
@@ -206,8 +207,8 @@ std::string JoinBoardIds(const std::vector<int>& board_ids) {
   return oss.str();
 }
 
-constexpr uint64_t kAlignmentWaitIdleTimeoutUs = 2000000;
-constexpr uint64_t kAlignmentWaitAheadTimeoutUs = 1000000;
+constexpr auto kAlignmentWaitIdleTimeoutUs = 2s;
+constexpr auto kAlignmentWaitAheadTimeoutUs = 1s;
 
 } // namespace
 
@@ -313,7 +314,6 @@ private:
     m_last_event_read = std::chrono::steady_clock::time_point::min();
     m_polled_monitor_out_of_spill = false;
     m_alignment_wait_trigger = 0;
-    m_alignment_wait_start_ns = 0;
     m_alignment_wait_active = false;
     for (const auto& board : m_board_manager->boards()) {
       m_event_queues[board.board_id()] = {};
@@ -376,7 +376,6 @@ private:
     m_event_queues.clear();
     m_monitor_status.clear();
     m_alignment_wait_trigger = 0;
-    m_alignment_wait_start_ns = 0;
     m_alignment_wait_active = false;
   }
 
@@ -520,7 +519,6 @@ private:
   void ResetAlignmentWaitState() {
     m_alignment_wait_active = false;
     m_alignment_wait_trigger = 0;
-    m_alignment_wait_start_ns = 0;
   }
 
   bool HasAnyQueuedEvents() const {
@@ -532,12 +530,13 @@ private:
     return false;
   }
 
-  uint64_t SelectAlignmentTrigger() const {
+  uint64_t SelectAlignmentTrigger() {
     uint64_t trigger_n = std::numeric_limits<uint64_t>::max();
     for (int board_id : m_board_ids) {
       const auto& queue = m_event_queues.at(board_id);
       if (!queue.empty()) {
         trigger_n = std::min(trigger_n, queue.front().trigger_id);
+        m_alignment_wait_start = queue.front().acq_time;
       }
     }
     return trigger_n;
@@ -656,8 +655,10 @@ private:
     SendEvent(std::move(ev));
     m_stamp_last_sent_ns = ts_now;
     HIDRA_DEBUG("FERS producers sent event for trg {}", trigger_n);
-    if (m_evt_f % 500 == 0) {
+    if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
+      m_last_status_log = std::chrono::steady_clock::now();
       HIDRA_INFO("FERS producer sent event for trg {}. Total events sent: {}", trigger_n, m_evt_f);
+      SendStatus(); //TODO move in dedicated logging struct
     }
     ++m_evt_f;
   }
@@ -682,29 +683,27 @@ private:
           return;
         }
         m_alignment_wait_trigger = trigger_n;
-        m_alignment_wait_start_ns = hidra::utils::getTimens();
         m_alignment_wait_active = true;
       }
 
       const auto [matched_boards, any_board_ahead] = InspectQueuesForTrigger(trigger_n);
       HIDRA_DEBUG("Inspected board for trigger {}: found {}/{}", trigger_n, matched_boards.size(), m_board_ids.size());
       const bool all_matched = matched_boards.size() == m_board_ids.size();
-      const uint64_t waited_us = (hidra::utils::getTimens() - m_alignment_wait_start_ns) / 1000ULL;
-      const uint64_t timeout_us = any_board_ahead ? kAlignmentWaitAheadTimeoutUs : kAlignmentWaitIdleTimeoutUs;
+      const auto waited_time = std::chrono::steady_clock::now() - m_alignment_wait_start;
+      const auto max_wait = any_board_ahead ? kAlignmentWaitAheadTimeoutUs : kAlignmentWaitIdleTimeoutUs;
+      const bool expired = waited_time >= max_wait;
 
-      if (!all_matched && waited_us < timeout_us) {
-        return;
-      }
-
-      if (!all_matched) {
+      if (all_matched && expired) {
         HIDRA_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
                    ", proceeding with available boards only");
         ++m_evt_incomplete;
         SetStatusTag("PartialEvts", std::to_string(m_evt_incomplete));
       }
 
-      ResetAlignmentWaitState();
-      EmitAlignedEvent(trigger_n, matched_boards);
+      if (all_matched or expired) {
+        ResetAlignmentWaitState();
+        EmitAlignedEvent(trigger_n, matched_boards);
+      }
     }
   }
 
@@ -730,11 +729,12 @@ private:
   bool m_exit_of_run = false;
   std::chrono::steady_clock::time_point m_next_status_poll = std::chrono::steady_clock::time_point::min();
   std::chrono::steady_clock::time_point m_last_event_read = std::chrono::steady_clock::time_point::min();
+  std::chrono::steady_clock::time_point m_last_status_log = std::chrono::steady_clock::time_point::min();
+  std::chrono::steady_clock::time_point m_alignment_wait_start  = std::chrono::steady_clock::time_point::min();
   bool m_polled_monitor_out_of_spill = false;
   uint64_t m_stamp_last_sent_ns = 0;
   uint64_t m_start_boards_call_ts_ns = 0;
   uint64_t m_alignment_wait_trigger = 0;
-  uint64_t m_alignment_wait_start_ns = 0;
   bool m_alignment_wait_active = false;
   std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };

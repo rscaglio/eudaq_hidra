@@ -467,6 +467,11 @@ hidra_help() {
     printf '    %s%-20s%s Backup data to cernbox\n' "$C" "hidra_backup" "$R"
     printf '\n'
 
+    printf '  %sMount folders %s\n' "$D" "$R"
+    printf '    %s%-20s%s Mount tracker data folder locally to /home/eudaq/daq/TB2026_TrackerData\n' "$C" "hidra_mount_tracker" "$R"
+    printf '\n'
+
+
     printf '    %s%-20s%s show this help again\n' "$C" "hidra_help" "$R"
 }
 

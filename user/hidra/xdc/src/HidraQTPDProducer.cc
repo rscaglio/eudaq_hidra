@@ -24,7 +24,7 @@
 #include <mutex>
 
 namespace {
-
+using namespace std::chrono_literals;
 
 // SET THESE ACCORDING TO HARDWARE SIGNALS
 enum V977IN {
@@ -735,17 +735,28 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         SetStatusTag("PedTrigN", std::to_string(m_evt_ped));
         SetStatusTag("SpillN", std::to_string(m_spillCount));
         SendStatus();
-        if (m_evt % 500 == 0) {
-          HIDRA_INFO("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}", m_evt, m_TriggerMask, eventHandlingOk, m_evt_phy, m_evt_ped, m_spillCount);
+        if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
+          m_last_status_log = std::chrono::steady_clock::now();
+          HIDRA_INFO("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}",
+                     m_evt,
+                     m_TriggerMask,
+                     eventHandlingOk,
+                     m_evt_phy,
+                     m_evt_ped,
+                     m_spillCount);
         }
-        HIDRA_DEBUG("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}", m_evt, m_TriggerMask, eventHandlingOk, m_evt_phy, m_evt_ped, m_spillCount);
+        HIDRA_DEBUG("Evt {} mask {}. Sent? {} So far: phy {} ped {} spill {}",
+                    m_evt,
+                    m_TriggerMask,
+                    eventHandlingOk,
+                    m_evt_phy,
+                    m_evt_ped,
+                    m_spillCount);
         /////////////////
 
-	//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-	//HIDRA_INFO("SLEEEEEEEEEPING");
-      
         // Set pedestal veto if we want pedestal next;
-        SetSingleV977OutputReg(!requestPedestalNext(), V977OUT::cPedVeto); // TODO r-m-w not needed if this is the only controlled output
+        SetSingleV977OutputReg(!requestPedestalNext(),
+                               V977OUT::cPedVeto); // TODO r-m-w not needed if this is the only controlled output
 
         if (pattern.spillStart) {
           m_spillCount++;
@@ -1234,6 +1245,7 @@ private:
   uint32_t m_endOfSpillCount_560 = 0;
 
   std::chrono::steady_clock::time_point m_runStart;
+  std::chrono::steady_clock::time_point m_last_status_log = std::chrono::steady_clock::time_point::min();
 
   CVBoardTypes m_controllerType;
   uint32_t m_pid;

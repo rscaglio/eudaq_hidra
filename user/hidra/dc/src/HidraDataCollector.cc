@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <vector>
 
+using namespace std::chrono_literals;
 // user custom
 
 bool HidraDataCollector::IsExpectedSource(std::string& source) {
@@ -166,7 +167,8 @@ eudaq::EventSP HidraDataCollector::BuildFullEvent(PendingTrigger& pending) {
   fullEvt->SetTag("detectorMask", std::to_string(detectormask));
 
   HIDRA_DEBUG("Merged event built: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
-  if (m_event_count % 500 == 0) {
+  if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
+    m_last_status_log = std::chrono::steady_clock::now();
     HIDRA_INFO("Merged event built: {}", hidra::utils::GetEventInfo(fullEvt.get(), 2));
     HIDRA_INFO("So far: {} events ({} complete, {} incomplete), pending triggers: {}",
                m_event_count,
@@ -743,7 +745,8 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   auto t_end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
   HIDRA_DEBUG("DoReceive (w/ complete building) took {} us", duration);
-  if (m_event_count % 1000 == 0) {
+  if (std::chrono::steady_clock::now() - m_last_receive_log > 2000ms) {
+    m_last_receive_log = std::chrono::steady_clock::now();
     HIDRA_INFO("DoReceive (w/ complete building) took {} us", duration);
   }
 }

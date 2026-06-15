@@ -2,6 +2,7 @@
 #ifndef HIDRA_FERS2_TYPES_H
 #define HIDRA_FERS2_TYPES_H
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -94,6 +95,7 @@ struct FERSEvent {
   double timestamp_us = 0.0;
   uint64_t trigger_id = 0;
   std::vector<uint8_t> payload;
+  std::chrono::steady_clock::time_point acq_time;
 };
 
 } // namespace fers2
