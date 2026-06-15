@@ -464,7 +464,7 @@ hidra_help() {
     printf '\n'
 
     printf '  %sBackup data%s\n' "$D" "$R"
-    printf '    %s%-20s%s Backup data to cernbox\n' "$C" "hidra_backup" "$R"
+    printf '    %s%-20s%s Backup data to cernbox\n' "$C" "hidra_backup_data" "$R"
     printf '\n'
 
     printf '  %sMount folders %s\n' "$D" "$R"
