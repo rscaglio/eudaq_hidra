@@ -151,6 +151,21 @@ def build(config: Config, panels_by_tab: dict[str, list[Panel]]) -> html.Div:
                                 style={"width": "120px"},
                             ),
                             *overlay_controls,
+                            # Total event count, pinned to the right of the top
+                            # bar so it's visible from any tab (updated every poll
+                            # by callbacks/poll.py, regardless of the active tab).
+                            html.Div(
+                                id="header-event-count",
+                                className="header-count",
+                                children="—",
+                                style={
+                                    "marginLeft": "auto",
+                                    "color": theme.PRIMARY,
+                                    "fontSize": "20px",
+                                    "fontWeight": "bold",
+                                    "whiteSpace": "nowrap",
+                                },
+                            ),
                         ],
                     ),
 
