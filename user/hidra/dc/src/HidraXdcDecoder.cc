@@ -139,7 +139,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           int encoded_channel = hidra::utils::computeADCchannelFromGeo(m_vme_geo_map, V.geo(), module_channel);
           if (encoded_channel < 0 || encoded_channel >= m_n_adc_channels) {
             HIDRA_ERROR(
-                "Encoded ADC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, m_n_adc_channels);
+                "Event {}: Encoded ADC channel index {} is out of bounds (0, {}). Skipping", event.trigger_n, encoded_channel, m_n_adc_channels);
           } else {
             ADCvalues[encoded_channel] = V.value();
             ADCflags[encoded_channel] = (V.ov() << 1) | V.un();
@@ -161,7 +161,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
           int encoded_channel = hidra::utils::computeTDCchannelFromGeo(m_vme_geo_map, V.geo(), module_channel);
           if (encoded_channel < 0 || encoded_channel >= m_n_tdc_channels) {
             HIDRA_ERROR(
-                "Encoded TDC channel index {} is out of bounds (0, {}). Skipping", encoded_channel, m_n_tdc_channels);
+                "Event {}: Encoded TDC channel index {} is out of bounds (0, {}). Skipping", event.trigger_n, encoded_channel, m_n_tdc_channels);
           } else {
             TDCvalues[encoded_channel] = V.value();
             TDCflags[encoded_channel] = (V.ov() << 2) | (V.un() << 1) | V.vd();
@@ -189,11 +189,11 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       ADCTrailerWord T{word};
 
       if (T.evt_cnt() != trigger_n) {
-        HIDRA_ERROR("Mismatched channel count in XDC trailer vs trigger: {} vs {}. Aborting", T.evt_cnt(), trigger_n);
+        HIDRA_ERROR("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
         return;
       }
       if (T.type() != expected_word_mask) {
-        HIDRA_ERROR("Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", word, T.type(), expected_word_mask);
+        HIDRA_ERROR("Event {}, Geo {}: Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", event.trigger_n, W.geo(), word, T.type(), expected_word_mask);
         return;
       }
     }
