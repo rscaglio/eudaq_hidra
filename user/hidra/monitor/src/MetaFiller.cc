@@ -1,5 +1,6 @@
 #include "MetaFiller.hh"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <vector>
@@ -21,7 +22,7 @@ std::vector<double> LogBinEdges(double lo_us, double hi_us, int bins_per_decade)
 }
 } // namespace
 
-MetaFiller::MetaFiller(HistogramRegistry& reg)
+MetaFiller::MetaFiller(HistogramRegistry& reg, int strip_length, int gap_max)
     : IHistogramFiller("MetaFiller") {
   // Trigger mask: one bin per value (0..3). Labels are cosmetic; events are filled
   // by numeric value, so events with no trigger mask (meta.trigger_mask < 0) are
@@ -58,11 +59,40 @@ MetaFiller::MetaFiller(HistogramRegistry& reg)
   m_h_spill_current = reg.Add(std::make_unique<TH1D>("spill_current", "Current spill number", 1, 0, 1));
   m_h_trigger_current = reg.Add(std::make_unique<TH1D>("trigger_current", "Current trigger number", 1, 0, 1));
   m_h_run_current = reg.Add(std::make_unique<TH1D>("run_current", "Current run number", 1, 0, 1));
+
+  // Recent-trigger-mask strip: the last `strip_length` values, oldest in bin 1,
+  // newest in bin `strip_length`, re-written from a ring buffer every event. The
+  // bin holds the trigger *class* encoded as mask+1, so 0 means "no data": this
+  // coincides with ROOT's reset state (TH1::Reset zeroes the bins), so a freshly
+  // reset or not-yet-filled strip reads as empty instead of as gate (mask 0).
+  // Reading the strip assumes the monitor sees consecutive events (true when the
+  // data-collector send-monitor fraction is 1).
+  m_strip_length = strip_length;
+  m_recent.assign(strip_length, -1);
+  m_h_trigger_mask_recent = reg.Add(std::make_unique<TH1D>(
+      "trigger_mask_recent", "Recent trigger masks;event index (newest at right);trigger class (0 = none)", strip_length,
+      0, strip_length));
+  m_h_trigger_mask_recent->SetCanExtend(TH1::kNoAxis);
+
+  // Events between pedestals: count of non-pedestal events between two consecutive
+  // pedestals. For a repeating 10-physics : 1-pedestal pattern this peaks at 10;
+  // bins at 9/11 flag an early/missing pedestal. The overflow bin catches longer gaps.
+  m_h_events_between_pedestals = reg.Add(std::make_unique<TH1I>(
+      "events_between_pedestals", "Events between pedestals;# non-pedestal events between pedestals;occurrences",
+      gap_max, 0, gap_max));
+  m_h_events_between_pedestals->SetCanExtend(TH1::kNoAxis);
 }
 
 void MetaFiller::Reset() {
   m_last_begin_ns = 0;
   m_have_last = false;
+
+  m_recent_head = 0;
+  m_recent_count = 0;
+  std::fill(m_recent.begin(), m_recent.end(), -1);
+
+  m_events_since_pedestal = 0;
+  m_seen_pedestal = false;
 }
 
 void MetaFiller::Fill(const HidraEvent& ev) {
@@ -100,4 +130,46 @@ void MetaFiller::Fill(const HidraEvent& ev) {
 
   m_h_trigger_current->SetBinContent(1, static_cast<double>(meta.trigger_number));
   m_h_run_current->SetBinContent(1, static_cast<double>(meta.run_number));
+
+  // Recent-trigger-mask strip: push the raw mask into the ring buffer, then rewrite
+  // all bins so bin 1 is the oldest and bin `m_strip_length` the newest value. The
+  // stored class is mask+1 (0 = no data): unfilled ring slots and an absent mask
+  // (mask < 0) both encode to 0 so they read as empty. Rewriting m_strip_length
+  // bins per event is negligible (~200 ops).
+  if (m_strip_length > 0) {
+    m_recent[m_recent_head] = meta.trigger_mask;
+    m_recent_head = (m_recent_head + 1) % m_strip_length;
+    if (m_recent_count < m_strip_length) {
+      ++m_recent_count;
+    }
+    const int oldest = (m_recent_head - m_recent_count + m_strip_length) % m_strip_length;
+    for (int k = 0; k < m_strip_length; ++k) {
+      double encoded = 0.0; // 0 = no data (unfilled slot or absent mask)
+      if (k < m_recent_count) {
+        const int mask = m_recent[(oldest + k) % m_strip_length];
+        if (mask >= 0) {
+          encoded = static_cast<double>(mask + 1);
+        }
+      }
+      m_h_trigger_mask_recent->SetBinContent(k + 1, encoded);
+    }
+    // SetBinContent bumps fEntries on every call, so without this the strip would
+    // report ~m_strip_length entries per event. Pin it to the number of real values.
+    m_h_trigger_mask_recent->SetEntries(m_recent_count);
+  }
+
+  // Events between pedestals: only count events that carry a valid mask. A pedestal
+  // (pedestal bit set, so also "both"=3) closes a segment and records its length;
+  // the first segment is skipped (it starts mid-cycle, before the first pedestal).
+  if (meta.trigger_mask >= 0) {
+    if (meta.isPedestal()) {
+      if (m_seen_pedestal) {
+        m_h_events_between_pedestals->Fill(m_events_since_pedestal);
+      }
+      m_seen_pedestal = true;
+      m_events_since_pedestal = 0;
+    } else {
+      ++m_events_since_pedestal;
+    }
+  }
 }

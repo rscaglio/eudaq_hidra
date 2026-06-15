@@ -58,13 +58,17 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int fers_saturation_threshold,
     bool fers_per_channel_distributions,
     std::vector<TrackerStationConfig> tracker_stations,
-    std::string http_output_dir)
+    std::string http_output_dir,
+    int trigger_strip_length,
+    int trigger_gap_max)
     : publisher(registry, port, pump_interval_ms, std::move(http_output_dir)),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
       fers_nboards(fers_nboards),
       fers_value_max(fers_value_max),
+      trigger_strip_length(trigger_strip_length),
+      trigger_gap_max(trigger_gap_max),
       event_prescale(prescale) {
 
   chain.Add(std::make_unique<SummaryFiller>(registry, prescale));
@@ -73,7 +77,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
                                          fers_channel_nbins, fers_saturation_threshold,
                                          fers_per_channel_distributions));
   chain.Add(std::make_unique<TrackerFiller>(registry, tracker_stations));
-  chain.Add(std::make_unique<MetaFiller>(registry));
+  chain.Add(std::make_unique<MetaFiller>(registry, trigger_strip_length, trigger_gap_max));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -287,7 +291,29 @@ void HidraHttpMonitor::DoConfigure() {
     }
   }
 
+  // Trigger-mask pattern monitoring (MetaFiller). Sized once on the first configure,
+  // like the FERS/tracker histograms above. The strip shows the last N raw trigger-mask
+  // values; the gap histogram the number of non-pedestal events between pedestals.
+  int trigger_strip_length = conf->Get("TRIGGER_MASK_STRIP_LENGTH", 200);
+  if (trigger_strip_length < 1) {
+    HIDRA_WARN("TRIGGER_MASK_STRIP_LENGTH={} is invalid, forcing 200.", trigger_strip_length);
+    trigger_strip_length = 200;
+  }
+  int trigger_gap_max = conf->Get("TRIGGER_PATTERN_GAP_MAX", 30);
+  if (trigger_gap_max < 1) {
+    HIDRA_WARN("TRIGGER_PATTERN_GAP_MAX={} is invalid, forcing 30.", trigger_gap_max);
+    trigger_gap_max = 30;
+  }
+
   std::unique_lock<std::shared_mutex> lock(m_state_mutex);
+
+  // Like the FERS sizing, the trigger-pattern histograms are sized once; warn if a
+  // reconfigure changes a value, since the already-built histograms keep the old one.
+  if (m_ctx && (trigger_strip_length != m_ctx->trigger_strip_length || trigger_gap_max != m_ctx->trigger_gap_max)) {
+    HIDRA_WARN("Trigger-pattern sizing change ignored on reconfigure (histograms already sized); keeping "
+               "strip_length={}, gap_max={}.",
+               m_ctx->trigger_strip_length, m_ctx->trigger_gap_max);
+  }
 
   // The FERS histograms are sized once (first configure). On a reconfigure reuse the sizing the histograms were built
   // with, so the rebuilt decoder stays consistent with them (re-reading changed FERS_NBOARDS / FERS_VALUE_MAX would
@@ -328,7 +354,8 @@ void HidraHttpMonitor::DoConfigure() {
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
                                              std::move(fers_decoder), n_adc_channels, m_noise_update_interval,
                                              cfg_nboards, cfg_value_max, fers_channel_nbins, fers_saturation_threshold,
-                                             fers_per_channel, std::move(tracker_stations), std::move(http_output_dir));
+                                             fers_per_channel, std::move(tracker_stations), std::move(http_output_dir),
+                                             trigger_strip_length, trigger_gap_max);
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap

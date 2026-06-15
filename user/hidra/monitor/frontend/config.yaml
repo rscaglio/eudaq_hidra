@@ -66,6 +66,10 @@ histogram_options:
   # underflow) are visible and the bars sum to the title's entry count.
   trigger_mask:
     show_flow: true
+  # Show the overflow bar so gaps longer than the histogram range (e.g. a long run
+  # of physics with a missing pedestal) remain visible instead of being dropped.
+  events_between_pedestals:
+    show_flow: true
   # FERS per-channel saturation: also show board number + channel-within-board
   # in the hover, on top of the global channel index (board size from the
   # top-level `fers:` section, parsed in hidra_frontend/config.py).
@@ -103,6 +107,11 @@ tabs:
         label: "mean ADC (physics)"
         height: 550px  # optional per-panel parameter, default is 320px
         link_tab: adc_channels
+      # Recent trigger-mask values as a one-row heatmap, right under the PMT map.
+      # The nominal pattern is 10 physics (mask=1) then 1 pedestal (mask=2),
+      # repeating: read the periodic physics…pedestal stripe by eye.
+      - type: mask_strip
+        histogram: trigger_mask_recent
       # Per-event metadata histograms (filled by MetaFiller on the backend):
       #   trigger_mask       - gate / physics / pedestal / both
       #   detectors_present  - one bin per detID, counts when each is present
@@ -112,6 +121,10 @@ tabs:
       - type: histograms
         cols: 2
         histograms: [trigger_mask, detectors_present, events_per_spill, dt_between_events]
+      # Number of non-pedestal events between two consecutive pedestals; peaks at
+      # 10 when the 10-physics : 1-pedestal pattern holds (see the strip above).
+      - type: histograms
+        histograms: [events_between_pedestals]
 
   # Main ADC views show the physics events only; the pedestal lives in the
   # dedicated "ADC noise" tab and the per-channel comparison in "ADC channels".
