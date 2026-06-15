@@ -74,6 +74,8 @@ int computeTDCchannelFromGeo(const std::map<int, std::string>& vme_geo_map, int 
 int computeMaxADCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
 int computeMaxTDCchannelFromGeoMap(const std::map<int, std::string>& vme_geo_map);
 
+bool isXDCEmpty(const std::vector<double>& values);
+
 template <typename... Args> std::string format(const std::string& fmt_str, Args&&... args) {
 #if FMT_VERSION >= 80000
   return fmt::format(fmt::runtime(fmt_str), std::forward<Args>(args)...);

@@ -41,6 +41,11 @@ std::pair<long long, long long> ComputeMeanAndStdDev(const std::vector<long long
   return {(long long)(values[0] + mean), (long long)stddev};
 }
 
+bool isXDCEmpty(const std::vector<double>& values) {
+  if (values.empty()) return true;
+  return std::all_of(values.begin(), values.end(), [](double value) { return value < 0.0; });
+}
+
 std::map<std::string, std::string> parseConfigMap(const std::string& configstring) {
 
   std::map<std::string, std::string> out_map{};

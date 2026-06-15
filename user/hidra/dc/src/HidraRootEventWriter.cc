@@ -183,7 +183,8 @@ struct HidraRootEventWriter::Impl {
 
     if (xdc_decoder.Matches(detector)) {
       xdc_decoder.Decode(detector, detector.quantities, detector.branches);
-      if(detector.branches["TDCs"].empty()) {
+      const auto tdcs = detector.branches.find("TDCs");
+      if (tdcs != detector.branches.end() && hidra::utils::isXDCEmpty(tdcs->second)) {
         ++tdc_missing_events;
       }
     } else if (fers_decoder.Matches(detector)) {
