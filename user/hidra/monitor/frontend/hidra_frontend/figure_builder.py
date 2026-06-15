@@ -274,6 +274,7 @@ def overlay_figure(
     title: str,
     per_channel: bool = False,
     rebin: int = 1,
+    show_flow: bool = False,
 ) -> go.Figure:
     """Render several histograms superimposed on a single figure.
 
@@ -297,6 +298,10 @@ def overlay_figure(
     * `per_channel=True` (per-channel comparison, x = channel): a
       `lines+markers` trace, one marker per channel, with a "ch N" hover
       that names the series — e.g. the IQR vs std pedestal-noise overlay.
+
+    `show_flow` (distributions only) appends ROOT's overflow and prepends
+    the underflow as one extra bin just outside the range, in each series'
+    own colour, so out-of-range entries stay visible.
 
     Decode/render failures for one spec are logged and skipped rather
     than failing the whole figure.
@@ -362,8 +367,22 @@ def overlay_figure(
             # [edge_i, edge_{i+1}]. With x = edges and y repeating its last
             # value, line_shape "hv" makes the step transitions fall on the
             # bin edges (using centers would shift them by half a bin).
+            step_edges = edges
+            step_counts = y
+            if show_flow:
+                # Append ROOT's overflow / prepend underflow as one extra bin
+                # (same width as the adjacent one) just outside the range, so the
+                # out-of-range entries stay visible in each series' own colour.
+                if decoded.overflow:
+                    wn = edges[-1] - edges[-2]
+                    step_edges = np.append(step_edges, edges[-1] + wn)
+                    step_counts = np.append(step_counts, decoded.overflow)
+                if decoded.underflow:
+                    w0 = edges[1] - edges[0]
+                    step_edges = np.insert(step_edges, 0, edges[0] - w0)
+                    step_counts = np.insert(step_counts, 0, decoded.underflow)
             trace_kwargs.update(
-                x=edges, y=np.append(y, y[-1]), mode="lines",
+                x=step_edges, y=np.append(step_counts, step_counts[-1]), mode="lines",
             )
             trace_kwargs["line"]["shape"] = "hv"
         traces.append(go.Scatter(**trace_kwargs))

@@ -86,6 +86,31 @@ euCliMonitor -n HidraHttpMonitor
   sub-event leave the tracker coordinates empty, so the filler is a no-op for
   them.
 - `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
+- `ChannelSumFiller.*` - per-event SUM distributions over channel groups (see
+  "Channel sums").
+
+## Channel sums
+
+`ChannelSumFiller` books 1D distributions of the per-event **sum** over a channel
+group, for six groups, each in three trigger flavours (all / `_physics` /
+`_pedestal`) — 18 histograms:
+
+| Base name | Group | Source |
+|-----------|-------|--------|
+| `sum_PMT_S` | scintillator PMTs | ADC (V792) |
+| `sum_PMT_C` | Cherenkov PMTs | ADC (V792) |
+| `sum_SiPM_S_HG` / `sum_SiPM_S_LG` | scintillator SiPMs | FERS HG / LG |
+| `sum_SiPM_C_HG` / `sum_SiPM_C_LG` | Cherenkov SiPMs | FERS HG / LG |
+
+Raw values are summed (no pedestal subtraction); the physics-vs-pedestal split
+is what shows the signal over the baseline. The S/C classification is **not**
+known to the rest of the backend — the monitor parses it from the frontend
+channel maps (`ADC_CHANNEL_MAP_JSON` / `SIPM_CHANNEL_MAP_JSON`): a PMT name
+`M<digits>(S|C)` gives the type; element `[2]` of each SiPM entry gives it.
+Unmapped channels (muon, Cherenkov detectors, MAXICC boards, …) are excluded. If
+a map is missing/unset the corresponding groups book but stay empty. The sum
+axis runs `[0, group_size × full_scale]` by default (`SUM_*_MAX` overrides focus
+the range to better resolve the baseline).
 
 ## Event metadata
 
@@ -215,6 +240,11 @@ Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in
 | `TRACKER_STATION<i>` | (empty) | Optional per-station range override `xmin,xmax,ymin,ymax` (binning stays the global `TRACKER_*_NBINS`); e.g. `TRACKER_STATION0 = 0,50,0,50`. |
 | `TRIGGER_MASK_STRIP_LENGTH` | `200` | Number of recent raw trigger-mask values shown in the `trigger_mask_recent` strip (>= 1). Sizing only consumed on the first configure. |
 | `TRIGGER_PATTERN_GAP_MAX` | `30` | Upper edge (and bin count) of `events_between_pedestals`; gaps beyond it land in the overflow bar (>= 1). Sizing only consumed on the first configure. |
+| `ADC_CHANNEL_MAP_JSON` | in-repo `adc_channels.json` | Path to the PMT channel map for the `sum_PMT_*` histograms; `${VAR}` is expanded from the environment. Defaults to `${REPO_ROOT}/user/hidra/monitor/frontend/hidra_frontend/mapping/adc_channels.json`, so no run-config entry is needed. Empty/unreadable leaves the PMT sums empty. |
+| `SIPM_CHANNEL_MAP_JSON` | in-repo `sipm_channels.json` | Path to the SiPM channel map for the `sum_SiPM_*` histograms; `${VAR}` expanded. Defaults to the in-repo frontend map (as above). Empty/unreadable leaves the SiPM sums empty. |
+| `SUM_NBINS` | `1024` | Bins on every channel-sum axis. Sizing only consumed on the first configure. |
+| `SUM_PMT_MAX` | `0` | Upper edge of the PMT sum axes; `0` = auto (`group_size × full_scale`). |
+| `SUM_SIPM_HG_MAX` / `SUM_SIPM_LG_MAX` | `3000000` | Upper edge of the SiPM HG / LG sum axes (auto `group_size × full_scale` ≈ 2.6M is too coarse to resolve the baseline). `0` = auto. |
 
 ## Threading & locking model
 

@@ -126,6 +126,47 @@ tabs:
       - type: histograms
         histograms: [events_between_pedestals]
 
+  # Per-event SUM over a channel group (filled by ChannelSumFiller on the backend,
+  # raw values, no pedestal subtraction). Each overlay plot superimposes the three
+  # trigger flavours total / physics / pedestal (toggle each via the legend): the
+  # pedestal trace is the baseline, physics is baseline + signal, total their sum.
+  # One row per detector/gain, scintillator (S) left and Cherenkov (C) right. PMTs
+  # are the ADC (V792) channels, SiPMs the FERS channels (HG and LG separately);
+  # the S/C split comes from the channel maps.
+  - id: channel_sums
+    label: Channel sums
+    panels:
+      - type: overlay
+        cols: 2
+        show_flow: true   # show the overflow bin (sums above the axis max)
+        groups:
+          - title: "Sum over scintillator PMTs"
+            histograms: [sum_PMT_S, sum_PMT_S_physics, sum_PMT_S_pedestal]
+            labels: ["total", "physics", "pedestal"]
+          - title: "Sum over Cherenkov PMTs"
+            histograms: [sum_PMT_C, sum_PMT_C_physics, sum_PMT_C_pedestal]
+            labels: ["total", "physics", "pedestal"]
+      - type: overlay
+        cols: 2
+        show_flow: true   # show the overflow bin (sums above the axis max)
+        groups:
+          - title: "Sum over scintillator SiPMs (HG)"
+            histograms: [sum_SiPM_S_HG, sum_SiPM_S_HG_physics, sum_SiPM_S_HG_pedestal]
+            labels: ["total", "physics", "pedestal"]
+          - title: "Sum over Cherenkov SiPMs (HG)"
+            histograms: [sum_SiPM_C_HG, sum_SiPM_C_HG_physics, sum_SiPM_C_HG_pedestal]
+            labels: ["total", "physics", "pedestal"]
+      - type: overlay
+        cols: 2
+        show_flow: true   # show the overflow bin (sums above the axis max)
+        groups:
+          - title: "Sum over scintillator SiPMs (LG)"
+            histograms: [sum_SiPM_S_LG, sum_SiPM_S_LG_physics, sum_SiPM_S_LG_pedestal]
+            labels: ["total", "physics", "pedestal"]
+          - title: "Sum over Cherenkov SiPMs (LG)"
+            histograms: [sum_SiPM_C_LG, sum_SiPM_C_LG_physics, sum_SiPM_C_LG_pedestal]
+            labels: ["total", "physics", "pedestal"]
+
   # Main ADC views show the physics events only; the pedestal lives in the
   # dedicated "ADC noise" tab and the per-channel comparison in "ADC channels".
   - id: xdc
