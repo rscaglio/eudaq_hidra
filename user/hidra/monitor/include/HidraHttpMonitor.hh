@@ -128,6 +128,12 @@ private:
     int fers_nboards{20};
     int fers_value_max{4096};
 
+    // Trigger-pattern histogram sizing this context was built with, kept so a
+    // reconfigure can warn when a changed value is ignored (the histograms are
+    // sized once, like the FERS ones above).
+    int trigger_strip_length{200};
+    int trigger_gap_max{30};
+
     int event_prescale{1};
     std::atomic<uint64_t> event_counter{0};
 
@@ -143,7 +149,7 @@ private:
                    std::unique_ptr<hidra::IFersDecoder> fers_dec, int n_adc_channels, int noise_update_interval,
                    int fers_nboards, int fers_value_max, int fers_channel_nbins, int fers_saturation_threshold,
                    bool fers_per_channel_distributions, std::vector<TrackerStationConfig> tracker_stations,
-                   std::string http_output_dir);
+                   std::string http_output_dir, int trigger_strip_length, int trigger_gap_max);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();

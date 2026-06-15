@@ -110,6 +110,13 @@ into `HidraEvent::meta` (`HidraEventMeta`):
 | `events_per_spill` | events vs spill number (auto-extending axis) |
 | `dt_between_events` | inter-event time (begin−begin), log-binned 1 µs..10 s |
 | `spill_current` / `trigger_current` / `run_current` | latest value (single bin) |
+| `trigger_mask_recent` | strip of the last `TRIGGER_MASK_STRIP_LENGTH` trigger classes (bin 1 = oldest, last bin = newest); stored as mask+1 so 0 = no data (1 gate, 2 physics, 3 pedestal, 4 both) |
+| `events_between_pedestals` | distribution of the number of non-pedestal events between two consecutive pedestals; peaks at 10 for a 10-physics : 1-pedestal pattern |
+
+The last two monitor the repeating trigger-mask pattern (10 physics then 1
+pedestal). Both assume the monitor sees **consecutive** events, i.e.
+`EUDAQ_DATACOL_SEND_MONITOR_FRACTION = 1`; with a fraction > 1 the sequence read is
+not consecutive and the pattern view is misleading.
 
 `dt_between_events` uses the merged-event begin timestamp, which is the
 collector's wall-clock arrival time (`hidra::utils::getTimens()`, nanoseconds), so
@@ -206,6 +213,8 @@ Run configuration (`[Monitor.HidraHttpMonitor]` in the `.conf`), read in
 | `TRACKER_X_MIN` / `TRACKER_X_MAX` | `0` / `11` | Global X-axis range of the station hit maps, in cm (official tracker format). |
 | `TRACKER_Y_MIN` / `TRACKER_Y_MAX` | `0` / `11` | Global Y-axis range of the station hit maps, in cm. |
 | `TRACKER_STATION<i>` | (empty) | Optional per-station range override `xmin,xmax,ymin,ymax` (binning stays the global `TRACKER_*_NBINS`); e.g. `TRACKER_STATION0 = 0,50,0,50`. |
+| `TRIGGER_MASK_STRIP_LENGTH` | `200` | Number of recent raw trigger-mask values shown in the `trigger_mask_recent` strip (>= 1). Sizing only consumed on the first configure. |
+| `TRIGGER_PATTERN_GAP_MAX` | `30` | Upper edge (and bin count) of `events_between_pedestals`; gaps beyond it land in the overflow bar (>= 1). Sizing only consumed on the first configure. |
 
 ## Threading & locking model
 
