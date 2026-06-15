@@ -261,7 +261,7 @@ private:
     // single call. A value of 0 means "no limit" (run until no data).
     m_max_total_events = conf->Get("FERS_MAX_EVENTS_PER_BOARD", 0);
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
-    m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
+    m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 1);
     m_poll_monitor_out_of_spill = conf->Get("POLL_MONITOR_OUT_OF_SPILL", 0) != 0;
     m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 0) != 0;
     if (m_status_poll_interval_s < 0) {
