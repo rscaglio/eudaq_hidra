@@ -259,7 +259,15 @@ class ChannelSelectorPanel(Panel):
     def select_channel(self, ch: int) -> None:
         """Select a channel by index (cross-panel navigation, e.g. clicking a
         cell on a detector / FERS board map). The next poll fetches it."""
-        self._selected_ch = int(ch)
+        ch = int(ch)
+        # In projection mode the channel count is learned once and cached. If the
+        # target is beyond it (e.g. the backend grew from 20 to 23 FERS boards
+        # after we learned the count, so a MAXICC click lands at index >= 1280),
+        # drop the cache so _channels() re-queries it — otherwise the out-of-range
+        # channel would be clamped back to channel 0.
+        if self._projection and self._n_channels and ch >= self._n_channels:
+            self._n_channels = 0
+        self._selected_ch = ch
         self._needs_fetch = True
 
     # ---- slots / token / title helpers ----------------------------------

@@ -353,6 +353,20 @@ Append an entry under `tabs:` in `config.yaml`:
   fetching **only the shown variant** from the backend; without it,
   `histogram` is used verbatim (e.g. `FERS_HG_saturation_physics`).
 
+- `maxicc_detector` — geometric ADC maps of the MAXICC crystal calorimeter
+  (the 3 new FERS boards). One gain per panel, drawn as **three heatmaps side
+  by side**, one per readout plane (front 15 µm / rear 15 µm / rear 50 µm): each
+  crystal sits at its `(col, row)` position (row 0 at the top), coloured by its
+  mean ADC, same three stacked heatmaps as the SiPM map. The channel → position
+  map is `mapping/maxicc_channels.json` (board/channel → `[layer, col, row]`).
+  The MAXICC boards are read out after the other FERS, so the global histogram
+  index is `(board_offset + board) * 64 + ch`. Params: `histogram:`
+  (`FERS_HG_mean` / `FERS_LG_mean`); `label:`; `mode_toggle: true` (physics/
+  pedestal radio, like `fers_board`); `board_offset:` (default 20); `height:`
+  (per map). Until the DAQ reads 23 boards (`FERS_NBOARDS=23`) those channels are
+  not in the histograms yet, so every cell shows grey "no data" — the detector
+  outline is still drawn. Two tabs (`maxicc_hg`, `maxicc_lg`) host the two gains.
+
 - `tracker` — one **2D hit map** (`go.Heatmap`) per tracker station, from
   the backend `Tracker_station<i>` `TH2`s, plus (by default) two **projection
   overlays** below them: the X distribution and the Y distribution, each with

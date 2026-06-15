@@ -28,14 +28,16 @@ from ..panels.base import Panel
 from ..panels.channel_selector import ChannelSelectorPanel
 from ..panels.detector import DetectorPanel
 from ..panels.fers_board import FERSBoardPanel
+from ..panels.maxicc_detector import MAXICCDetectorPanel
 from ..panels.sipm_detector import SiPMDetectorPanel
 
 logger = logging.getLogger(__name__)
 
 # Panel types whose cells carry a channel index as Plotly customdata and can
 # link to a channel selector. The calo `DetectorPanel`, the per-board
-# `FERSBoardPanel` and the `SiPMDetectorPanel` share the same click contract.
-_CLICKABLE_MAPS = (DetectorPanel, FERSBoardPanel, SiPMDetectorPanel)
+# `FERSBoardPanel`, the `SiPMDetectorPanel` and the `MAXICCDetectorPanel` share
+# the same click contract.
+_CLICKABLE_MAPS = (DetectorPanel, FERSBoardPanel, SiPMDetectorPanel, MAXICCDetectorPanel)
 
 
 def register(app: Dash, panels_by_tab: dict[str, list[Panel]]) -> None:
