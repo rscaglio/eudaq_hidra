@@ -21,7 +21,7 @@ def register_all(
     decoder: Decoder,
 ) -> None:
     controls.register(app)
-    overlay_cb.register(app, overlay_store, config)
+    overlay_cb.register(app, overlay_store, config, client)
     poll.register(app, config, panels_by_tab, client, overlay_store, decoder)
     navigation.register(app, panels_by_tab)
     graph_controls.register(app)

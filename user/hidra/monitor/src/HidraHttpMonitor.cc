@@ -18,8 +18,11 @@
 #include <eudaq/FileNamer.hh>
 
 #include <ctime>
+#include <filesystem>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <system_error>
 #include <vector>
 
 const uint32_t HidraHttpMonitor::m_id_factory = eudaq::cstr2hash("HidraHttpMonitor");
@@ -54,8 +57,9 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int fers_channel_nbins,
     int fers_saturation_threshold,
     bool fers_per_channel_distributions,
-    std::vector<TrackerStationConfig> tracker_stations)
-    : publisher(registry, port, pump_interval_ms),
+    std::vector<TrackerStationConfig> tracker_stations,
+    std::string http_output_dir)
+    : publisher(registry, port, pump_interval_ms, std::move(http_output_dir)),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
@@ -306,10 +310,25 @@ void HidraHttpMonitor::DoConfigure() {
   if (!m_ctx) {
     // First configure: build the long-lived monitoring context. This starts the HTTP server with empty histograms,
     // so the GUI is reachable from now on and stays up across run start/stop.
+    //
+    // Absolute directory of the histogram snapshots (HISTO_OUTPUT_PATTERN's folder), published over HTTP so the
+    // frontend's reference-overlay finds the files without per-deployment config. Empty when saving is disabled.
+    // The monitor's CWD is the run dir, so a relative pattern resolves there.
+    std::string http_output_dir;
+    if (!m_histo_output_pattern.empty()) {
+      // Non-throwing absolute(): on the rare OS error (e.g. CWD removed) just
+      // leave the dir unexposed rather than failing the whole configure.
+      std::error_code ec;
+      const std::filesystem::path dir =
+          std::filesystem::absolute(std::filesystem::path(m_histo_output_pattern).parent_path(), ec);
+      if (!ec) {
+        http_output_dir = dir.lexically_normal().string();
+      }
+    }
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
                                              std::move(fers_decoder), n_adc_channels, m_noise_update_interval,
                                              cfg_nboards, cfg_value_max, fers_channel_nbins, fers_saturation_threshold,
-                                             fers_per_channel, std::move(tracker_stations));
+                                             fers_per_channel, std::move(tracker_stations), std::move(http_output_dir));
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap

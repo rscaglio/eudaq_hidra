@@ -51,6 +51,26 @@ class BackendClient:
                 return [c["_name"] for c in child.get("_childs", [])]
         return []
 
+    def histo_output_dir(self) -> Optional[str]:
+        """The directory where the monitor saves its histogram snapshots.
+
+        The monitor publishes it as a dedicated TNamed (`histo_output_dir`) whose
+        title is the absolute directory; we read it via `root.json`. Returns None
+        when the backend is unreachable or doesn't expose it (older monitor /
+        snapshot saving disabled), so the caller can fall back to the config.
+        """
+        try:
+            r = requests.get(f"{self.url}/histo_output_dir/root.json", timeout=self.timeout_s)
+            r.raise_for_status()
+            obj = r.json()
+            # Guard the access inside the try: a non-dict body (a JSON array,
+            # `null`, …) would otherwise raise AttributeError out of this method.
+            title = obj.get("fTitle") if isinstance(obj, dict) else None
+        except Exception as exc:
+            logger.debug("histo_output_dir not available: %s", exc)
+            return None
+        return title or None
+
     def nbins_x(self, name: str) -> Optional[int]:
         """Number of x-axis bins of a registered histogram, via the exe.json
         GetNbinsX method (allowed on TH2s). Used once at startup to learn the

@@ -142,7 +142,8 @@ private:
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
                    std::unique_ptr<hidra::IFersDecoder> fers_dec, int n_adc_channels, int noise_update_interval,
                    int fers_nboards, int fers_value_max, int fers_channel_nbins, int fers_saturation_threshold,
-                   bool fers_per_channel_distributions, std::vector<TrackerStationConfig> tracker_stations);
+                   bool fers_per_channel_distributions, std::vector<TrackerStationConfig> tracker_stations,
+                   std::string http_output_dir);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();

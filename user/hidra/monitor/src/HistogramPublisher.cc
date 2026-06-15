@@ -4,10 +4,12 @@
 #include <algorithm>
 
 
-HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms)
+HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms,
+                                       std::string http_output_dir)
     : m_registry(registry),
       m_port(port),
-  m_pump_interval_ms(std::max(pump_interval_ms, 5)) {}
+      m_pump_interval_ms(std::max(pump_interval_ms, 5)),
+      m_http_output_dir(std::move(http_output_dir)) {}
 
 void HistogramPublisher::Start() {
   if (m_server) {
@@ -21,6 +23,16 @@ void HistogramPublisher::Start() {
   m_server = std::make_unique<THttpServer>(spec.c_str());
 
   m_server->SetItemField("/", "_monitoring", "500"); // auto-refresh for JSROOT 500ms. API clients not affected.
+
+  // Publish the histogram-snapshot directory as a dedicated object so the
+  // frontend's reference-overlay can discover the files without per-deployment
+  // config. It sits at the server root (not under kFolder), so it does not
+  // appear in the histogram listing; the frontend reads its title via
+  // /histo_output_dir/root.json. Skipped when no output dir is set.
+  if (!m_http_output_dir.empty()) {
+    m_output_dir_obj.SetNameTitle("histo_output_dir", m_http_output_dir.c_str());
+    m_server->Register("/", &m_output_dir_obj);
+  }
 
   // Register all histograms booked so far. Start() is called after all
   // fillers are constructed, so the set is complete.
