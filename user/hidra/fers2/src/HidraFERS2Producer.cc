@@ -693,7 +693,7 @@ private:
       const auto max_wait = any_board_ahead ? kAlignmentWaitAheadTimeoutUs : kAlignmentWaitIdleTimeoutUs;
       const bool expired = waited_time >= max_wait;
 
-      if (all_matched && expired) {
+      if (!all_matched && expired) {
         HIDRA_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
                    ", proceeding with available boards only");
         ++m_evt_incomplete;
