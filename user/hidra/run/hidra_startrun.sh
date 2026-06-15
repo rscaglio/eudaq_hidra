@@ -64,9 +64,16 @@ if [ "$1" = "--skip" ]; then
     if echo "$BASE_SOURCES" | grep -q "FERS2Producer";   then PRODUCERS_SELECTED="$PRODUCERS_SELECTED FERS2Producer"; fi
     if echo "$BASE_SOURCES" | grep -q "TrackerProducer"; then PRODUCERS_SELECTED="$PRODUCERS_SELECTED TrackerProducer"; fi
 else
-    # CHANGED: Max Events field is now a plain text field (without ':NUM')
+    if [ "$LAST_PEDESTAL" = "1" ]; then
+        PREVIEW_IMAGE="/home/rscaglio/bob1.jpg"
+    else
+        PREVIEW_IMAGE="/home/rscaglio/bob2.png"
+    fi
+    # Native Wayland layout using an output-free Read Only field (:RO)
     GUI_OUTPUT=$(yad --form --title="EUDAQ Shift Run Control Setup" \
-        --text="Review and tweak parameters for the upcoming run:" \
+        --text="Review and tweak parameters for " \
+        --image="$PREVIEW_IMAGE" --align=center \
+        --borders=15 \
         --field="Pedestal-only run?:CB" "$PED_COMBO_ORDER" \
         --field="Max Events (0 for unlimited)" "$LAST_MAX_EVENTS" \
         --field="Enable QTPDProducer:CHK" "$QTPD_STATUS" \
