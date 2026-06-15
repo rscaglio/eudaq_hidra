@@ -232,8 +232,8 @@ private:
       HIDRA_THROW("Run configuration is missing");
     }
 
-    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
-    m_config_file = conf->Get("FERS_CONF_FILE", std::string(""));
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
+    m_config_file = conf->Get("FERS_CONF_FILE", std::string("/home/eudaq/daq/Janus_Config_EUDAQ_TB2026.txt"));
     if (m_config_file.empty()) {
       HIDRA_THROW("FERS_CONF_FILE is missing from the run configuration");
     }
@@ -243,7 +243,7 @@ private:
     m_configure_mode = ParseIntegerOrKeyword(conf->Get("FERS_CONFIGURE_MODE", std::string("CFG_HARD")),
                                              {{"CFG_HARD", CFG_HARD}, {"CFG_SOFT", CFG_SOFT}},
                                              CFG_HARD);
-    m_start_mode = ParseIntegerOrKeyword(conf->Get("FERS_START_MODE", std::string("STARTRUN_ASYNC")),
+    m_start_mode = ParseIntegerOrKeyword(conf->Get("FERS_START_MODE", std::string("TDL")),
                                          {{"ASYNC", STARTRUN_ASYNC},
                                           {"CHAIN_T0", STARTRUN_CHAIN_T0},
                                           {"CHAIN_T1", STARTRUN_CHAIN_T1},
@@ -254,7 +254,7 @@ private:
                                           {"STARTRUN_TDL", STARTRUN_TDL}},
                                          STARTRUN_ASYNC);
 
-    m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 1000);
+    m_poll_sleep_us = conf->Get("FERS_POLL_SLEEP_US", 0);
     // `FERS_MAX_EVENTS_PER_BOARD` historically limited events per board. With
     // concentrator/TDL batch reads this parameter now acts as a global cap on
     // the total number of FERSEvents returned by `ReadAvailableEvents` in a
@@ -263,7 +263,7 @@ private:
     m_send_timestamp = conf->Get("FERS_SEND_TIMESTAMP", 1) != 0;
     m_status_poll_interval_s = conf->Get("FERS_STATUS_POLL_INTERVAL_S", 0);
     m_poll_monitor_out_of_spill = conf->Get("POLL_MONITOR_OUT_OF_SPILL", 0) != 0;
-    m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 1) != 0;
+    m_attach_status_tags = conf->Get("FERS_STATUS_ATTACH_TAGS", 0) != 0;
     if (m_status_poll_interval_s < 0) {
       HIDRA_WARN("FERS_STATUS_POLL_INTERVAL_S is negative; disabling FERS2 status polling");
       m_status_poll_interval_s = 0;

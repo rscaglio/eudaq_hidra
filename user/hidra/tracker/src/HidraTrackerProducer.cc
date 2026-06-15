@@ -160,11 +160,11 @@ private:
       EUDAQ_THROW("Run configuration is missing");
     }
 
-    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
     // TRACKER_DIRECTORY: directory tailed for tracker files (required). ${VAR}
     // is expanded from the environment so the path can be machine-independent
     // (e.g. ${REPO_ROOT}/...); REPO_ROOT is exported by misc/setup.sh.
-    m_directory = hidra::utils::ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
+    m_directory = hidra::utils::ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("/home/eudaq/TB2026_TrackerData/ascii_dream_2026")));
     if (m_directory.empty()) {
       EUDAQ_THROW("TRACKER_DIRECTORY is missing from the run configuration");
     }
@@ -173,7 +173,7 @@ private:
     }
 
     // TRACKER_FILE_EXTENSION: only files with this extension are read.
-    m_extension = conf->Get("TRACKER_FILE_EXTENSION", std::string(".csv"));
+    m_extension = conf->Get("TRACKER_FILE_EXTENSION", std::string(".dat"));
     // TRACKER_POLL_INTERVAL_MS: directory re-scan period (>= 1 ms).
     m_poll_interval_ms = std::max(1, conf->Get("TRACKER_POLL_INTERVAL_MS", 100));
     // TRACKER_TIMESTAMP_SCALE_NS: multiplier from DREAM timestamp ticks to ns.

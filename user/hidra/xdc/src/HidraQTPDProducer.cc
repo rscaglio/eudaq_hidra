@@ -271,7 +271,7 @@ private:
       EUDAQ_THROW("Run configuration is missing");
     }
 
-    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
     ResetRunState();
     LoadRunConfiguration(*conf);
 
@@ -359,7 +359,7 @@ private:
     m_v560Base = parse_u32(conf.Get("V560_BASE", std::string("0x00200000")));
 
     // TRACKER SYNC MODULE 
-    m_eventSyncEnabled = conf.Get("TRACKER_SYNC_ENABLE", std::string("0")) == "1";
+    m_eventSyncEnabled = conf.Get("TRACKER_SYNC_ENABLE", std::string("1")) == "1";
     m_eventSyncBase = parse_u32(conf.Get("TRACKER_SYNC_BASE", std::string("0x00D00000")));
     m_eventSyncReadback = conf.Get("TRACKER_SYNC_READBACK", std::string("0")) == "1";
     m_eventSyncDebug = conf.Get("TRACKER_SYNC_DEBUG", std::string("0")) == "1";

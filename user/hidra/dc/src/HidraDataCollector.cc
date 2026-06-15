@@ -295,7 +295,7 @@ void HidraDataCollector::DoInitialise() {
 void HidraDataCollector::DoConfigure() {
   auto conf = GetConfiguration();
 
-  EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
+  EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
 
   m_event_count = 0;
   m_stop_sent = false;
@@ -314,14 +314,14 @@ void HidraDataCollector::DoConfigure() {
     HIDRA_ERROR("HidraDataCollector: missing run configuration");
   }
 
-  m_filePattern = conf->Get("EUDAQ_FW_PATTERN", "$12D_run$6R$X");
+  m_filePattern = conf->Get("EUDAQ_FW_PATTERN", "/home/eudaq/daq/TB2026_HidraData/HidraData/run$3R_$12D$X");
   // Optional separate output directories for the binary (.raw) and ROOT (.root)
   // streams. Empty -> use the pattern path as before (both files together).
   m_binary_output_dir = conf->Get("BINARY_OUTPUT_DIR", "");
   m_root_output_dir = conf->Get("ROOT_OUTPUT_DIR", "");
-  m_fwType = conf->Get("EUDAQ_FW", "native");
+  m_fwType = conf->Get("EUDAQ_FW", "HidraNullFileWriter");
   m_write_binary_output = conf->Get("WRITE_BINARY_OUTPUT", 1);
-  m_write_root_output = conf->Get("WRITE_ROOT_OUTPUT", 0);
+  m_write_root_output = conf->Get("WRITE_ROOT_OUTPUT", 1);
   m_writer_flush_interval_ms = conf->Get("WRITER_FLUSH_INTERVAL_MS", 50);
 
   if (!m_write_binary_output && !m_write_root_output) {
@@ -329,8 +329,8 @@ void HidraDataCollector::DoConfigure() {
   }
 
   m_max_events = conf->Get("MAX_EVENTS", 0);
-  m_sync_timeout_us = conf->Get("SYNC_TIMEOUT_US", 1000);
-  m_tstamp_window_ns = conf->Get("TIME_ALIGNMENT_WINDOW_NS", 50000);
+  m_sync_timeout_us = conf->Get("SYNC_TIMEOUT_US", 15000000);
+  m_tstamp_window_ns = conf->Get("TIME_ALIGNMENT_WINDOW_NS", 300000);
   m_Nevents_time_calib = conf->Get("TIME_ALIGNMENT_NEVENTS_CALIB", 100);
 
   std::string configsources = conf->Get("EXPECTED_SOURCES", "");
@@ -360,7 +360,7 @@ void HidraDataCollector::DoConfigure() {
   }
 
   m_vme_geo_map.clear();
-  std::string vmecrateconfig = conf->Get("VME_CRATE_1", "");
+  std::string vmecrateconfig = conf->Get("VME_CRATE_1", "2:V792,4:V792,6:V792,8:V792,10:V792,12:V862,14:V775N");
   if (vmecrateconfig != "") {
     std::map<std::string, std::string> tempvme = hidra::utils::parseConfigMap(vmecrateconfig);
     for (const auto& kv : tempvme) {
