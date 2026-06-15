@@ -26,6 +26,7 @@ struct HidraEventFlags {
   static constexpr std::uint32_t TimestampMismatch = 1u << 16;
   static constexpr std::uint32_t TimingCalibrationPending = 1u << 17;
   static constexpr std::uint32_t DuplicatedTrigger = 1u << 18;
+  static constexpr std::uint32_t DuplicatedTriggerPrevious = 1u << 19;
   // max allowed is 24 to keep the flags within 32 bits (since Event class uses the first 8 bits)
 };
 
