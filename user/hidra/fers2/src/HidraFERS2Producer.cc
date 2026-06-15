@@ -207,8 +207,8 @@ std::string JoinBoardIds(const std::vector<int>& board_ids) {
   return oss.str();
 }
 
-constexpr auto kAlignmentWaitIdleTimeoutUs = 2s;
-constexpr auto kAlignmentWaitAheadTimeoutUs = 1s;
+constexpr auto kAlignmentWaitIdleTimeoutUs = 4s;
+constexpr auto kAlignmentWaitAheadTimeoutUs = 3s;
 
 } // namespace
 
