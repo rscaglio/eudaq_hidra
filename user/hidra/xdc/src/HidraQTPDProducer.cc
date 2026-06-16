@@ -304,6 +304,7 @@ private:
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
 
     ReleaseTriggerVeto(m_pedestal_run);
+    SendStatus();
   }
 
   void DoStopRun() override {

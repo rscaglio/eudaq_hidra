@@ -438,6 +438,7 @@ void HidraDataCollector::DoStartRun() {
   }
 
   HIDRA_INFO("HidraDataCollector start run {}", GetRunNumber());
+  UpdateStatusTags();
 }
 
 void HidraDataCollector::DoStopRun() {

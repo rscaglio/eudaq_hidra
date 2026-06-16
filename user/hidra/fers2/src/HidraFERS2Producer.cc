@@ -333,6 +333,7 @@ private:
     }
 
     HIDRA_INFO("Starting FERS2 run " + std::to_string(m_run_number));
+    SendStatus();
   }
 
   void DoStopRun() override {
