@@ -216,7 +216,7 @@ struct HidraRootEventWriter::Impl {
             
             HIDRA_WARN("Event {}: XDC at geo {} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
               detector.trigger_n, 
-              vme_geo_vect[i].first,
+              vme_geo_vect[i],
               trig_offset, 
               static_cast<int>(trig_offset) - XDCoffset[i], 
               XDCoffset[i], 
