@@ -310,13 +310,13 @@ private:
   void DoStopRun() override {
     m_running = false;
     StopAcquisitionThread();
-    /*if (m_v560Enabled) {
+    if (m_v560Enabled) {
       m_fastGateCount_560 = ReadV560FastGate();
       m_physicsCount_560 = ReadV560Physics();
       m_pedestalCount_560 = ReadV560Pedestal();
       m_wwCount_560 = ReadV560WW();
       m_endOfSpillCount_560 = ReadV560EndOfSpill();
-    }*/
+    }
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
     VetoTrigger();
@@ -721,15 +721,15 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
 
-	      /*if (m_v560Enabled){
+	      if (m_v560Enabled){
           m_triggerCount_560 = ReadV560FastGate();
-	      }*/
+	      }
 
         HIDRA_DEBUG("Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_triggerCount_560, m_evt & 0xFFFF);
 
-        /*if (m_v560Enabled && m_triggerCount_560 != (m_evt & 0xFFFF)) {
+        if (m_v560Enabled && m_triggerCount_560 != (m_evt & 0xFFFF)) {
           HIDRA_ERROR("Mismatch between trigger count from V560 ({}) and expected from event pattern ({}). You are probably loosing events.", m_triggerCount_560, m_evt & 0xFFFF);
-        }*/
+        }
 
         bool eventHandlingOk = ReadOneBlockAndSendEvent();
         m_evt++;
@@ -1082,13 +1082,13 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     eore->SetEORE();
     eore->SetRunN(static_cast<uint32_t>(m_runNumber));
     eore->SetTag("EventsSent", std::to_string(m_evt));
-    /*if (m_v560Enabled) {
+    if (m_v560Enabled) {
       eore->SetTag("V560FastGate", std::to_string(m_fastGateCount_560));
       eore->SetTag("V560Physics", std::to_string(m_physicsCount_560));
       eore->SetTag("V560Pedestal", std::to_string(m_pedestalCount_560));
       eore->SetTag("V560WW", std::to_string(m_wwCount_560));
       eore->SetTag("V560EndOfSpill", std::to_string(m_endOfSpillCount_560));
-    }*/
+    }
 
     const auto runStop = std::chrono::steady_clock::now();
     const auto elapsed = runStop - m_runStart;

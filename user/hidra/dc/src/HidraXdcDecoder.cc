@@ -194,7 +194,11 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       ADCTrailerWord T{word};
 
       if (T.evt_cnt() != trigger_n) {
-        HIDRA_ERROR("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
+        if(event.trigger_n <  T.evt_cnt()) {
+          HIDRA_DEBUG("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
+        } else {
+          HIDRA_ERROR("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
+        }
         return;
       }
       if (T.type() != expected_word_mask) {
