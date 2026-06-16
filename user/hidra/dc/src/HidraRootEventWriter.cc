@@ -92,8 +92,8 @@ struct HidraRootEventWriter::Impl {
   bool stop_requested = false;
   bool has_error = false;
   std::string error_message;
-  std::uint64_t written_events = 0;
-  std::uint64_t tdc_missing_events = 0;
+  std::atomic<uint64_t> written_events = 0;
+  std::atomic<uint64_t> tdc_missing_events = 0;
   std::uint64_t last_warn_tdc_missing_count = 0;
   std::chrono::steady_clock::time_point last_missing_tdc_warning_time = std::chrono::steady_clock::now();
 
