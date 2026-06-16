@@ -308,6 +308,7 @@ private:
     m_monitor_status.clear();
     m_next_status_poll = std::chrono::steady_clock::time_point::min();
     m_last_event_read = std::chrono::steady_clock::time_point::min();
+    m_last_status_log = std::chrono::steady_clock::now();
     m_alignment_wait_trigger = 0;
     m_alignment_wait_active = false;
     for (const auto& board : m_board_manager->boards()) {

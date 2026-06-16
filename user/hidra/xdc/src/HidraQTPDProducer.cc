@@ -320,6 +320,7 @@ private:
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
     VetoTrigger();
+    m_last_status_log = std::chrono::steady_clock::now();
   }
 
   void DoReset() override {

@@ -403,7 +403,7 @@ void HidraDataCollector::DoStartRun() {
                                          // corresponding source.
   m_calib_timing_validated = false;
   m_calib_timing_needed = m_calib_timing_enabled;
-
+  m_last_status_log = std::chrono::steady_clock::now();
   m_binary_writer.reset();
   m_root_writer.reset();
 
