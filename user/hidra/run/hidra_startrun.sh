@@ -67,7 +67,7 @@ else
     if [ "$LAST_PEDESTAL" = "1" ]; then
         PREVIEW_IMAGE="/home/eudaq/Bob1.jpg"
     else
-        PREVIEW_IMAGE="/home/eudaq/Bob2.png"
+        PREVIEW_IMAGE="/home/eudaq/Bob1.jpg"
     fi
     # Native Wayland layout using an output-free Read Only field (:RO)
     GUI_OUTPUT=$(yad --form --title="EUDAQ Shift Run Control Setup" \
