@@ -1,4 +1,5 @@
 #include "HidraUtils.hh"
+#include "Logger.hh"
 #include "HidraXdcDecoder.hh"
 
 #include <chrono>
@@ -47,9 +48,9 @@ struct V775Word {
   uint8_t geo() const { return (raw >> 27) & 0x1F; }
 };
 
-HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map)
+HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map, uint8_t log_level)
     : m_vme_geo_map(std::move(vme_geo_map)) {
-
+  EUDAQ_LOG_LEVEL(log_level);
   m_n_adc_channels = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map);
   m_n_tdc_channels = hidra::utils::computeMaxTDCchannelFromGeoMap(m_vme_geo_map);
   HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels and {} TDC channels based on VME geo map", m_n_adc_channels, m_n_tdc_channels);
@@ -83,7 +84,8 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   std::vector<double> ADCflags(m_n_adc_channels, -1);
   std::vector<double> TDCvalues(m_n_tdc_channels, -1);
   std::vector<double> TDCflags(m_n_tdc_channels, -1);
-  //std::vector<double> XDCTriggers(m_n_adc_channels+m_n_tdc_channels, -1);
+  std::vector<double> XDCTriggers(m_vme_geo_map.size(), -1);
+
 
   uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
   uint8_t empty_datum_word_mask = 0b110; // Invalid datum
@@ -101,10 +103,13 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       expected_word_mask = 0b010;
 
       ADCHeaderWord W{word};
+      const auto module_it = m_vme_geo_map.find(W.geo());
 
       if (W.type() != expected_word_mask) {
         if(W.type() == empty_datum_word_mask) {
-          if(m_vme_geo_map.at(W.geo()) != "V775N") {
+          if(module_it == m_vme_geo_map.end()) {
+            HIDRA_WARN("Event {}: Geo {}, unexpected XDC empty datum for unconfigured module. Skipping", event.trigger_n, W.geo());
+          } else if(module_it->second != "V775N") {
             HIDRA_WARN("Event {}: Geo {}, Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Should be safe for TDC", event.trigger_n, W.geo(), word, W.type(), expected_word_mask);         
           }
           continue;
@@ -115,7 +120,6 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       }
 
       int nchan = W.cnt();
-      const auto module_it = m_vme_geo_map.find(W.geo());
       if (module_it == m_vme_geo_map.end()) {
         HIDRA_ERROR("No XDC module configured for crate {} geo {}. Aborting", W.crate(), W.geo());
         return;
@@ -199,8 +203,9 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
         HIDRA_ERROR("Event {}, Geo {}: Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", event.trigger_n, W.geo(), word, T.type(), expected_word_mask);
         return;
       }
+      auto dist = std::distance(m_vme_geo_map.begin(), module_it);
+      XDCTriggers[dist] = T.evt_cnt();
 
-      //XDCTriggers[std::distance(m_vme_geo_map.begin(), m_vme_geo_map.find(W.geo()))] = T.evt_cnt();
       if (T.evt_cnt() != trigger_n) {
         if(event.trigger_n <  T.evt_cnt()) {
           HIDRA_DEBUG("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);

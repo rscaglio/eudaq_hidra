@@ -44,7 +44,7 @@ public:
 
 class HidraXdcPayloadDecoder final : public RootPayloadDecoder {
 public:
-  explicit HidraXdcPayloadDecoder(std::map<int, std::string> vme_geo_map = {});
+  explicit HidraXdcPayloadDecoder(std::map<int, std::string> vme_geo_map = {}, uint8_t log_level = 1);
   bool Matches(const RootDetectorPayload& detector) const override;
   void Decode(const RootDetectorPayload& detector,
               std::vector<RootQuantity>& quantities,

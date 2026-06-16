@@ -70,7 +70,7 @@ struct HidraRootEventWriter::Impl {
   Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events,
        std::map<int, std::string> vme_geo_map, uint8_t log_level=1)
       : output_file(std::move(output_file)), flush_interval_ms(flush_interval_ms),
-        flush_every_events(flush_every_events), xdc_decoder(vme_geo_map) {
+        flush_every_events(flush_every_events), xdc_decoder{vme_geo_map, log_level} {
     if (this->flush_interval_ms == 0) {
       this->flush_interval_ms = 1;
     }
@@ -92,8 +92,8 @@ struct HidraRootEventWriter::Impl {
   bool stop_requested = false;
   bool has_error = false;
   std::string error_message;
-  std::uint64_t written_events = 0;
-  std::uint64_t tdc_missing_events = 0;
+  std::atomic<uint64_t> written_events = 0;
+  std::atomic<uint64_t> tdc_missing_events = 0;
   std::uint64_t last_warn_tdc_missing_count = 0;
   std::chrono::steady_clock::time_point last_missing_tdc_warning_time = std::chrono::steady_clock::now();
 
@@ -195,24 +195,37 @@ struct HidraRootEventWriter::Impl {
       if (tdcs != detector.branches.end() && hidra::utils::isXDCEmpty(tdcs->second)) {
         ++tdc_missing_events;
       }
-      // const auto xdc_triggers = detector.branches.find("XDCTriggers");
-      // if(xdc_triggers != detector.branches.end()) {
-      //   for(uint32_t i = 0; i< xdc_triggers->second.size(); i++) {
-      //     auto trig_offset = static_cast<uint64_t>(xdc_triggers->second[i]) - detector.trigger_n;
-      //     if (trig_offset != XDCoffset[i]) {
+      const auto xdc_triggers = detector.branches.find("XDCTriggers");
+      if(xdc_triggers != detector.branches.end()) {
+        const auto adcs = detector.branches.find("ADCs");
+        const auto tdcs = detector.branches.find("TDCs");
+        const auto trigger_count = std::min({xdc_triggers->second.size(), XDCoffset.size(), vme_geo_vect.size()});
+        if (xdc_triggers->second.size() != trigger_count) {
+          HIDRA_WARN("Event {}: XDCTriggers has {} entries but {} VME modules are configured. Ignoring extra entries.",
+                     detector.trigger_n,
+                     xdc_triggers->second.size(),
+                     trigger_count);
+        }
+        for(std::size_t i = 0; i < trigger_count; i++) {
+          const auto trigger_value = xdc_triggers->second[i];
+          if (trigger_value < 0) {
+            continue;
+          }
+          auto trig_offset = static_cast<uint64_t>(trigger_value) - detector.trigger_n;
+          if (trig_offset != XDCoffset[i]) {
             
-      //       HIDRA_WARN("Event {}: XDC at geo {} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
-      //         detector.trigger_n, 
-      //         vme_geo_vect[i],
-      //         trig_offset, 
-      //         static_cast<int>(trig_offset) - XDCoffset[i], 
-      //         XDCoffset[i], 
-      //         detector.branches.find("ADCs")->second.size(),
-      //         detector.branches.find("TDCs")->second.size());
-      //       XDCoffset[i]=trig_offset;
-      //     }
-      //   }
-      // }
+            HIDRA_WARN("Event {}: XDC at geo {} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
+              detector.trigger_n, 
+              vme_geo_vect[i].first,
+              trig_offset, 
+              static_cast<int>(trig_offset) - XDCoffset[i], 
+              XDCoffset[i], 
+              adcs == detector.branches.end() ? 0 : adcs->second.size(),
+              tdcs == detector.branches.end() ? 0 : tdcs->second.size());
+            XDCoffset[i]=trig_offset;
+          }
+        }
+      }
     } else if (fers_decoder.Matches(detector)) {
       fers_decoder.Decode(detector, detector.quantities, detector.branches);
     } else if (tracker_decoder.Matches(detector)) {

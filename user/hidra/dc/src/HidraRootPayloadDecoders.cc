@@ -64,8 +64,8 @@ bool HidraGenericPayloadDecoder::Matches(const RootDetectorPayload&) const {
   return true;
 }
 
-HidraXdcPayloadDecoder::HidraXdcPayloadDecoder(std::map<int, std::string> vme_geo_map)
-    : m_xdc_decoder(std::move(vme_geo_map)) {}
+HidraXdcPayloadDecoder::HidraXdcPayloadDecoder(std::map<int, std::string> vme_geo_map, uint8_t log_level)
+    : m_xdc_decoder(std::move(vme_geo_map), log_level) {}
 
 std::vector<std::string> HidraGenericPayloadDecoder::BranchNames() const {
   return {"payload_bytes"};
