@@ -5,6 +5,7 @@
 #include "HidraUtils.hh"
 
 #include <fstream>
+#include <unordered_set>
 #include <vector>
 #include <string>
 #include <map>
@@ -16,6 +17,7 @@
 #include <sstream>
 #include <cstdint>
 #include <stdexcept>
+#include <filesystem>
 
 namespace hidra {
 
@@ -73,7 +75,7 @@ private:
 
         // Path to the recorded raw storage binary file to play back
         m_raw_file_path = conf->Get("DRY_INPUT_RAW_FILE", "");
-        if (m_raw_file_path.empty() || !exit(m_raw_file_path)) {
+        if (m_raw_file_path.empty() || !std::filesystem::exists(m_raw_file_path)) {
             HIDRA_THROW("DRY_INPUT_RAW_FILE target is missing or unreadable: " + m_raw_file_path);
         }
 
@@ -157,7 +159,7 @@ private:
 
                 std::uint16_t marker = ReadLE<std::uint16_t>(header_bytes, 0);
                 if (marker != EVENT_MARKER) {
-                    HIDRA_ERROR("Stream corrupted! Expected Event Marker 0xB0BF, found: 0x" + hidra::utils::to_hex(marker));
+                    HIDRA_ERROR("Stream corrupted! Expected Event Marker 0xB0BF, found: 0x" + eudaq::to_hex(marker));
                     break;
                 }
 
