@@ -691,6 +691,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   }
 
   void MainLoop() {
+    uint64_t spill_evt_cnt;
     while (m_running) {
       if (!ControllerIsReady()) {
         continue;
@@ -703,9 +704,11 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         HIDRA_WARN("Passed through spill {} with no events", m_spillCount);
         m_spillCount++;
         ClearV977FlipFlops();
+        spill_evt_cnt = 0;
       }
 
       if (pattern.trigger){
+        spill_evt_cnt++;
         if (pattern.spillStart) {
           m_spillCount++;
         }
@@ -769,7 +772,10 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           ClearV977FlipFlops(); // Last clear at end of spill
         }
       }
-
+      if(pattern.spillEnd) {
+        HIDRA_INFO("Spill {} ended with {} events", m_spillCount, spill_evt_cnt);
+        spill_evt_cnt=0;
+      }
       // std::this_thread::sleep_for(std::chrono::microseconds(5)); // TODO: add a sleep here?
       
     }
