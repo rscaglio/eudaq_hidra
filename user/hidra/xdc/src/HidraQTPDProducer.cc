@@ -705,8 +705,11 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         ClearV977FlipFlops();
       }
 
-
       if (pattern.trigger){
+        if (pattern.spillStart) {
+          m_spillCount++;
+        }
+
         m_evtTimeNs = hidra::utils::getTimens();
         m_TriggerMask = 0x0;
         if (pattern.physics) m_TriggerMask |= 0b01;
@@ -760,11 +763,11 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         SetSingleV977OutputReg(!requestPedestalNext(),
                                V977OUT::cPedVeto); // TODO r-m-w not needed if this is the only controlled output
 
-        if (pattern.spillStart) {
-          m_spillCount++;
-        }
-
         ClearV977FlipFlops(); // this will release the Trigger veto and clear the spill pattern as well
+      } else {
+        if(pattern.spillEnd) {
+          ClearV977FlipFlops(); // Last clear at end of spill
+        }
       }
 
       // std::this_thread::sleep_for(std::chrono::microseconds(5)); // TODO: add a sleep here?
