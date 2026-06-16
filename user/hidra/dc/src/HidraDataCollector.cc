@@ -294,8 +294,8 @@ void HidraDataCollector::DoInitialise() {
 
 void HidraDataCollector::DoConfigure() {
   auto conf = GetConfiguration();
-
-  EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
+  m_log_level = (int)(conf->Get("HIDRA_MUTE_DEBUG", 1));
+  EUDAQ_LOG_LEVEL(m_log_level);
 
   m_event_count = 0;
   m_stop_sent = false;
@@ -426,7 +426,7 @@ void HidraDataCollector::DoStartRun() {
   if (m_write_root_output) {
     m_root_output_file = MakeOutputFile(".root", m_root_output_dir);
     auto root_writer = std::make_unique<hidra::HidraRootEventWriter>(
-        m_root_output_file, m_writer_flush_interval_ms, 32, m_vme_geo_map);
+        m_root_output_file, m_writer_flush_interval_ms, 32, m_vme_geo_map, m_log_level);
     root_writer->Start();
     if (!root_writer->IsActive()) {
       HIDRA_ERROR("ROOT writer could not start: {}", root_writer->GetLastError());

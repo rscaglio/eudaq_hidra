@@ -13,7 +13,7 @@ class HidraRootEventWriter {
 public:
   HidraRootEventWriter(const std::string& output_file, std::uint64_t flush_interval_ms = 50,
                        std::size_t flush_every_events = 32,
-                       std::map<int, std::string> vme_geo_map = {});
+                       std::map<int, std::string> vme_geo_map = {}, uint8_t log_level = 1);
   ~HidraRootEventWriter();
 
   void Start();

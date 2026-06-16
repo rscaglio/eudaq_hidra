@@ -49,6 +49,11 @@ void AddBranchValues(RootBranchValues& branches, const std::string& name, const 
   branch.insert(branch.end(), values.begin(), values.end());
 }
 
+void AddBranchValuesUINT(RootBranchValues& branches, const std::string& name, const std::vector<uint64_t>& values) {
+  auto& branch = branches[name];
+  branch.insert(branch.end(), values.begin(), values.end());
+}
+
 } // namespace
 
 std::vector<std::string> RootPayloadDecoder::BranchNames() const {
@@ -85,6 +90,7 @@ std::vector<std::string> HidraXdcPayloadDecoder::BranchNames() const {
   names.push_back("ADCFlags");
   names.push_back("TDCs");
   names.push_back("TDCFlags");
+  names.push_back("XDCTriggers");
   return names;
 }
 
@@ -104,6 +110,7 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
   AddBranchValues(branches, "ADCFlags", xdc_event.ADCflags);
   AddBranchValues(branches, "TDCs", xdc_event.TDCvalues);
   AddBranchValues(branches, "TDCFlags", xdc_event.TDCflags);
+  AddBranchValuesUINT(branches, "XDCTriggers", xdc_event.XDCTriggers);
 }
 
 bool HidraFersPayloadDecoder::Matches(const RootDetectorPayload& detector) const {

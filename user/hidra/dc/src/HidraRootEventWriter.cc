@@ -1,4 +1,5 @@
 #include "HidraRootEventWriter.hh"
+#include "Logger.hh"
 
 #include <cstdint>
 #include <deque>
@@ -67,13 +68,17 @@ std::string MakeRootBranchName(std::string name) {
 
 struct HidraRootEventWriter::Impl {
   Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events,
-       std::map<int, std::string> vme_geo_map)
+       std::map<int, std::string> vme_geo_map, uint8_t log_level=1)
       : output_file(std::move(output_file)), flush_interval_ms(flush_interval_ms),
-        flush_every_events(flush_every_events), xdc_decoder(std::move(vme_geo_map)) {
+        flush_every_events(flush_every_events), xdc_decoder(vme_geo_map) {
     if (this->flush_interval_ms == 0) {
       this->flush_interval_ms = 1;
     }
+    EUDAQ_LOG_LEVEL((int)(log_level));
     HIDRA_INFO("HidraRootEventWriter created with output file path: {}", this->output_file);
+    for(auto vme_geo: vme_geo_map) {
+      vme_geo_vect.push_back(vme_geo);
+    }
   }
 
   std::string output_file;
@@ -105,6 +110,8 @@ struct HidraRootEventWriter::Impl {
   std::vector<int> q_det;
   std::vector<std::string> q_name;
   std::vector<double> q_value;
+  std::vector<uint64_t> XDCoffset;
+  std::vector<std::pair<int, std::string>> vme_geo_vect;
   std::vector<std::string> q_unit;
   std::map<std::string, std::vector<double>> root_branch_values;
 
@@ -186,6 +193,24 @@ struct HidraRootEventWriter::Impl {
       const auto tdcs = detector.branches.find("TDCs");
       if (tdcs != detector.branches.end() && hidra::utils::isXDCEmpty(tdcs->second)) {
         ++tdc_missing_events;
+      }
+      const auto xdc_triggers = detector.branches.find("XDCTriggers");
+      if(xdc_triggers != detector.branches.end()) {
+        for(uint32_t i = 0; i< xdc_triggers->second.size(); i++) {
+          auto trig_offset = static_cast<uint64_t>(xdc_triggers->second[i]) - detector.trigger_n;
+          if (trig_offset != XDCoffset[i]) {
+            
+            HIDRA_WARN("Event {}: XDC at geo {}:{} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
+              detector.trigger_n, 
+              vme_geo_vect[i].first, 
+              vme_geo_vect[i].second, 
+              trig_offset, static_cast<int>(trig_offset) - XDCoffset[i], 
+              XDCoffset[i], 
+              detector.branches.find("ADCs")->second.size(),
+              detector.branches.find("TDCs")->second.size());
+            XDCoffset[i]=trig_offset;
+          }
+        }
       }
     } else if (fers_decoder.Matches(detector)) {
       fers_decoder.Decode(detector, detector.quantities, detector.branches);
@@ -321,8 +346,9 @@ struct HidraRootEventWriter::Impl {
 
 HidraRootEventWriter::HidraRootEventWriter(const std::string& output_file, std::uint64_t flush_interval_ms,
                                            std::size_t flush_every_events,
-                                           std::map<int, std::string> vme_geo_map)
-    : m_impl(std::make_unique<Impl>(output_file, flush_interval_ms, flush_every_events, std::move(vme_geo_map))) {}
+                                           std::map<int, std::string> vme_geo_map,
+                                           uint8_t log_level)
+    : m_impl(std::make_unique<Impl>(output_file, flush_interval_ms, flush_every_events, std::move(vme_geo_map), log_level)) {}
 
 HidraRootEventWriter::~HidraRootEventWriter() { Stop(); }
 

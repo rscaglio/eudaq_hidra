@@ -76,6 +76,7 @@ private:
   bool m_running = false;
 
   int m_Nevents_time_calib = 100;
+  uint8_t m_log_level = 0;
   hidra::timealignment::TriggerAlignmentConfig m_calib_timing_cfg; 
   std::vector<std::map<long long, long long>> m_calib_timing_events; // vector of maps <triggerN, timestamp> 
   std::vector<long long> m_calib_timing_mean{};

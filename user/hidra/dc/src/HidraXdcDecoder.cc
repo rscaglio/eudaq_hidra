@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <iterator>
 
 namespace hidra {
 
@@ -82,6 +83,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   std::vector<double> ADCflags(m_n_adc_channels, -1);
   std::vector<double> TDCvalues(m_n_tdc_channels, -1);
   std::vector<double> TDCflags(m_n_tdc_channels, -1);
+  std::vector<uint64_t> XDCTriggers(m_n_adc_channels+m_n_tdc_channels, -1);
 
   uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
   uint8_t empty_datum_word_mask = 0b110; // Invalid datum
@@ -193,17 +195,19 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
 
       ADCTrailerWord T{word};
 
+      if (T.type() != expected_word_mask) {
+        HIDRA_ERROR("Event {}, Geo {}: Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", event.trigger_n, W.geo(), word, T.type(), expected_word_mask);
+        return;
+      }
+      if (module_type == "V792" || module_type == "V792N" || module_type == "V862" || module_type == "V775" || module_type == "V775N") {
+        XDCTriggers[std::distance(m_vme_geo_map.begin(), m_vme_geo_map.find(W.geo()))] = T.evt_cnt();
+      }
       if (T.evt_cnt() != trigger_n) {
         if(event.trigger_n <  T.evt_cnt()) {
           HIDRA_DEBUG("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
         } else {
           HIDRA_ERROR("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
         }
-        return;
-      }
-      if (T.type() != expected_word_mask) {
-        HIDRA_ERROR("Event {}, Geo {}: Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", event.trigger_n, W.geo(), word, T.type(), expected_word_mask);
-        return;
       }
     }
   }
@@ -211,6 +215,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   event.ADCflags = std::move(ADCflags);
   event.TDCvalues = std::move(TDCvalues);
   event.TDCflags = std::move(TDCflags);
+  event.XDCTriggers = std::move(XDCTriggers);
 }
 
 } // namespace hidra

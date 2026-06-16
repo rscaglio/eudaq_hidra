@@ -9,4 +9,5 @@ struct HidraXdcEvent {
   std::vector<double> ADCflags;
   std::vector<double> TDCvalues;
   std::vector<double> TDCflags;
+  std::vector<uint64_t> XDCTriggers;
 };
