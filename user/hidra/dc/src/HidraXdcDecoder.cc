@@ -199,9 +199,8 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
         HIDRA_ERROR("Event {}, Geo {}: Unexpected XDC word type: {:08X} -- type {}. Should be Trailer Word {}. Aborting", event.trigger_n, W.geo(), word, T.type(), expected_word_mask);
         return;
       }
-      if (module_type == "V792" || module_type == "V792N" || module_type == "V862" || module_type == "V775" || module_type == "V775N") {
-        XDCTriggers[std::distance(m_vme_geo_map.begin(), m_vme_geo_map.find(W.geo()))] = T.evt_cnt();
-      }
+      
+      XDCTriggers[std::distance(m_vme_geo_map.begin(), m_vme_geo_map.find(W.geo()))] = T.evt_cnt();
       if (T.evt_cnt() != trigger_n) {
         if(event.trigger_n <  T.evt_cnt()) {
           HIDRA_DEBUG("Event {}, Geo {}, Mismatched event count in XDC trailer vs trigger: {} vs {}. Aborting", event.trigger_n, W.geo(), T.evt_cnt(), trigger_n);
