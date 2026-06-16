@@ -163,16 +163,16 @@ tmux new-session -d -s "$TMUX_SESSION" \
 echo "Launching main EUDAQ GUI Runtime System..."
 $BINPATH/euRun -n HidraRunControl &
 
-sleep 1.5
+sleep 1
 echo "Launching main EUDAQ LOG System..."
 $BINPATH/hidraLog &
-sleep 0.5
+sleep 1
 echo "Launching main EUDAQ Monitoring System..."
 $BINPATH/euCliMonitor  -n HidraHttpMonitor -t HidraHttpMonitor &
-sleep 0.5
+sleep 1
 echo "Launching main EUDAQ DataCollector..."
 $BINPATH/euCliCollector -n HidraDataCollector -t HidraDataCollector &
-sleep 0.5
+sleep 1
 
 if echo "$PRODUCERS_SELECTED" | grep -q "QTPDProducer"; then
     echo "--> Spawning hardware link process: QTPDProducer"
