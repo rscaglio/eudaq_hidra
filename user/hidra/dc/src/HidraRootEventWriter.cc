@@ -201,11 +201,11 @@ struct HidraRootEventWriter::Impl {
           auto trig_offset = static_cast<uint64_t>(xdc_triggers->second[i]) - detector.trigger_n;
           if (trig_offset != XDCoffset[i]) {
             
-            HIDRA_WARN("Event {}: XDC at geo {}:{} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
+            HIDRA_WARN("Event {}: XDC at geo {} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
               detector.trigger_n, 
-              vme_geo_vect[i].first, 
-              vme_geo_vect[i].second, 
-              trig_offset, static_cast<int>(trig_offset) - XDCoffset[i], 
+              vme_geo_vect[i].first,
+              trig_offset, 
+              static_cast<int>(trig_offset) - XDCoffset[i], 
               XDCoffset[i], 
               detector.branches.find("ADCs")->second.size(),
               detector.branches.find("TDCs")->second.size());
