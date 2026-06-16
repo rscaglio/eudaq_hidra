@@ -197,8 +197,21 @@ struct HidraRootEventWriter::Impl {
       }
       const auto xdc_triggers = detector.branches.find("XDCTriggers");
       if(xdc_triggers != detector.branches.end()) {
-        for(uint32_t i = 0; i< xdc_triggers->second.size(); i++) {
-          auto trig_offset = static_cast<uint64_t>(xdc_triggers->second[i]) - detector.trigger_n;
+        const auto adcs = detector.branches.find("ADCs");
+        const auto tdcs = detector.branches.find("TDCs");
+        const auto trigger_count = std::min({xdc_triggers->second.size(), XDCoffset.size(), vme_geo_vect.size()});
+        if (xdc_triggers->second.size() != trigger_count) {
+          HIDRA_WARN("Event {}: XDCTriggers has {} entries but {} VME modules are configured. Ignoring extra entries.",
+                     detector.trigger_n,
+                     xdc_triggers->second.size(),
+                     trigger_count);
+        }
+        for(std::size_t i = 0; i < trigger_count; i++) {
+          const auto trigger_value = xdc_triggers->second[i];
+          if (trigger_value < 0) {
+            continue;
+          }
+          auto trig_offset = static_cast<uint64_t>(trigger_value) - detector.trigger_n;
           if (trig_offset != XDCoffset[i]) {
             
             HIDRA_WARN("Event {}: XDC at geo {} has new offset {}, incremented {} from previous {} value. Total channel count: ADC {}, TDC {}", 
@@ -207,8 +220,8 @@ struct HidraRootEventWriter::Impl {
               trig_offset, 
               static_cast<int>(trig_offset) - XDCoffset[i], 
               XDCoffset[i], 
-              detector.branches.find("ADCs")->second.size(),
-              detector.branches.find("TDCs")->second.size());
+              adcs == detector.branches.end() ? 0 : adcs->second.size(),
+              tdcs == detector.branches.end() ? 0 : tdcs->second.size());
             XDCoffset[i]=trig_offset;
           }
         }
