@@ -65,9 +65,9 @@ if [ "$1" = "--skip" ]; then
     if echo "$BASE_SOURCES" | grep -q "TrackerProducer"; then PRODUCERS_SELECTED="$PRODUCERS_SELECTED TrackerProducer"; fi
 else
     if [ "$LAST_PEDESTAL" = "1" ]; then
-        PREVIEW_IMAGE="/home/eudaq/bob1.jpg"
+        PREVIEW_IMAGE="/home/eudaq/Bob1.jpg"
     else
-        PREVIEW_IMAGE="/home/eudaq/bob2.png"
+        PREVIEW_IMAGE="/home/eudaq/Bob2.png"
     fi
     # Native Wayland layout using an output-free Read Only field (:RO)
     GUI_OUTPUT=$(yad --form --title="EUDAQ Shift Run Control Setup" \
