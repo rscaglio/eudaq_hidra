@@ -77,7 +77,7 @@ struct HidraRootEventWriter::Impl {
     EUDAQ_LOG_LEVEL((int)(log_level));
     HIDRA_INFO("HidraRootEventWriter created with output file path: {}", this->output_file);
     for(auto vme_geo: vme_geo_map) {
-      vme_geo_vect.push_back(vme_geo);
+      vme_geo_vect.push_back(vme_geo.first);
     }
     XDCoffset.resize(vme_geo_vect.size(), 0);
   }
@@ -112,7 +112,7 @@ struct HidraRootEventWriter::Impl {
   std::vector<std::string> q_name;
   std::vector<double> q_value;
   std::vector<uint64_t> XDCoffset;
-  std::vector<std::pair<int, std::string>> vme_geo_vect;
+  std::vector<int> vme_geo_vect;
   std::vector<std::string> q_unit;
   std::map<std::string, std::vector<double>> root_branch_values;
 
