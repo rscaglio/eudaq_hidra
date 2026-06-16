@@ -73,7 +73,7 @@ else
     GUI_OUTPUT=$(yad --form --title="EUDAQ Shift Run Control Setup" \
         --text="Review and tweak parameters for " \
         --image="$PREVIEW_IMAGE" --align=center \
-        --borders=15 \
+        --column=2 \
         --field="Pedestal-only run?:CB" "$PED_COMBO_ORDER" \
         --field="Max Events (0 for unlimited)" "$LAST_MAX_EVENTS" \
         --field="Enable QTPDProducer:CHK" "$QTPD_STATUS" \
