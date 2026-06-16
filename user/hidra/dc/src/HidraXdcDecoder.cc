@@ -83,7 +83,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   std::vector<double> ADCflags(m_n_adc_channels, -1);
   std::vector<double> TDCvalues(m_n_tdc_channels, -1);
   std::vector<double> TDCflags(m_n_tdc_channels, -1);
-  std::vector<uint64_t> XDCTriggers(m_n_adc_channels+m_n_tdc_channels, -1);
+  std::vector<double> XDCTriggers(m_n_adc_channels+m_n_tdc_channels, -1);
 
   uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
   uint8_t empty_datum_word_mask = 0b110; // Invalid datum

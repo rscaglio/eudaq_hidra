@@ -110,7 +110,7 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
   AddBranchValues(branches, "ADCFlags", xdc_event.ADCflags);
   AddBranchValues(branches, "TDCs", xdc_event.TDCvalues);
   AddBranchValues(branches, "TDCFlags", xdc_event.TDCflags);
-  AddBranchValuesUINT(branches, "XDCTriggers", xdc_event.XDCTriggers);
+  AddBranchValues(branches, "XDCTriggers", xdc_event.XDCTriggers);
 }
 
 bool HidraFersPayloadDecoder::Matches(const RootDetectorPayload& detector) const {
