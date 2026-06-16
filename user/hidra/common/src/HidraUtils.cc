@@ -1,6 +1,9 @@
 #include "HidraUtils.hh"
 
+#include <eudaq/Exception.hh>
+
 #include <chrono>
+#include <cstdlib>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -9,6 +12,29 @@
 #include <string>
 
 namespace hidra::utils {
+
+std::string ExpandEnv(const std::string& value) {
+  std::string out;
+  out.reserve(value.size());
+  for (std::size_t i = 0; i < value.size();) {
+    if (value[i] == '$' && i + 1 < value.size() && value[i + 1] == '{') {
+      const auto end = value.find('}', i + 2);
+      if (end == std::string::npos) {
+        EUDAQ_THROW("Unterminated ${...} in config value: " + value);
+      }
+      const std::string name = value.substr(i + 2, end - (i + 2));
+      const char* env = std::getenv(name.c_str());
+      if (env == nullptr) {
+        EUDAQ_THROW("Environment variable '" + name + "' referenced in config value is not set: " + value);
+      }
+      out += env;
+      i = end + 1;
+    } else {
+      out += value[i++];
+    }
+  }
+  return out;
+}
 
 std::uint64_t getTimeus() {
   const auto now = std::chrono::system_clock::now();

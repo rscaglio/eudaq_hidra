@@ -65,6 +65,11 @@ std::string GetEventInfo(eudaq::Event* ev, int opt = 1);
 
 std::map<std::string, std::string> parseConfigMap(const std::string& configstring);
 
+// Expand ${VAR} references in a string from the process environment, so a path
+// can be written machine-independently (e.g. ${REPO_ROOT}/...). Only the ${...}
+// form is recognised; an unset or unterminated variable is a hard error.
+std::string ExpandEnv(const std::string& value);
+
 std::pair<long long, long long> ComputeMeanAndStdDev(const std::vector<long long>& values);
 
 

@@ -7,6 +7,7 @@
 #include "FERSFiller.hh"
 #include "TrackerFiller.hh"
 #include "MetaFiller.hh"
+#include "ChannelSumFiller.hh"
 #include "HidraUtils.hh"
 #include "ScopedTimer.hh"
 
@@ -17,8 +18,13 @@
 #include <eudaq/Factory.hh>
 #include <eudaq/FileNamer.hh>
 
+#include <nlohmann/json.hpp>
+
+#include <cctype>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -40,6 +46,81 @@ std::string Trim(const std::string& s) {
   const auto last = s.find_last_not_of(" \t\r\n");
   return s.substr(first, last - first + 1);
 }
+
+// Parse a JSON object key as a non-negative channel index. Returns nullopt when
+// the key is not all digits or is out of int range, so one malformed key skips
+// its entry instead of std::stoi throwing and aborting the whole map load.
+std::optional<int> ParseChannelKey(const std::string& key) {
+  if (key.empty() || key.find_first_not_of("0123456789") != std::string::npos) {
+    return std::nullopt;
+  }
+  try {
+    return std::stoi(key);
+  } catch (const std::exception&) {
+    return std::nullopt; // out of int range
+  }
+}
+
+// Parse the PMT (ADC) channel map adc_channels.json: {"<chan>":"M105S", ...}.
+// A name shaped M<digits>(S|C) is a PMT; its last character is the type. Other
+// names (Muon, Cher*, T*, ...) are not PMTs and are skipped. Appends the integer
+// channel keys to s_channels / c_channels by type.
+void LoadPmtTypeChannels(const std::string& path, std::vector<int>& s_channels, std::vector<int>& c_channels) {
+  std::ifstream f(path);
+  if (!f) {
+    HIDRA_WARN("ADC channel map '{}' could not be opened; PMT sum histograms will stay empty.", path);
+    return;
+  }
+  nlohmann::json j;
+  f >> j;
+  for (auto it = j.begin(); it != j.end(); ++it) {
+    if (!it.value().is_string()) {
+      continue;
+    }
+    const std::string name = it.value().get<std::string>();
+    if (name.size() < 3 || name.front() != 'M' || (name.back() != 'S' && name.back() != 'C')) {
+      continue;
+    }
+    bool all_digits = true;
+    for (std::size_t k = 1; k + 1 < name.size(); ++k) {
+      if (std::isdigit(static_cast<unsigned char>(name[k])) == 0) {
+        all_digits = false;
+        break;
+      }
+    }
+    if (!all_digits) {
+      continue;
+    }
+    if (const auto chan = ParseChannelKey(it.key())) {
+      (name.back() == 'S' ? s_channels : c_channels).push_back(*chan);
+    }
+  }
+}
+
+// Parse the SiPM (FERS) channel map sipm_channels.json: {"<chan>":[col,row,"S",module], ...}.
+// Element [2] is the type string. Appends the integer channel keys by type.
+void LoadSipmTypeChannels(const std::string& path, std::vector<int>& s_channels, std::vector<int>& c_channels) {
+  std::ifstream f(path);
+  if (!f) {
+    HIDRA_WARN("SiPM channel map '{}' could not be opened; SiPM sum histograms will stay empty.", path);
+    return;
+  }
+  nlohmann::json j;
+  f >> j;
+  for (auto it = j.begin(); it != j.end(); ++it) {
+    const auto& entry = it.value();
+    if (!entry.is_array() || entry.size() < 3 || !entry[2].is_string()) {
+      continue;
+    }
+    const std::string type = entry[2].get<std::string>();
+    if (type != "S" && type != "C") {
+      continue;
+    }
+    if (const auto chan = ParseChannelKey(it.key())) {
+      (type == "S" ? s_channels : c_channels).push_back(*chan);
+    }
+  }
+}
 } // namespace
 
 // ── MonitorContext ──────────────────────────────────────────────────────────
@@ -60,7 +141,8 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     std::vector<TrackerStationConfig> tracker_stations,
     std::string http_output_dir,
     int trigger_strip_length,
-    int trigger_gap_max)
+    int trigger_gap_max,
+    ChannelSumConfig sum_config)
     : publisher(registry, port, pump_interval_ms, std::move(http_output_dir)),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
@@ -78,6 +160,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
                                          fers_per_channel_distributions));
   chain.Add(std::make_unique<TrackerFiller>(registry, tracker_stations));
   chain.Add(std::make_unique<MetaFiller>(registry, trigger_strip_length, trigger_gap_max));
+  chain.Add(std::make_unique<ChannelSumFiller>(registry, sum_config));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -305,6 +388,47 @@ void HidraHttpMonitor::DoConfigure() {
     trigger_gap_max = 30;
   }
 
+  // Per-event channel SUM distributions (ChannelSumFiller). The S/C classification
+  // is parsed from the frontend channel maps (the backend has no type info). The
+  // map paths default to the in-repo frontend maps via ${REPO_ROOT} (exported by
+  // misc/setup.sh), so no run-config entry is needed; ${VAR} is expanded from the
+  // environment. A missing map / env var / parse error disables the affected groups
+  // (the histograms book but stay empty) rather than failing the whole configure.
+  // The SiPM axis maxima default to 3M (the auto group_size*full_scale ~2.6M is too
+  // coarse to resolve the baseline). Sized once on the first configure.
+  ChannelSumConfig sum_config;
+  sum_config.adc_value_max = 4096; // V792 full scale (matches XDCFiller's ADC range)
+  sum_config.fers_value_max = cfg_value_max;
+  sum_config.nbins = conf->Get("SUM_NBINS", 1024);
+  sum_config.pmt_max = conf->Get("SUM_PMT_MAX", 0);
+  sum_config.sipm_hg_max = conf->Get("SUM_SIPM_HG_MAX", 3000000);
+  sum_config.sipm_lg_max = conf->Get("SUM_SIPM_LG_MAX", 3000000);
+  const std::string adc_map_default = "${REPO_ROOT}/user/hidra/monitor/frontend/hidra_frontend/mapping/adc_channels.json";
+  const std::string sipm_map_default =
+      "${REPO_ROOT}/user/hidra/monitor/frontend/hidra_frontend/mapping/sipm_channels.json";
+  try {
+    const std::string adc_map = hidra::utils::ExpandEnv(conf->Get("ADC_CHANNEL_MAP_JSON", adc_map_default));
+    if (adc_map.empty()) {
+      HIDRA_WARN("ADC_CHANNEL_MAP_JSON is empty; PMT sum histograms will stay empty.");
+    } else {
+      LoadPmtTypeChannels(adc_map, sum_config.pmt_s, sum_config.pmt_c);
+    }
+  } catch (const std::exception& e) {
+    HIDRA_WARN("ADC channel map not loaded ({}); PMT sum histograms will stay empty.", e.what());
+  }
+  try {
+    const std::string sipm_map = hidra::utils::ExpandEnv(conf->Get("SIPM_CHANNEL_MAP_JSON", sipm_map_default));
+    if (sipm_map.empty()) {
+      HIDRA_WARN("SIPM_CHANNEL_MAP_JSON is empty; SiPM sum histograms will stay empty.");
+    } else {
+      LoadSipmTypeChannels(sipm_map, sum_config.sipm_s, sum_config.sipm_c);
+    }
+  } catch (const std::exception& e) {
+    HIDRA_WARN("SiPM channel map not loaded ({}); SiPM sum histograms will stay empty.", e.what());
+  }
+  HIDRA_INFO("Channel sums: PMT S={} C={}, SiPM S={} C={}", sum_config.pmt_s.size(), sum_config.pmt_c.size(),
+             sum_config.sipm_s.size(), sum_config.sipm_c.size());
+
   std::unique_lock<std::shared_mutex> lock(m_state_mutex);
 
   // Like the FERS sizing, the trigger-pattern histograms are sized once; warn if a
@@ -355,7 +479,7 @@ void HidraHttpMonitor::DoConfigure() {
                                              std::move(fers_decoder), n_adc_channels, m_noise_update_interval,
                                              cfg_nboards, cfg_value_max, fers_channel_nbins, fers_saturation_threshold,
                                              fers_per_channel, std::move(tracker_stations), std::move(http_output_dir),
-                                             trigger_strip_length, trigger_gap_max);
+                                             trigger_strip_length, trigger_gap_max, std::move(sum_config));
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap

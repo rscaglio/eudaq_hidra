@@ -71,31 +71,6 @@ std::string Trim(const std::string& value) {
   return value.substr(first, last - first + 1);
 }
 
-// Expand ${VAR} references in a config value from the process environment, so a
-// path can be written machine-independently (e.g. ${REPO_ROOT}/...). Only the
-// ${...} form is recognised; an unset or unterminated variable is a hard error.
-std::string ExpandEnv(const std::string& value) {
-  std::string out;
-  out.reserve(value.size());
-  for (std::size_t i = 0; i < value.size();) {
-    if (value[i] == '$' && i + 1 < value.size() && value[i + 1] == '{') {
-      const auto end = value.find('}', i + 2);
-      if (end == std::string::npos) {
-        EUDAQ_THROW("Unterminated ${...} in config value: " + value);
-      }
-      const std::string name = value.substr(i + 2, end - (i + 2));
-      const char* env = std::getenv(name.c_str());
-      if (env == nullptr) {
-        EUDAQ_THROW("Environment variable '" + name + "' referenced in config value is not set: " + value);
-      }
-      out += env;
-      i = end + 1;
-    } else {
-      out += value[i++];
-    }
-  }
-  return out;
-}
 
 // Split a line on runs of whitespace (the official format is space-separated).
 std::vector<std::string> Tokenize(const std::string& line) {
@@ -189,7 +164,7 @@ private:
     // TRACKER_DIRECTORY: directory tailed for tracker files (required). ${VAR}
     // is expanded from the environment so the path can be machine-independent
     // (e.g. ${REPO_ROOT}/...); REPO_ROOT is exported by misc/setup.sh.
-    m_directory = ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
+    m_directory = hidra::utils::ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
     if (m_directory.empty()) {
       EUDAQ_THROW("TRACKER_DIRECTORY is missing from the run configuration");
     }
