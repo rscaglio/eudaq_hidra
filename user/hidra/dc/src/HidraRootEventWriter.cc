@@ -79,6 +79,7 @@ struct HidraRootEventWriter::Impl {
     for(auto vme_geo: vme_geo_map) {
       vme_geo_vect.push_back(vme_geo);
     }
+    XDCoffset.resize(vme_geo_vect.size(), 0);
   }
 
   std::string output_file;
