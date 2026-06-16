@@ -233,7 +233,7 @@ private:
       try {
         ScanDirectory();
       } catch (const std::exception& error) {
-        HIDRA_ERROR(std::string("Tracker directory scan failed: ") + error.what());
+        HIDRA_ERROR("Tracker directory {} scan failed: {}", m_directory.string(), error.what());
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(m_poll_interval_ms));
     }
@@ -242,6 +242,7 @@ private:
   void ScanDirectory() {
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(m_directory)) {
+      HIDRA_DEBUG("File {}, exist: {}, size: {}", entry.path().string(), entry.exists(), entry.file_size());
       if (!entry.is_regular_file()) {
         continue;
       }
