@@ -102,10 +102,13 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       expected_word_mask = 0b010;
 
       ADCHeaderWord W{word};
+      const auto module_it = m_vme_geo_map.find(W.geo());
 
       if (W.type() != expected_word_mask) {
         if(W.type() == empty_datum_word_mask) {
-          if(m_vme_geo_map.at(W.geo()) != "V775N") {
+          if(module_it == m_vme_geo_map.end()) {
+            HIDRA_WARN("Event {}: Geo {}, unexpected XDC empty datum for unconfigured module. Skipping", event.trigger_n, W.geo());
+          } else if(module_it->second != "V775N") {
             HIDRA_WARN("Event {}: Geo {}, Unexpected XDC word type: {:08X} - type {}. Should be Header Word type {}. Should be safe for TDC", event.trigger_n, W.geo(), word, W.type(), expected_word_mask);         
           }
           continue;
@@ -116,7 +119,6 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
       }
 
       int nchan = W.cnt();
-      const auto module_it = m_vme_geo_map.find(W.geo());
       if (module_it == m_vme_geo_map.end()) {
         HIDRA_ERROR("No XDC module configured for crate {} geo {}. Aborting", W.crate(), W.geo());
         return;
