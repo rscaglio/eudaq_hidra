@@ -142,7 +142,7 @@ class FERSBoardPanel(Panel):
             children=[
                 dcc.Graph(
                     id={"type": "panel-graph", "panel": self.panel_id, "index": b},
-                    figure=theme.placeholder_figure(self._board_title(b)),
+                    figure=theme.placeholder_figure(self._board_title(b), reverse_y=True),
                     style={"height": height},
                     className=graph_class,
                     config={"displayModeBar": False},
@@ -206,6 +206,11 @@ class FERSBoardPanel(Panel):
     ) -> go.Figure:
         title = self._board_title(board)
         layout = theme.base_figure_layout(title)
+        # Reverse the y-axis on every return path (the "missing" figure included);
+        # the placeholder is reversed to match (see layout()). Switching the axis
+        # direction across a react update with uirevision held constant is ignored
+        # by Plotly and leaves the board map intermittently upside-down.
+        layout["yaxis"] = {**layout["yaxis"], "autorange": "reversed"}
 
         if values is None:
             layout["title"] = f"{title} (missing)"
@@ -242,7 +247,6 @@ class FERSBoardPanel(Panel):
         layout["yaxis"] = {
             **layout["yaxis"],
             "showticklabels": False, "showgrid": False, "zeroline": False,
-            "autorange": "reversed",
         }
         return go.Figure(data=[heatmap], layout=layout)
 

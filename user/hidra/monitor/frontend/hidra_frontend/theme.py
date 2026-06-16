@@ -70,12 +70,20 @@ def base_figure_layout(title: str) -> dict:
     )
 
 
-def placeholder_figure(title: str) -> go.Figure:
+def placeholder_figure(title: str, reverse_y: bool = False) -> go.Figure:
     """Empty figure pre-styled with the dashboard theme.
 
     Used as initial `dcc.Graph` figure so that, before the first poll
     delivers data, the user doesn't see Plotly's default white grid.
+
+    `reverse_y=True` flips the y-axis (`autorange="reversed"`). Heatmap panels
+    whose data figure uses a reversed y-axis MUST pass this so the placeholder
+    matches: a Plotly.react update that switches the axis direction while
+    `uirevision` is held constant is ignored, leaving the map intermittently
+    upside-down.
     """
     fig = go.Figure()
     fig.update_layout(**base_figure_layout(title))
+    if reverse_y:
+        fig.update_yaxes(autorange="reversed")
     return fig

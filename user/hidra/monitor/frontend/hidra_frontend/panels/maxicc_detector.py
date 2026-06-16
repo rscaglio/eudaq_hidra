@@ -135,7 +135,7 @@ class MAXICCDetectorPanel(Panel):
                 children=[
                     dcc.Graph(
                         id={"type": "panel-graph", "panel": self.panel_id, "index": i},
-                        figure=theme.placeholder_figure(name),
+                        figure=theme.placeholder_figure(name, reverse_y=True),
                         style={"height": height},
                         className=graph_class,
                         config={"displayModeBar": False},
@@ -247,6 +247,11 @@ def _maxicc_layer_figure(
     """One readout plane: three stacked heatmaps over the (col, row) crystal grid,
     each cell coloured by its channel's mean ADC (grey when no data this poll)."""
     layout = theme.base_figure_layout(title)
+    # Reverse the y-axis on every return path (the "no mapping" figure included);
+    # the placeholder is reversed to match (see layout()). Switching the axis
+    # direction across a react update with uirevision held constant is ignored by
+    # Plotly and leaves the crystal map intermittently upside-down.
+    layout["yaxis"] = {**layout["yaxis"], "autorange": "reversed"}
 
     if geom is None:
         layout["annotations"] = [
@@ -298,9 +303,10 @@ def _maxicc_layer_figure(
     )
 
     layout["xaxis"] = {**layout["xaxis"], "title": "col", "showgrid": False, "zeroline": False}
-    # row 0 at the top (as drawn) -> reversed y; square crystals -> 1:1 aspect.
+    # row 0 at the top (as drawn) -> reversed y (set once above for all paths);
+    # square crystals -> 1:1 aspect.
     layout["yaxis"] = {
         **layout["yaxis"], "title": "row", "showgrid": False, "zeroline": False,
-        "autorange": "reversed", "scaleanchor": "x", "scaleratio": 1,
+        "scaleanchor": "x", "scaleratio": 1,
     }
     return go.Figure(data=[empty_overlay, value_heatmap, hit_layer], layout=layout)
