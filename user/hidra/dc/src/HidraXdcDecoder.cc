@@ -1,4 +1,5 @@
 #include "HidraUtils.hh"
+#include "Logger.hh"
 #include "HidraXdcDecoder.hh"
 
 #include <chrono>
@@ -47,9 +48,9 @@ struct V775Word {
   uint8_t geo() const { return (raw >> 27) & 0x1F; }
 };
 
-HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map)
+HidraXdcDecoder::HidraXdcDecoder(std::map<int, std::string> vme_geo_map, uint8_t log_level)
     : m_vme_geo_map(std::move(vme_geo_map)) {
-
+  EUDAQ_LOG_LEVEL(log_level);
   m_n_adc_channels = hidra::utils::computeMaxADCchannelFromGeoMap(m_vme_geo_map);
   m_n_tdc_channels = hidra::utils::computeMaxTDCchannelFromGeoMap(m_vme_geo_map);
   HIDRA_INFO("HidraXdcDecoder configured with {} ADC channels and {} TDC channels based on VME geo map", m_n_adc_channels, m_n_tdc_channels);

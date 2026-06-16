@@ -70,7 +70,7 @@ struct HidraRootEventWriter::Impl {
   Impl(std::string output_file, std::uint64_t flush_interval_ms, std::size_t flush_every_events,
        std::map<int, std::string> vme_geo_map, uint8_t log_level=1)
       : output_file(std::move(output_file)), flush_interval_ms(flush_interval_ms),
-        flush_every_events(flush_every_events), xdc_decoder(vme_geo_map) {
+        flush_every_events(flush_every_events), xdc_decoder{vme_geo_map, log_level} {
     if (this->flush_interval_ms == 0) {
       this->flush_interval_ms = 1;
     }
