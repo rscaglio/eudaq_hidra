@@ -134,7 +134,7 @@ runhidra(){
     if [[ "$1" == "dry" ]]; then
     ./hidra_startrun_dry.sh
     else
-	./hidra_startrun_joint.sh
+	./hidra_startrun.sh
 	fi
 }
 
@@ -421,6 +421,9 @@ cmake_clean() {
 alias build_dir='cd "$REPO_ROOT/build"'
 alias hidra_run='cd "$REPO_ROOT/user/hidra/run"'
 alias hidra_dir='cd "$REPO_ROOT/user/hidra"'
+if [ -z "$EUDAQHIDRA" ]; then
+    export EUDAQHIDRA="$REPO_ROOT/user/hidra"
+fi
 alias hidra_backup_data='$REPO_ROOT/user/hidra/misc/hidra_backup_data.sh'
 alias hidra_health='$REPO_ROOT/user/hidra/misc/hidra_health.py'
 

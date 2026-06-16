@@ -271,7 +271,7 @@ private:
       EUDAQ_THROW("Run configuration is missing");
     }
 
-    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
     ResetRunState();
     LoadRunConfiguration(*conf);
 
@@ -304,6 +304,7 @@ private:
     EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
 
     ReleaseTriggerVeto(m_pedestal_run);
+    SendStatus();
   }
 
   void DoStopRun() override {
@@ -319,6 +320,7 @@ private:
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
     VetoTrigger();
+    m_last_status_log = std::chrono::steady_clock::now();
   }
 
   void DoReset() override {
@@ -359,7 +361,7 @@ private:
     m_v560Base = parse_u32(conf.Get("V560_BASE", std::string("0x00200000")));
 
     // TRACKER SYNC MODULE 
-    m_eventSyncEnabled = conf.Get("TRACKER_SYNC_ENABLE", std::string("0")) == "1";
+    m_eventSyncEnabled = conf.Get("TRACKER_SYNC_ENABLE", std::string("1")) == "1";
     m_eventSyncBase = parse_u32(conf.Get("TRACKER_SYNC_BASE", std::string("0x00D00000")));
     m_eventSyncReadback = conf.Get("TRACKER_SYNC_READBACK", std::string("0")) == "1";
     m_eventSyncDebug = conf.Get("TRACKER_SYNC_DEBUG", std::string("0")) == "1";
@@ -689,6 +691,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   }
 
   void MainLoop() {
+    uint64_t spill_evt_cnt;
     while (m_running) {
       if (!ControllerIsReady()) {
         continue;
@@ -701,10 +704,15 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         HIDRA_WARN("Passed through spill {} with no events", m_spillCount);
         m_spillCount++;
         ClearV977FlipFlops();
+        spill_evt_cnt = 0;
       }
 
-
       if (pattern.trigger){
+        spill_evt_cnt++;
+        if (pattern.spillStart) {
+          m_spillCount++;
+        }
+
         m_evtTimeNs = hidra::utils::getTimens();
         m_TriggerMask = 0x0;
         if (pattern.physics) m_TriggerMask |= 0b01;
@@ -758,13 +766,16 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         SetSingleV977OutputReg(!requestPedestalNext(),
                                V977OUT::cPedVeto); // TODO r-m-w not needed if this is the only controlled output
 
-        if (pattern.spillStart) {
-          m_spillCount++;
-        }
-
         ClearV977FlipFlops(); // this will release the Trigger veto and clear the spill pattern as well
+      } else {
+        if(pattern.spillEnd) {
+          ClearV977FlipFlops(); // Last clear at end of spill
+        }
       }
-
+      if(pattern.spillEnd) {
+        HIDRA_INFO("Spill {} ended with {} events", m_spillCount, spill_evt_cnt);
+        spill_evt_cnt=0;
+      }
       // std::this_thread::sleep_for(std::chrono::microseconds(5)); // TODO: add a sleep here?
       
     }

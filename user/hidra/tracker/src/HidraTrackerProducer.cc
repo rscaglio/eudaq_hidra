@@ -91,7 +91,7 @@ struct RowContext {
 };
 
 [[noreturn]] void ThrowParse(const char* what, const std::string& value, const RowContext& ctx, std::size_t column) {
-  EUDAQ_THROW("Cannot parse tracker " + std::string(what) + " (column " + std::to_string(column + 1) + ") at " +
+  HIDRA_THROW("Cannot parse tracker " + std::string(what) + " (column " + std::to_string(column + 1) + ") at " +
               ctx.file.string() + ":" + std::to_string(ctx.line) + ": " + value);
 }
 
@@ -105,7 +105,7 @@ double ParseDouble(const std::string& value, const RowContext& ctx, std::size_t 
     if (!std::isfinite(result)) {
       // A non-finite coordinate should never occur in real data; warn (but still
       // keep the value, like every other field) so a corrupt input is flagged.
-      EUDAQ_WARN("Non-finite tracker coordinate (column " + std::to_string(column + 1) + ") at " + ctx.file.string() +
+      HIDRA_WARN("Non-finite tracker coordinate (column " + std::to_string(column + 1) + ") at " + ctx.file.string() +
                  ":" + std::to_string(ctx.line) + ": " + value);
     }
     return result;
@@ -157,32 +157,32 @@ private:
   void DoConfigure() override {
     const auto conf = GetConfiguration();
     if (!conf) {
-      EUDAQ_THROW("Run configuration is missing");
+      HIDRA_THROW("Run configuration is missing");
     }
 
-    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 0)));
+    EUDAQ_LOG_LEVEL((int)(conf->Get("HIDRA_MUTE_DEBUG", 1)));
     // TRACKER_DIRECTORY: directory tailed for tracker files (required). ${VAR}
     // is expanded from the environment so the path can be machine-independent
     // (e.g. ${REPO_ROOT}/...); REPO_ROOT is exported by misc/setup.sh.
-    m_directory = hidra::utils::ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("")));
+    m_directory = hidra::utils::ExpandEnv(conf->Get("TRACKER_DIRECTORY", std::string("/home/eudaq/TB2026_TrackerData/ascii_dream_2026")));
     if (m_directory.empty()) {
-      EUDAQ_THROW("TRACKER_DIRECTORY is missing from the run configuration");
+      HIDRA_THROW("TRACKER_DIRECTORY is missing from the run configuration");
     }
     if (!std::filesystem::is_directory(m_directory)) {
-      EUDAQ_THROW("TRACKER_DIRECTORY is not a directory: " + m_directory.string());
+      HIDRA_THROW("TRACKER_DIRECTORY is not a directory: " + m_directory.string());
     }
 
     // TRACKER_FILE_EXTENSION: only files with this extension are read.
-    m_extension = conf->Get("TRACKER_FILE_EXTENSION", std::string(".csv"));
+    m_extension = conf->Get("TRACKER_FILE_EXTENSION", std::string(".dat"));
     // TRACKER_POLL_INTERVAL_MS: directory re-scan period (>= 1 ms).
     m_poll_interval_ms = std::max(1, conf->Get("TRACKER_POLL_INTERVAL_MS", 100));
     // TRACKER_TIMESTAMP_SCALE_NS: multiplier from DREAM timestamp ticks to ns.
     m_timestamp_scale_ns = conf->Get("TRACKER_TIMESTAMP_SCALE_NS", uint64_t{1});
     if (m_timestamp_scale_ns == 0) {
-      EUDAQ_THROW("TRACKER_TIMESTAMP_SCALE_NS must be greater than zero");
+      HIDRA_THROW("TRACKER_TIMESTAMP_SCALE_NS must be greater than zero");
     }
 
-    EUDAQ_INFO("HidraTrackerProducer watching " + m_directory.string());
+    HIDRA_INFO("HidraTrackerProducer watching " + m_directory.string());
   }
 
   void DoStartRun() override {
@@ -201,7 +201,7 @@ private:
 
     m_running = true;
     m_worker = std::thread(&HidraTrackerProducer::MainLoop, this);
-    EUDAQ_INFO("Starting HidraTrackerProducer run " + std::to_string(m_run_number));
+    HIDRA_INFO("Starting HidraTrackerProducer run " + std::to_string(m_run_number));
   }
 
   void DoStopRun() override {
@@ -212,7 +212,7 @@ private:
     eore->SetRunN(static_cast<uint32_t>(m_run_number));
     eore->SetTag("EventsSent", std::to_string(m_events_sent));
     SendEvent(std::move(eore));
-    EUDAQ_INFO("Stopping HidraTrackerProducer run " + std::to_string(m_run_number));
+    HIDRA_INFO("Stopping HidraTrackerProducer run " + std::to_string(m_run_number));
   }
 
   void DoReset() override {
@@ -233,7 +233,7 @@ private:
       try {
         ScanDirectory();
       } catch (const std::exception& error) {
-        EUDAQ_ERROR(std::string("Tracker directory scan failed: ") + error.what());
+        HIDRA_ERROR("Tracker directory {} scan failed: {}", m_directory.string(), error.what());
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(m_poll_interval_ms));
     }
@@ -242,14 +242,17 @@ private:
   void ScanDirectory() {
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(m_directory)) {
+      HIDRA_DEBUG("File {}, exist: {}, size: {}", entry.path().string(), entry.exists(), entry.file_size());
       if (!entry.is_regular_file()) {
         continue;
       }
       if (!m_extension.empty() && entry.path().extension() != m_extension) {
+        HIDRA_DEBUG("File {} found but wrong extension, expecting {}", entry.path().string(), m_extension);
         continue;
       }
       files.push_back(entry.path());
     }
+    HIDRA_DEBUG("Found: {} files", files.size());
 
     // Keep only the last files in alphabetic order.
     // It shoud be the last spill in the last run
@@ -281,7 +284,7 @@ private:
   void ProcessFile(const std::filesystem::path& file) {
     std::ifstream input(file);
     if (!input.is_open()) {
-      EUDAQ_THROW("Cannot open tracker file: " + file.string());
+      HIDRA_THROW("Cannot open tracker file: " + file.string());
     }
 
     std::string line;
@@ -297,7 +300,7 @@ private:
 
       const auto fields = Tokenize(line);
       if (fields.size() != TRACKER_NFIELDS) {
-        EUDAQ_WARN("Ignoring tracker row with " + std::to_string(fields.size()) + " fields at " + file.string() + ":" +
+        HIDRA_WARN("Ignoring tracker row with " + std::to_string(fields.size()) + " fields at " + file.string() + ":" +
                    std::to_string(line_number) + "; expected " + std::to_string(TRACKER_NFIELDS));
         continue;
       }
@@ -307,7 +310,7 @@ private:
       ++m_events_sent;
     }
 
-    EUDAQ_INFO("Finished processing tracker file " + file.filename().string() + " with " +
+    HIDRA_INFO("Finished processing tracker file " + file.filename().string() + " with " +
                std::to_string(rows_sent_for_file) + " events");
   }
 
@@ -323,7 +326,7 @@ private:
       std::ostringstream msg;
       msg << "Tracker row at " << file.string() << ":" << line_number << " has marker 0x" << std::hex << std::uppercase
           << marker << ", expected 0x" << TRACKER_MARKER << "; skipping";
-      EUDAQ_WARN(msg.str());
+      HIDRA_WARN(msg.str());
       return;
     }
 
@@ -337,13 +340,13 @@ private:
     // the DataCollector merges on).
     const std::uint64_t dream_event = hex(DREAM_EVENT_NUMBER_INDEX);
     if (dream_event > std::numeric_limits<uint32_t>::max()) {
-      EUDAQ_THROW("DREAM event number is larger than the EUDAQ uint32 trigger number at " + file.string() + ":" +
+      HIDRA_THROW("DREAM event number is larger than the EUDAQ uint32 trigger number at " + file.string() + ":" +
                   std::to_string(line_number));
     }
 
     const std::uint64_t dream_ts = hex(DREAM_TS_PACKED_INDEX);
     if (dream_ts > (std::numeric_limits<uint64_t>::max() - 1) / m_timestamp_scale_ns) {
-      EUDAQ_THROW("DREAM timestamp overflows after TRACKER_TIMESTAMP_SCALE_NS at " + file.string() + ":" +
+      HIDRA_THROW("DREAM timestamp overflows after TRACKER_TIMESTAMP_SCALE_NS at " + file.string() + ":" +
                   std::to_string(line_number));
     }
 
