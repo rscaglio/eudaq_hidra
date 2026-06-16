@@ -247,6 +247,7 @@ private:
         continue;
       }
       if (!m_extension.empty() && entry.path().extension() != m_extension) {
+        HIDRA_DEBUG("File {} found but wrong extension, expecting {}", entry.path().string(), m_extension);
         continue;
       }
       files.push_back(entry.path());
