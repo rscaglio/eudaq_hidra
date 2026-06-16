@@ -134,7 +134,7 @@ runhidra(){
     if [[ "$1" == "dry" ]]; then
     ./hidra_startrun_dry.sh
     else
-	./hidra_startrun_joint.sh
+	./hidra_startrun.sh
 	fi
 }
 
