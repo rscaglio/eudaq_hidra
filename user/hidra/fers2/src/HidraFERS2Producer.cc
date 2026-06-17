@@ -215,9 +215,13 @@ constexpr auto kAlignmentWaitAheadTimeoutUs = 3s;
 class HidraFERS2Producer : public eudaq::Producer {
 public:
   HidraFERS2Producer(const std::string& name, const std::string& runcontrol)
-      : eudaq::Producer(name, runcontrol) {}
+      : eudaq::Producer(name.empty() ? "HidraFERS2Producer" : name, runcontrol) {
+        HIDRA_INFO("FERS2 Producer instantiated with name: {}", name);
+      }
 
-  static const uint32_t m_id_factory = eudaq::cstr2hash("HidraFERS2Producer");
+  static const uint32_t m_id_factory_fers2 = eudaq::cstr2hash("HidraFERS2Producer");
+  static const uint32_t m_id_factory_maxicc = eudaq::cstr2hash("HidraMAXICCProducer");
+
 
 protected:
   virtual const char* ProducerEventType() const { return "FERSProducer"; }
@@ -324,7 +328,7 @@ private:
     auto bore = eudaq::Event::MakeUnique(ProducerEventType());
     bore->SetBORE();
     bore->SetRunN(static_cast<uint32_t>(m_run_number));
-    bore->SetTag("Producer", ProducerTag());
+    bore->SetTag("Producer", GetName());
     bore->SetTag("FERS_CONF_FILE", m_config_file);
     SendEvent(std::move(bore));
 
@@ -743,22 +747,9 @@ private:
   std::string m_machine_endianness = hidra::utils::is_little_endian() ? "LE" : "BE";
 };
 
-class MAXICCProducer : public HidraFERS2Producer {
-public:
-  MAXICCProducer(const std::string& name, const std::string& runcontrol)
-      : HidraFERS2Producer(name, runcontrol) {}
-
-  static const uint32_t m_id_factory = eudaq::cstr2hash("MAXICCProducer");
-
-protected:
-  const char* ProducerEventType() const override { return "MAXICCProducer"; }
-  const char* ProducerTag() const override { return "MAXICCProducer"; }
-  const char* ProducerLogName() const override { return "MAXICC"; }
-};
-
 namespace {
 auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
-    HidraFERS2Producer::m_id_factory);
-auto dummy1 = eudaq::Factory<eudaq::Producer>::Register<MAXICCProducer, const std::string&, const std::string&>(
-    MAXICCProducer::m_id_factory);
+    HidraFERS2Producer::m_id_factory_fers2);
+auto dummy1 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
+    HidraFERS2Producer::m_id_factory_maxicc);
 }
