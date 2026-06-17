@@ -215,9 +215,12 @@ constexpr auto kAlignmentWaitAheadTimeoutUs = 3s;
 class HidraFERS2Producer : public eudaq::Producer {
 public:
   HidraFERS2Producer(const std::string& name, const std::string& runcontrol)
-      : eudaq::Producer(name, runcontrol) {}
+      : eudaq::Producer(name.empty() ? "HidraFERS2Producer" : name, runcontrol) {
+        HIDRA_INFO("FERS2 Producer instantiated with name: {}", name);
+      }
 
-  static const uint32_t m_id_factory = eudaq::cstr2hash("HidraFERS2Producer");
+  static const uint32_t m_id_factory_fers2 = eudaq::cstr2hash("HidraFERS2Producer");
+  static const uint32_t m_id_factory_maxicc = eudaq::cstr2hash("HidraMAXICCProducer");
 
 private:
   void DoInitialise() override {
@@ -291,9 +294,10 @@ private:
       m_event_queues[board.board_id()] = {};
     }
 
-    HIDRA_INFO("Configured FERS2 boards: " + JoinBoardIds(m_board_ids));
+    HIDRA_INFO("Configured " + std::string(GetName()) + " boards: " + JoinBoardIds(m_board_ids));
     if (m_status_poll_interval_s > 0) {
-      HIDRA_INFO("FERS2 status polling enabled every " + std::to_string(m_status_poll_interval_s) + " s");
+      HIDRA_INFO(std::string(GetName()) + " status polling enabled every " +
+                 std::to_string(m_status_poll_interval_s) + " s");
     }
   }
 
@@ -315,10 +319,10 @@ private:
       m_event_queues[board.board_id()] = {};
     }
 
-    auto bore = eudaq::Event::MakeUnique("FERSProducer");
+    auto bore = eudaq::Event::MakeUnique(GetName());
     bore->SetBORE();
     bore->SetRunN(static_cast<uint32_t>(m_run_number));
-    bore->SetTag("Producer", "HidraFERS2Producer");
+    bore->SetTag("Producer", GetName());
     bore->SetTag("FERS_CONF_FILE", m_config_file);
     SendEvent(std::move(bore));
 
@@ -333,7 +337,7 @@ private:
       HIDRA_THROW(error);
     }
 
-    HIDRA_INFO("Starting FERS2 run " + std::to_string(m_run_number));
+    HIDRA_INFO("Starting " + std::string(GetName()) + " run " + std::to_string(m_run_number));
     SendStatus();
   }
 
@@ -348,12 +352,12 @@ private:
     //   EUDAQ_WARN(error);
     // }
 
-    auto eore = eudaq::Event::MakeUnique("FERSProducer");
+    auto eore = eudaq::Event::MakeUnique(GetName());
     eore->SetEORE();
     eore->SetRunN(static_cast<uint32_t>(m_run_number));
     SendEvent(std::move(eore));
 
-    HIDRA_INFO("Stopping FERS2 run " + std::to_string(m_run_number));
+    HIDRA_INFO("Stopping " + std::string(GetName()) + " run " + std::to_string(m_run_number));
   }
 
   void DoReset() override {
@@ -443,7 +447,7 @@ private:
     int monitorstatus = 0;
     for (auto& status : statuses) {
       status.read_time_ns = read_time_ns;
-      HIDRA_INFO("FERS2 monitor " + FormatMonitorStatus(status));
+      HIDRA_INFO(std::string(GetName()) + " monitor " + FormatMonitorStatus(status));
       m_monitor_status[status.board_id] = status;
       if (monitorstatus == 0) {
         monitorstatus = IsMonitorStatusOk(status);
@@ -583,12 +587,12 @@ private:
         }
       }
 
-      HIDRA_WARN("FERS2 alignment gap at trigger " + std::to_string(trigger_n) +
+      HIDRA_WARN(std::string(GetName()) + " alignment gap at trigger " + std::to_string(trigger_n) +
                  ", missing boards: " + missing.str());
     }
 
-    auto ev = eudaq::Event::MakeUnique("FERSProducer");
-    ev->SetTag("Producer", "HidraFERS2Producer");
+    auto ev = eudaq::Event::MakeUnique(GetName());
+    ev->SetTag("Producer", GetName());
     ev->SetTriggerN(trigger_n); // TODO: do we want to differentiate the two?
     ev->SetEventN(trigger_n);
 
@@ -617,7 +621,10 @@ private:
       if (event.data_qualifier > 0) {
         dataqualifier = static_cast<uint32_t>(event.data_qualifier);
       } else {
-        HIDRA_ERROR("Assigning dummy qualifier to FERS trig ID {}. Qualifier was {}", trigger_n, event.data_qualifier);
+        HIDRA_ERROR("Assigning dummy qualifier to {} trig ID {}. Qualifier was {}",
+                    GetName(),
+                    trigger_n,
+                    event.data_qualifier);
       }
       const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 9u);
       m_emit_scratch_buffer.resize(ext_block_size);
@@ -648,10 +655,10 @@ private:
     AddMonitorStatusTags(*ev);
     SendEvent(std::move(ev));
     m_stamp_last_sent_ns = ts_now;
-    HIDRA_DEBUG("FERS producers sent event for trg {}, time since last status poll {}", trigger_n, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - m_last_status_log).count());
+    HIDRA_DEBUG("{} producer sent event for trg {}, time since last status poll {}", GetName(), trigger_n, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - m_last_status_log).count());
     if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
       m_last_status_log = std::chrono::steady_clock::now();
-      HIDRA_INFO("FERS producer sent event for trg {}. Total events sent: {}", trigger_n, m_evt_f);
+      HIDRA_INFO("{} producer sent event for trg {}. Total events sent: {}", GetName(), trigger_n, m_evt_f);
       SendStatus(); //TODO move in dedicated logging struct
     }
     ++m_evt_f;
@@ -688,7 +695,8 @@ private:
       const bool expired = waited_time >= max_wait;
 
       if (!all_matched && expired) {
-        HIDRA_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
+        HIDRA_WARN(std::string(GetName()) + " alignment timeout waiting for trigger " +
+                   std::to_string(trigger_n) +
                    ", proceeding with available boards only");
         ++m_evt_incomplete;
         SetStatusTag("PartialEvts", std::to_string(m_evt_incomplete));
@@ -735,5 +743,7 @@ private:
 
 namespace {
 auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
-    HidraFERS2Producer::m_id_factory);
+    HidraFERS2Producer::m_id_factory_fers2);
+auto dummy1 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
+    HidraFERS2Producer::m_id_factory_maxicc);
 }
