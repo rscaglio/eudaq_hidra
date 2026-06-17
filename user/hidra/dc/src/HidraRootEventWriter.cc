@@ -118,6 +118,7 @@ struct HidraRootEventWriter::Impl {
 
   HidraXdcPayloadDecoder xdc_decoder;
   HidraFersPayloadDecoder fers_decoder;
+  HidraMaxiccPayloadDecoder maxicc_decoder;
   HidraTrackerPayloadDecoder tracker_decoder;
   HidraGenericPayloadDecoder generic_decoder;
 
@@ -174,6 +175,9 @@ struct HidraRootEventWriter::Impl {
     for (const auto& name : fers_decoder.BranchNames()) {
       EnsureRootBranch(tree, name);
     }
+    for (const auto& name : maxicc_decoder.BranchNames()) {
+      EnsureRootBranch(tree, name);
+    }
     for (const auto& name : tracker_decoder.BranchNames()) {
       EnsureRootBranch(tree, name);
     }
@@ -226,6 +230,8 @@ struct HidraRootEventWriter::Impl {
           }
         }
       }
+    } else if (maxicc_decoder.Matches(detector)) {
+      maxicc_decoder.Decode(detector, detector.quantities, detector.branches);
     } else if (fers_decoder.Matches(detector)) {
       fers_decoder.Decode(detector, detector.quantities, detector.branches);
     } else if (tracker_decoder.Matches(detector)) {

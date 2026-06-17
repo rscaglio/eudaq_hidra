@@ -223,6 +223,11 @@ public:
   static const uint32_t m_id_factory_maxicc = eudaq::cstr2hash("HidraMAXICCProducer");
 
 
+protected:
+  virtual const char* ProducerEventType() const { return "FERSProducer"; }
+  virtual const char* ProducerTag() const { return "HidraFERS2Producer"; }
+  virtual const char* ProducerLogName() const { return "FERS2"; }
+
 private:
   void DoInitialise() override {
     auto ini = GetInitConfiguration();
@@ -295,9 +300,10 @@ private:
       m_event_queues[board.board_id()] = {};
     }
 
-    HIDRA_INFO("Configured FERS2 boards: " + JoinBoardIds(m_board_ids));
+    HIDRA_INFO("Configured " + std::string(ProducerLogName()) + " boards: " + JoinBoardIds(m_board_ids));
     if (m_status_poll_interval_s > 0) {
-      HIDRA_INFO("FERS2 status polling enabled every " + std::to_string(m_status_poll_interval_s) + " s");
+      HIDRA_INFO(std::string(ProducerLogName()) + " status polling enabled every " +
+                 std::to_string(m_status_poll_interval_s) + " s");
     }
   }
 
@@ -319,7 +325,7 @@ private:
       m_event_queues[board.board_id()] = {};
     }
 
-    auto bore = eudaq::Event::MakeUnique("FERSProducer");
+    auto bore = eudaq::Event::MakeUnique(ProducerEventType());
     bore->SetBORE();
     bore->SetRunN(static_cast<uint32_t>(m_run_number));
     bore->SetTag("Producer", GetName());
@@ -337,7 +343,7 @@ private:
       HIDRA_THROW(error);
     }
 
-    HIDRA_INFO("Starting FERS2 run " + std::to_string(m_run_number));
+    HIDRA_INFO("Starting " + std::string(ProducerLogName()) + " run " + std::to_string(m_run_number));
     SendStatus();
   }
 
@@ -352,12 +358,12 @@ private:
     //   EUDAQ_WARN(error);
     // }
 
-    auto eore = eudaq::Event::MakeUnique("FERSProducer");
+    auto eore = eudaq::Event::MakeUnique(ProducerEventType());
     eore->SetEORE();
     eore->SetRunN(static_cast<uint32_t>(m_run_number));
     SendEvent(std::move(eore));
 
-    HIDRA_INFO("Stopping FERS2 run " + std::to_string(m_run_number));
+    HIDRA_INFO("Stopping " + std::string(ProducerLogName()) + " run " + std::to_string(m_run_number));
   }
 
   void DoReset() override {
@@ -447,7 +453,7 @@ private:
     int monitorstatus = 0;
     for (auto& status : statuses) {
       status.read_time_ns = read_time_ns;
-      HIDRA_INFO("FERS2 monitor " + FormatMonitorStatus(status));
+      HIDRA_INFO(std::string(ProducerLogName()) + " monitor " + FormatMonitorStatus(status));
       m_monitor_status[status.board_id] = status;
       if (monitorstatus == 0) {
         monitorstatus = IsMonitorStatusOk(status);
@@ -587,12 +593,12 @@ private:
         }
       }
 
-      HIDRA_WARN("FERS2 alignment gap at trigger " + std::to_string(trigger_n) +
+      HIDRA_WARN(std::string(ProducerLogName()) + " alignment gap at trigger " + std::to_string(trigger_n) +
                  ", missing boards: " + missing.str());
     }
 
-    auto ev = eudaq::Event::MakeUnique("FERSProducer");
-    ev->SetTag("Producer", "HidraFERS2Producer");
+    auto ev = eudaq::Event::MakeUnique(ProducerEventType());
+    ev->SetTag("Producer", ProducerTag());
     ev->SetTriggerN(trigger_n); // TODO: do we want to differentiate the two?
     ev->SetEventN(trigger_n);
 
@@ -621,7 +627,10 @@ private:
       if (event.data_qualifier > 0) {
         dataqualifier = static_cast<uint32_t>(event.data_qualifier);
       } else {
-        HIDRA_ERROR("Assigning dummy qualifier to FERS trig ID {}. Qualifier was {}", trigger_n, event.data_qualifier);
+        HIDRA_ERROR("Assigning dummy qualifier to {} trig ID {}. Qualifier was {}",
+                    ProducerLogName(),
+                    trigger_n,
+                    event.data_qualifier);
       }
       const uint16_t ext_block_size = static_cast<uint16_t>(event.payload.size() + 9u);
       m_emit_scratch_buffer.resize(ext_block_size);
@@ -652,10 +661,10 @@ private:
     AddMonitorStatusTags(*ev);
     SendEvent(std::move(ev));
     m_stamp_last_sent_ns = ts_now;
-    HIDRA_DEBUG("FERS producers sent event for trg {}, time since last status poll {}", trigger_n, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - m_last_status_log).count());
+    HIDRA_DEBUG("{} producer sent event for trg {}, time since last status poll {}", ProducerLogName(), trigger_n, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - m_last_status_log).count());
     if (std::chrono::steady_clock::now() - m_last_status_log > 1000ms) {
       m_last_status_log = std::chrono::steady_clock::now();
-      HIDRA_INFO("FERS producer sent event for trg {}. Total events sent: {}", trigger_n, m_evt_f);
+      HIDRA_INFO("{} producer sent event for trg {}. Total events sent: {}", ProducerLogName(), trigger_n, m_evt_f);
       SendStatus(); //TODO move in dedicated logging struct
     }
     ++m_evt_f;
@@ -692,7 +701,8 @@ private:
       const bool expired = waited_time >= max_wait;
 
       if (!all_matched && expired) {
-        HIDRA_WARN("FERS2 alignment timeout waiting for trigger " + std::to_string(trigger_n) +
+        HIDRA_WARN(std::string(ProducerLogName()) + " alignment timeout waiting for trigger " +
+                   std::to_string(trigger_n) +
                    ", proceeding with available boards only");
         ++m_evt_incomplete;
         SetStatusTag("PartialEvts", std::to_string(m_evt_incomplete));
