@@ -217,7 +217,9 @@ public:
   HidraFERS2Producer(const std::string& name, const std::string& runcontrol)
       : eudaq::Producer(name, runcontrol) {}
 
-  static const uint32_t m_id_factory = eudaq::cstr2hash("HidraFERS2Producer");
+  static const uint32_t m_id_factory_fers2 = eudaq::cstr2hash("HidraFERS2Producer");
+  static const uint32_t m_id_factory_maxicc = eudaq::cstr2hash("HidraMAXICCProducer");
+
 
 private:
   void DoInitialise() override {
@@ -735,5 +737,7 @@ private:
 
 namespace {
 auto dummy0 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
-    HidraFERS2Producer::m_id_factory);
+    HidraFERS2Producer::m_id_factory_fers2);
+auto dummy1 = eudaq::Factory<eudaq::Producer>::Register<HidraFERS2Producer, const std::string&, const std::string&>(
+    HidraFERS2Producer::m_id_factory_maxicc);
 }
