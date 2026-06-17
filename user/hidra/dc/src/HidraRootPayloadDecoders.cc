@@ -162,7 +162,7 @@ HidraMaxiccPayloadDecoder::HidraMaxiccPayloadDecoder()
     : m_fers_decoder(3) {}
 
 bool HidraMaxiccPayloadDecoder::Matches(const RootDetectorPayload& detector) const {
-  return (detector.producer == "MAXICCProducer" || detector.det_id == 5);
+  return (detector.producer == "MAXICCProducer" || detector.det_id == 4);
 }
 
 std::vector<std::string> HidraMaxiccPayloadDecoder::BranchNames() const {
