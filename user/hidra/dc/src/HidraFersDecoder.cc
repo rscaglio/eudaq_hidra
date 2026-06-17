@@ -3,6 +3,7 @@
 #include "HidraFersDecoder.hh"
 
 #include <array>
+#include <algorithm>
 #include <cstring>
 #include <limits>
 
@@ -29,7 +30,8 @@ struct FERS_spect_64_packed { // no padding
 #pragma pack(pop)
 
 
-HidraFersDecoder::HidraFersDecoder() = default;
+HidraFersDecoder::HidraFersDecoder(std::size_t max_boards)
+    : m_max_boards(std::max<std::size_t>(max_boards, 1)) {}
 
 void HidraFersDecoder::decode(const std::vector<std::uint8_t>& payload, HidraFersEvent& event) const {
   static_assert(sizeof(FERS_spect_64_packed) == 705);
@@ -42,7 +44,7 @@ void HidraFersDecoder::decode(const std::vector<std::uint8_t>& payload, HidraFer
                 board_packet_size);
   }
 
-  const int FERS_N_CHAN_MAX = 64 * 20;
+  const std::size_t FERS_N_CHAN_MAX = 64 * m_max_boards;
 
   std::vector<double> FERStsamp_us(FERS_N_CHAN_MAX, -1);
   std::vector<double> FERSrel_tsamp_us(FERS_N_CHAN_MAX, -1);
@@ -65,7 +67,7 @@ void HidraFersDecoder::decode(const std::vector<std::uint8_t>& payload, HidraFer
     FERS_spect_64_packed boardblock;
     std::memcpy(&boardblock, block_ptr, sizeof(FERS_spect_64_packed));
 
-    if (boardblock.board_id >= 20) {
+    if (boardblock.board_id >= m_max_boards) {
       HIDRA_ERROR("FERS block {} has invalid board_id {}. Skipping", iboard, boardblock.board_id);
       continue;
     }
@@ -79,7 +81,7 @@ void HidraFersDecoder::decode(const std::vector<std::uint8_t>& payload, HidraFer
     }
 
     for (int ichan = 0; ichan < 64; ++ichan) {
-      int index = boardblock.board_id * 64 + ichan;
+      const std::size_t index = static_cast<std::size_t>(boardblock.board_id) * 64u + static_cast<std::size_t>(ichan);
       FERStsamp_us[index] = boardblock.tstamp_us;
       FERSrel_tsamp_us[index] = boardblock.rel_tstamp_us;
       FERStrigger_id[index] = static_cast<double>(boardblock.trigger_id);

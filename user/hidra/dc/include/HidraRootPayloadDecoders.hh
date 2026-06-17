@@ -67,6 +67,19 @@ private:
   HidraFersDecoder m_fers_decoder;
 };
 
+class HidraMaxiccPayloadDecoder final : public RootPayloadDecoder {
+public:
+  HidraMaxiccPayloadDecoder();
+  bool Matches(const RootDetectorPayload& detector) const override;
+  void Decode(const RootDetectorPayload& detector,
+              std::vector<RootQuantity>& quantities,
+              RootBranchValues& branches) const override;
+  std::vector<std::string> BranchNames() const override;
+
+private:
+  HidraFersDecoder m_fers_decoder;
+};
+
 class HidraTrackerPayloadDecoder final : public RootPayloadDecoder {
 public:
   bool Matches(const RootDetectorPayload& detector) const override;

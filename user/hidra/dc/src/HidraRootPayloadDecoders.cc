@@ -54,6 +54,28 @@ void AddBranchValuesUINT(RootBranchValues& branches, const std::string& name, co
   branch.insert(branch.end(), values.begin(), values.end());
 }
 
+void AddFersBranchNames(std::vector<std::string>& names, const std::string& prefix) {
+  names.push_back(prefix + "tsamp_us");
+  names.push_back(prefix + "rel_tsamp_us");
+  names.push_back(prefix + "trigger_id");
+  names.push_back(prefix + "board_id");
+  names.push_back(prefix + "hg");
+  names.push_back(prefix + "lg");
+  names.push_back(prefix + "toa");
+  names.push_back(prefix + "tot");
+}
+
+void AddFersEventBranches(RootBranchValues& branches, const std::string& prefix, const HidraFersEvent& event) {
+  AddBranchValues(branches, prefix + "tsamp_us", event.FERStsamp_us);
+  AddBranchValues(branches, prefix + "rel_tsamp_us", event.FERSrel_tsamp_us);
+  AddBranchValues(branches, prefix + "trigger_id", event.FERStrigger_id);
+  AddBranchValues(branches, prefix + "board_id", event.FERSboard_id);
+  AddBranchValues(branches, prefix + "hg", event.FERShg);
+  AddBranchValues(branches, prefix + "lg", event.FERSlg);
+  AddBranchValues(branches, prefix + "toa", event.FERStoa);
+  AddBranchValues(branches, prefix + "tot", event.FERStot);
+}
+
 } // namespace
 
 std::vector<std::string> RootPayloadDecoder::BranchNames() const {
@@ -121,14 +143,7 @@ bool HidraFersPayloadDecoder::Matches(const RootDetectorPayload& detector) const
 
 std::vector<std::string> HidraFersPayloadDecoder::BranchNames() const {
   auto names = HidraGenericPayloadDecoder{}.BranchNames();
-  names.push_back("FERStsamp_us");
-  names.push_back("FERSrel_tsamp_us");
-  names.push_back("FERStrigger_id");
-  names.push_back("FERSboard_id");
-  names.push_back("FERShg");
-  names.push_back("FERSlg");
-  names.push_back("FERStoa");
-  names.push_back("FERStot");
+  AddFersBranchNames(names, "FERS");
   return names;
 }
 
@@ -140,14 +155,31 @@ void HidraFersPayloadDecoder::Decode(const RootDetectorPayload& detector,
   HidraFersEvent fers_event;
   m_fers_decoder.decode(detector.payload, fers_event);
 
-  AddBranchValues(branches, "FERStsamp_us", fers_event.FERStsamp_us);
-  AddBranchValues(branches, "FERSrel_tsamp_us", fers_event.FERSrel_tsamp_us);
-  AddBranchValues(branches, "FERStrigger_id", fers_event.FERStrigger_id);
-  AddBranchValues(branches, "FERSboard_id", fers_event.FERSboard_id);
-  AddBranchValues(branches, "FERShg", fers_event.FERShg);
-  AddBranchValues(branches, "FERSlg", fers_event.FERSlg);
-  AddBranchValues(branches, "FERStoa", fers_event.FERStoa);
-  AddBranchValues(branches, "FERStot", fers_event.FERStot);
+  AddFersEventBranches(branches, "FERS", fers_event);
+}
+
+HidraMaxiccPayloadDecoder::HidraMaxiccPayloadDecoder()
+    : m_fers_decoder(3) {}
+
+bool HidraMaxiccPayloadDecoder::Matches(const RootDetectorPayload& detector) const {
+  return (detector.producer == "MAXICCProducer" || detector.det_id == 5);
+}
+
+std::vector<std::string> HidraMaxiccPayloadDecoder::BranchNames() const {
+  auto names = HidraGenericPayloadDecoder{}.BranchNames();
+  AddFersBranchNames(names, "MAXICC");
+  return names;
+}
+
+void HidraMaxiccPayloadDecoder::Decode(const RootDetectorPayload& detector,
+                                       std::vector<RootQuantity>& quantities,
+                                       RootBranchValues& branches) const {
+  HidraGenericPayloadDecoder{}.Decode(detector, quantities, branches);
+
+  HidraFersEvent fers_event;
+  m_fers_decoder.decode(detector.payload, fers_event);
+
+  AddFersEventBranches(branches, "MAXICC", fers_event);
 }
 
 bool HidraTrackerPayloadDecoder::Matches(const RootDetectorPayload& detector) const {
