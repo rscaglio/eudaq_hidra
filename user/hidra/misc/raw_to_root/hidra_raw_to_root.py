@@ -70,6 +70,16 @@ ROOT_VECTOR_BRANCHES = [
     "TrackerY",
 ]
 
+DETECTOR_META_BRANCH_TYPES = {
+    "det_id": ("var * int32", "int"),
+    "det_trigger_number": ("var * uint32", "unsigned int"),
+    "det_spill_number": ("var * uint32", "unsigned int"),
+    "det_event_time": ("var * uint64", "unsigned long long"),
+    "det_native_event_time": ("var * uint64", "unsigned long long"),
+}
+
+DETECTOR_META_BRANCHES = tuple(DETECTOR_META_BRANCH_TYPES)
+
 
 class HidraFormatError(RuntimeError):
     """Raised when the HIDRA binary container is malformed."""
@@ -595,6 +605,12 @@ def jagged_float64(values: Sequence[Sequence[float]]) -> ak.Array:
     return ak.Array([[float(value) for value in item] for item in values])
 
 
+def jagged_int(values: Sequence[Sequence[int]]) -> ak.Array:
+    import awkward as ak
+
+    return ak.Array([[int(value) for value in item] for item in values])
+
+
 def root_branch_types() -> Dict[str, str]:
     branch_types = {
         "run": "int32",
@@ -607,8 +623,19 @@ def root_branch_types() -> Dict[str, str]:
         "event_flags": "uint32",
         "n_detectors": "int32",
     }
+    branch_types.update({branch: uproot_type for branch, (uproot_type, _) in DETECTOR_META_BRANCH_TYPES.items()})
     branch_types.update({branch: "var * float64" for branch in ROOT_VECTOR_BRANCHES})
     return branch_types
+
+
+def detector_meta_values(event: HidraEvent) -> Dict[str, List[int]]:
+    return {
+        "det_id": [detector.det_id for detector in event.detectors],
+        "det_trigger_number": [detector.trigger_n for detector in event.detectors],
+        "det_spill_number": [detector.spill_number for detector in event.detectors],
+        "det_event_time": [detector.event_time_begin for detector in event.detectors],
+        "det_native_event_time": [detector.native_event_time_begin for detector in event.detectors],
+    }
 
 
 def make_root_arrays(events: Sequence[HidraEvent], decoded: Sequence[Mapping[str, Sequence[float]]]) -> Dict[str, object]:
@@ -625,6 +652,8 @@ def make_root_arrays(events: Sequence[HidraEvent], decoded: Sequence[Mapping[str
         "event_flags": np.asarray([event.event_flags for event in events], dtype=np.uint32),
         "n_detectors": np.asarray([len(event.detectors) for event in events], dtype=np.int32),
     }
+    for branch in DETECTOR_META_BRANCH_TYPES:
+        arrays[branch] = jagged_int([detector_meta_values(event)[branch] for event in events])
     for branch in ROOT_VECTOR_BRANCHES:
         arrays[branch] = jagged_float64([entry.get(branch, []) for entry in decoded])
     return arrays
@@ -679,6 +708,8 @@ class PyRootBatchWriter:
             "n_detectors": array("i", [0]),
         }
         self.vectors = {}
+        self.meta_vectors = {}
+        self.vector_classes = {}
 
     def __enter__(self) -> "PyRootBatchWriter":
         try:
@@ -704,6 +735,14 @@ class PyRootBatchWriter:
         self.tree.Branch("trigger_mask", self.scalars["trigger_mask"], "trigger_mask/b")
         self.tree.Branch("event_flags", self.scalars["event_flags"], "event_flags/i")
         self.tree.Branch("n_detectors", self.scalars["n_detectors"], "n_detectors/I")
+
+        for _, cpp_type in DETECTOR_META_BRANCH_TYPES.values():
+            if cpp_type not in self.vector_classes:
+                self.vector_classes[cpp_type] = ROOT.std.vector(cpp_type)
+
+        for name, (_, cpp_type) in DETECTOR_META_BRANCH_TYPES.items():
+            self.meta_vectors[name] = self.vector_classes[cpp_type]()
+            self.tree.Branch(name, self.meta_vectors[name])
 
         vector_type = ROOT.std.vector("double")
         for name in ROOT_VECTOR_BRANCHES:
@@ -733,6 +772,12 @@ class PyRootBatchWriter:
             self.scalars["trigger_mask"][0] = int(event.trigger_mask)
             self.scalars["event_flags"][0] = int(event.event_flags)
             self.scalars["n_detectors"][0] = int(len(event.detectors))
+
+            meta_values = detector_meta_values(event)
+            for name, vector in self.meta_vectors.items():
+                vector.clear()
+                for value in meta_values[name]:
+                    vector.push_back(int(value))
 
             for name, vector in self.vectors.items():
                 vector.clear()
@@ -872,6 +917,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s: %(message)s")
+    print(
+        "[hidra_raw_to_root] writer="
+        f"{args.writer} | detector header branches={','.join(DETECTOR_META_BRANCHES)}",
+        file=sys.stderr,
+        flush=True,
+    )
 
     vme_crate = args.vme_crate
     if vme_crate is None and args.config:
