@@ -37,11 +37,11 @@ LAST_MAX_EVENTS=$(sed -n '/\[DataCollector.HidraDataCollector\]/,/\[/p' "$SOURCE
 LAST_SOURCES=$(sed -n '/\[DataCollector.HidraDataCollector\]/,/\[/p' "$SOURCE_FOR_DEFAULTS" | grep "EXPECTED_SOURCES" | cut -d'=' -f2 | tr -d ' ')
 
 # Set checkbox statuses based on what was parsed (YAD uses TRUE/FALSE)
-QTPD_STATUS="FALSE"; FERS2_STATUS="FALSE"; TRACKER_STATUS="FALSE"; MAXXIC_STATUS="FALSE"
+QTPD_STATUS="FALSE"; FERS2_STATUS="FALSE"; TRACKER_STATUS="FALSE"; MAXICC_STATUS="FALSE"
 if echo "$LAST_SOURCES" | grep -q "QTPDProducer";    then QTPD_STATUS="TRUE"; fi
 if echo "$LAST_SOURCES" | grep -q "FERS2Producer";   then FERS2_STATUS="TRUE"; fi
 if echo "$LAST_SOURCES" | grep -q "TrackerProducer"; then TRACKER_STATUS="TRUE"; fi
-if echo "$LAST_SOURCES" | grep -q "MAXXICProducer";  then MAXXIC_STATUS="TRUE"; fi
+if echo "$LAST_SOURCES" | grep -q "MAXICCProducer";  then MAXICC_STATUS="TRUE"; fi
 
 # Determine dropdown sorting order for YAD combo box
 if [ "$LAST_PEDESTAL" = "1" ]; then PED_COMBO_ORDER="Yes!No"; else PED_COMBO_ORDER="No!Yes"; fi
@@ -64,7 +64,7 @@ if [ "$1" = "--skip" ]; then
     if echo "$BASE_SOURCES" | grep -q "QTPDProducer";    then PRODUCERS_SELECTED="$PRODUCERS_SELECTED QTPDProducer"; fi
     if echo "$BASE_SOURCES" | grep -q "FERS2Producer";   then PRODUCERS_SELECTED="$PRODUCERS_SELECTED FERS2Producer"; fi
     if echo "$BASE_SOURCES" | grep -q "TrackerProducer"; then PRODUCERS_SELECTED="$PRODUCERS_SELECTED TrackerProducer"; fi
-    if echo "$BASE_SOURCES" | grep -q "MAXXICProducer";  then PRODUCERS_SELECTED="$PRODUCERS_SELECTED MAXXICProducer"; fi
+    if echo "$BASE_SOURCES" | grep -q "MAXICCProducer";  then PRODUCERS_SELECTED="$PRODUCERS_SELECTED MAXICCProducer"; fi
 
 else
     if [ "$LAST_PEDESTAL" = "1" ]; then
@@ -83,7 +83,7 @@ else
         --field="Enable QTPDProducer:CHK" "$QTPD_STATUS" \
         --field="Enable FERS2Producer:CHK" "$FERS2_STATUS" \
         --field="Enable TrackerProducer:CHK" "$TRACKER_STATUS" \
-        --field="Enable MAXXICProducer:CHK" "$MAXXIC_STATUS" \
+        --field="Enable MAXICCProducer:CHK" "$MAXICC_STATUS" \
         --button="Cancel:1" --button="OK:0" \
         --width=450)
     
@@ -100,13 +100,13 @@ else
     USE_QTPD=$(echo "$GUI_OUTPUT" | cut -d'|' -f3)
     USE_FERS2=$(echo "$GUI_OUTPUT" | cut -d'|' -f4)
     USE_TRACKER=$(echo "$GUI_OUTPUT" | cut -d'|' -f5)
-    USE_MAXXIC=$(echo "$GUI_OUTPUT" | cut -d'|' -f6)
+    USE_MAXICC=$(echo "$GUI_OUTPUT" | cut -d'|' -f6)
 
     PRODUCERS_SELECTED=""
     [ "$USE_QTPD" = "TRUE" ] && PRODUCERS_SELECTED="$PRODUCERS_SELECTED QTPDProducer"
     [ "$USE_FERS2" = "TRUE" ] && PRODUCERS_SELECTED="$PRODUCERS_SELECTED FERS2Producer"
     [ "$USE_TRACKER" = "TRUE" ] && PRODUCERS_SELECTED="$PRODUCERS_SELECTED TrackerProducer"
-    [ "$USE_MAXXIC" = "TRUE" ] && PRODUCERS_SELECTED="$PRODUCERS_SELECTED MAXXICProducer"
+    [ "$USE_MAXICC" = "TRUE" ] && PRODUCERS_SELECTED="$PRODUCERS_SELECTED MAXICCProducer"
 fi
 
 
@@ -125,7 +125,7 @@ if echo "$PRODUCERS_SELECTED" | grep -q "TrackerProducer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
     EXPECTED_SOURCES="${EXPECTED_SOURCES}3:TrackerProducer"
 fi
-if echo "$PRODUCERS_SELECTED" | grep -q "MAXXICProducer"; then
+if echo "$PRODUCERS_SELECTED" | grep -q "MAXICCProducer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
     EXPECTED_SOURCES="${EXPECTED_SOURCES}4:FERS2Producer"
 fi
@@ -202,9 +202,9 @@ if echo "$PRODUCERS_SELECTED" | grep -q "TrackerProducer"; then
     $BINPATH/euCliProducer -n HidraTrackerProducer -t TrackerProducer &
 fi
 
-if echo "$PRODUCERS_SELECTED" | grep -q "MAXXICProducer"; then
-    echo "--> Spawning hardware link process: MAXXICProducer (Instance of FERS2Producer)"
-    $BINPATH/euCliProducer -n HidraMAXXICProducer -t FERS2Producer &
+if echo "$PRODUCERS_SELECTED" | grep -q "MAXICCProducer"; then
+    echo "--> Spawning hardware link process: MAXICCProducer (Instance of FERS2Producer)"
+    $BINPATH/euCliProducer -n HidraMAXICCProducer -t FERS2Producer &
 fi
 
 
