@@ -14,8 +14,8 @@ fi
 
 LOCAL_DIR="/home/eudaq/daq/TB2026_HidraData"
 BACKUP_DIR="/home/eudaq/cernbox/TB2026_H8"
-LOCAL_DIR_TRACKER_DATA="/home/eudaq/TB2026_TrackerData/ascii_dream_2026"
-BACKUP_DIR_TRACKER_DATA="/home/eudaq/cernbox/TB2026_H8/tracker_data/ascii_dream_2026"
+LOCAL_DIR_TRACKER_DATA="/home/eudaq/TB2026_TrackerData"
+BACKUP_DIR_TRACKER_DATA="/home/eudaq/cernbox/TB2026_H8/tracker_data"
 BACKUP_DATE_FILE="/home/eudaq/TB2026_H8_last_backup_dates.log"
 
 # Shared rsync options, used for every transfer so they stay consistent.
