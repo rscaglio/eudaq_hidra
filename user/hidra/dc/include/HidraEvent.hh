@@ -8,6 +8,7 @@
 struct HidraEvent {
     HidraXdcEvent     xdc;
     HidraFersEvent    fers;
+    HidraFersEvent    maxicc; // MAXICC crystal calorimeter: FERS-like, its own 3 boards (det_id 4)
     HidraTrackerEvent tracker;
     HidraEventMeta    meta;
 };

@@ -388,33 +388,57 @@ tabs:
         bin_labels: [consistent, mismatch]
 
   # ---- MAXICC ------------------------------------------------------------
-  # Geometric ADC maps of the MAXICC crystal calorimeter (the 3 new FERS boards,
-  # global indices 20/21/22). One gain per tab; each tab shows the 3 readout
-  # planes (front 15µm | rear 15µm | rear 50µm) side by side, each crystal at its
-  # (col, row) position coloured by mean ADC. board_offset = global index of the
-  # first MAXICC board; cells stay grey "no data" until the DAQ reads 23 boards
-  # (FERS_NBOARDS=23). The channel->position map is mapping/maxicc_channels.json.
+  # Geometric ADC maps of the MAXICC crystal calorimeter. MAXICC is its own
+  # detector sub-event (det_id 4), decoded by the monitor into separate
+  # `MAXICC_*` histograms (3 boards × 64 channels). One gain per tab; each tab
+  # shows the 3 readout planes (front 15µm | rear 15µm | rear 50µm) side by side,
+  # each crystal at its (col, row) position coloured by mean ADC. The MAXICC
+  # boards are local 0/1/2 in their own histogram, so board_offset = 0. The
+  # channel->position map is mapping/maxicc_channels.json.
   - id: maxicc_hg
     label: MAXICC HG
     panels:
       - type: maxicc_detector
-        histogram: FERS_HG_mean
+        histogram: MAXICC_HG_mean
         label: "mean HG"
         mode_toggle: true
-        board_offset: 20
+        board_offset: 0
         height: 360px
-        link_tab: fers_channels   # click a crystal -> open it in FERS channels
+        link_tab: maxicc_channels   # click a crystal -> open it in MAXICC channels
 
   - id: maxicc_lg
     label: MAXICC LG
     panels:
       - type: maxicc_detector
-        histogram: FERS_LG_mean
+        histogram: MAXICC_LG_mean
         label: "mean LG"
         mode_toggle: true
-        board_offset: 20
+        board_offset: 0
         height: 360px
-        link_tab: fers_channels   # click a crystal -> open it in FERS channels
+        link_tab: maxicc_channels   # click a crystal -> open it in MAXICC channels
+
+  # Per-channel MAXICC distributions (one channel at a time, HG+LG stacked),
+  # mirroring the FERS channels tab but reading the MAXICC TH2s. Reached by
+  # clicking a crystal in the MAXICC maps above.
+  - id: maxicc_channels
+    label: MAXICC channels
+    panels:
+      - type: channel_selector
+        projection_templates: ["MAXICC_HG_dist", "MAXICC_LG_dist"]
+        split_suffixes: ["_physics", "_pedestal"]
+        board_labels: true   # label as "board B · ch L" (no calo mapping)
+        show_trigger_split: true
+
+  # Per-board MAXICC aggregates (x = board, one bar per board).
+  - id: maxicc_boards
+    label: MAXICC boards
+    panels:
+      - type: histograms
+        cols: 2
+        histograms: [MAXICC_HG_board_mean, MAXICC_LG_board_mean, MAXICC_HG_board_allzero, MAXICC_board_time_offset]
+      - type: histograms
+        histograms: [MAXICC_trigger_id_consistency]
+        bin_labels: [consistent, mismatch]
 
   # ---- Tracker -----------------------------------------------------------
   # One 2D hit map (X vs Y occupancy) per tracker station, published by the

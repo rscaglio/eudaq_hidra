@@ -1,11 +1,14 @@
 #pragma once
 
+#include "HidraEvent.hh"
 #include "HistogramRegistry.hh"
 #include "IHistogramFiller.hh"
 
 #include <TH1.h>
 #include <TH2.h>
 #include <TProfile.h>
+
+#include <string>
 
 /**
  * @brief Fills the FERS monitoring histograms from HidraEvent::fers.
@@ -38,6 +41,11 @@
  *
  * The data source is identical regardless of how `fers` was produced (the real
  * HidraFersDecoder or the random test decoder).
+ *
+ * The same filler serves the MAXICC crystal calorimeter, which is just another
+ * set of FERS boards in its own sub-event: pass `name_prefix = "MAXICC"` and
+ * `field = &HidraEvent::maxicc` so the histograms are named `MAXICC_*` and the
+ * data is read from `HidraEvent::maxicc` instead of `::fers`.
  */
 class FERSFiller : public IHistogramFiller {
 public:
@@ -47,13 +55,20 @@ public:
                       int value_max = 4096,
                       int channel_nbins = 1024,
                       int saturation_threshold = 3800,
-                      bool per_channel_distributions = true);
+                      bool per_channel_distributions = true,
+                      std::string name_prefix = "FERS",
+                      HidraFersEvent HidraEvent::*field = &HidraEvent::fers);
   void Fill(const HidraEvent&) override;
 
 private:
   void FillBoardTime(const HidraFersEvent& fers);
   void FillBoardAllZeroHG(const HidraFersEvent& fers);
   void FillTriggerIdConsistency(const HidraFersEvent& fers);
+
+  // Histogram-name prefix ("FERS"/"MAXICC") and which HidraEvent sub-event this
+  // filler reads (::fers / ::maxicc), so one class serves both detectors.
+  std::string m_prefix;
+  HidraFersEvent HidraEvent::*m_field;
 
   unsigned int m_n_boards;
   unsigned int m_channels_per_board;
