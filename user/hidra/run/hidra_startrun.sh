@@ -119,7 +119,7 @@ if echo "$PRODUCERS_SELECTED" | grep -q "QTPDProducer"; then
 fi
 if echo "$PRODUCERS_SELECTED" | grep -q "FERS2Producer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
-    EXPECTED_SOURCES="${EXPECTED_SOURCES}2:HidraFERS2Producer"
+    EXPECTED_SOURCES="${EXPECTED_SOURCES}2:FERS2Producer"
 fi
 if echo "$PRODUCERS_SELECTED" | grep -q "TrackerProducer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
@@ -127,7 +127,7 @@ if echo "$PRODUCERS_SELECTED" | grep -q "TrackerProducer"; then
 fi
 if echo "$PRODUCERS_SELECTED" | grep -q "MAXICCProducer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
-    EXPECTED_SOURCES="${EXPECTED_SOURCES}4:HidraMAXICCProducer"
+    EXPECTED_SOURCES="${EXPECTED_SOURCES}4:MAXICCProducer"
 fi
 
 echo "=========================================="
