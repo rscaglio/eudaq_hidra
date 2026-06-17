@@ -318,7 +318,7 @@ private:
     auto bore = eudaq::Event::MakeUnique("FERSProducer");
     bore->SetBORE();
     bore->SetRunN(static_cast<uint32_t>(m_run_number));
-    bore->SetTag("Producer", "HidraFERS2Producer");
+    bore->SetTag("Producer", GetName());
     bore->SetTag("FERS_CONF_FILE", m_config_file);
     SendEvent(std::move(bore));
 
