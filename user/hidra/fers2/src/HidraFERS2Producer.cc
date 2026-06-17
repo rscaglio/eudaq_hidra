@@ -215,7 +215,9 @@ constexpr auto kAlignmentWaitAheadTimeoutUs = 3s;
 class HidraFERS2Producer : public eudaq::Producer {
 public:
   HidraFERS2Producer(const std::string& name, const std::string& runcontrol)
-      : eudaq::Producer(name, runcontrol) {}
+      : eudaq::Producer(name.empty() ? "HidraFERS2Producer" : name, runcontrol) {
+        HIDRA_INFO("FERS2 Producer instantiated with name: {}", name);
+      }
 
   static const uint32_t m_id_factory_fers2 = eudaq::cstr2hash("HidraFERS2Producer");
   static const uint32_t m_id_factory_maxicc = eudaq::cstr2hash("HidraMAXICCProducer");

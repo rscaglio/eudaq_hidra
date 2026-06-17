@@ -119,7 +119,7 @@ if echo "$PRODUCERS_SELECTED" | grep -q "QTPDProducer"; then
 fi
 if echo "$PRODUCERS_SELECTED" | grep -q "FERS2Producer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
-    EXPECTED_SOURCES="${EXPECTED_SOURCES}2:FERS2Producer"
+    EXPECTED_SOURCES="${EXPECTED_SOURCES}2:HidraFERS2Producer"
 fi
 if echo "$PRODUCERS_SELECTED" | grep -q "TrackerProducer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
@@ -127,7 +127,7 @@ if echo "$PRODUCERS_SELECTED" | grep -q "TrackerProducer"; then
 fi
 if echo "$PRODUCERS_SELECTED" | grep -q "MAXICCProducer"; then
     [ ! -z "$EXPECTED_SOURCES" ] && EXPECTED_SOURCES="$EXPECTED_SOURCES,"
-    EXPECTED_SOURCES="${EXPECTED_SOURCES}4:FERS2Producer"
+    EXPECTED_SOURCES="${EXPECTED_SOURCES}4:HidraMAXICCProducer"
 fi
 
 echo "=========================================="
@@ -204,7 +204,7 @@ fi
 
 if echo "$PRODUCERS_SELECTED" | grep -q "MAXICCProducer"; then
     echo "--> Spawning hardware link process: MAXICCProducer (Instance of FERS2Producer)"
-    $BINPATH/euCliProducer -n HidraMAXICCProducer -t FERS2Producer &
+    $BINPATH/euCliProducer -n HidraMAXICCProducer -t MAXICCProducer &
 fi
 
 
