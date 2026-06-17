@@ -131,6 +131,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int prescale,
     hidra::HidraXdcDecoder xdc_dec,
     std::unique_ptr<hidra::IFersDecoder> fers_dec,
+    std::unique_ptr<hidra::IFersDecoder> maxicc_dec,
     int n_adc_channels,
     int noise_update_interval,
     int fers_nboards,
@@ -138,6 +139,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int fers_channel_nbins,
     int fers_saturation_threshold,
     bool fers_per_channel_distributions,
+    int maxicc_nboards,
     std::vector<TrackerStationConfig> tracker_stations,
     std::string http_output_dir,
     int trigger_strip_length,
@@ -147,8 +149,10 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
+      maxicc_decoder(std::move(maxicc_dec)),
       fers_nboards(fers_nboards),
       fers_value_max(fers_value_max),
+      maxicc_nboards(maxicc_nboards),
       trigger_strip_length(trigger_strip_length),
       trigger_gap_max(trigger_gap_max),
       event_prescale(prescale) {
@@ -158,6 +162,11 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
   chain.Add(std::make_unique<FERSFiller>(registry, static_cast<unsigned int>(fers_nboards), 64u, fers_value_max,
                                          fers_channel_nbins, fers_saturation_threshold,
                                          fers_per_channel_distributions));
+  // MAXICC: same FERS filler, its own sub-event (HidraEvent::maxicc) and `MAXICC_*`
+  // histograms, sized for the MAXICC board count (3).
+  chain.Add(std::make_unique<FERSFiller>(registry, static_cast<unsigned int>(maxicc_nboards), 64u, fers_value_max,
+                                         fers_channel_nbins, fers_saturation_threshold, fers_per_channel_distributions,
+                                         "MAXICC", &HidraEvent::maxicc));
   chain.Add(std::make_unique<TrackerFiller>(registry, tracker_stations));
   chain.Add(std::make_unique<MetaFiller>(registry, trigger_strip_length, trigger_gap_max));
   chain.Add(std::make_unique<ChannelSumFiller>(registry, sum_config));
@@ -176,6 +185,7 @@ void HidraHttpMonitor::MonitorContext::ResetTelemetry() {
   // decode/fill timers are written by DoReceive which is not running at a run boundary.
   duration_xdc_decode.Reset();
   duration_fers_decode.Reset();
+  duration_maxicc_decode.Reset();
   duration_tracker_decode.Reset();
   chain.LockWaitTimer().Reset();
   for (const auto& filler : chain.Fillers()) {
@@ -189,6 +199,7 @@ void HidraHttpMonitor::MonitorContext::LogTelemetry() {
 
   HIDRA_INFO("  " + duration_xdc_decode.Summary());
   HIDRA_INFO("  " + duration_fers_decode.Summary());
+  HIDRA_INFO("  " + duration_maxicc_decode.Summary());
   HIDRA_INFO("  " + duration_tracker_decode.Summary());
 
   // Lock wait — this is the time spent waiting for the histogram lock in FillerChain::Fill(). If this is high, it means
@@ -297,6 +308,14 @@ void HidraHttpMonitor::DoConfigure() {
   if (cfg_nboards < 1) {
     HIDRA_WARN("FERS_NBOARDS={} is invalid, forcing 20.", cfg_nboards);
     cfg_nboards = 20;
+  }
+  // MAXICC is a separate FERS-format sub-event (det_id 4) with its own boards
+  // (3). It reuses the FERS value range / binning above; only the board count
+  // differs. Like the FERS sizing, this is consumed once on the first configure.
+  int cfg_maxicc_nboards = conf->Get("MAXICC_NBOARDS", 3);
+  if (cfg_maxicc_nboards < 1) {
+    HIDRA_WARN("MAXICC_NBOARDS={} is invalid, forcing 3.", cfg_maxicc_nboards);
+    cfg_maxicc_nboards = 3;
   }
 
   // Tracker 2D hit maps: one TH2 per station, sized from the run config (like the
@@ -457,6 +476,18 @@ void HidraHttpMonitor::DoConfigure() {
     fers_decoder = std::make_unique<hidra::HidraFersDecoder>();
   }
 
+  // MAXICC decoder: mirrors the FERS one (same FERS_DECODER selection), but sized
+  // for the MAXICC board count. The real decoder caps board_id at max_boards; the
+  // random one synthesises that many boards so MAXICC histograms show data in dry.
+  const int eff_maxicc_nboards = m_ctx ? m_ctx->maxicc_nboards : cfg_maxicc_nboards;
+  std::unique_ptr<hidra::IFersDecoder> maxicc_decoder;
+  if (fers_random) {
+    maxicc_decoder = std::make_unique<hidra::HidraFersRandomDecoder>(static_cast<unsigned int>(eff_maxicc_nboards), 64u,
+                                                                     eff_value_max);
+  } else {
+    maxicc_decoder = std::make_unique<hidra::HidraFersDecoder>(static_cast<std::size_t>(eff_maxicc_nboards));
+  }
+
   if (!m_ctx) {
     // First configure: build the long-lived monitoring context. This starts the HTTP server with empty histograms,
     // so the GUI is reachable from now on and stays up across run start/stop.
@@ -476,9 +507,10 @@ void HidraHttpMonitor::DoConfigure() {
       }
     }
     m_ctx = std::make_unique<MonitorContext>(m_port, m_pump_interval_ms, m_event_prescale, std::move(xdc_decoder),
-                                             std::move(fers_decoder), n_adc_channels, m_noise_update_interval,
-                                             cfg_nboards, cfg_value_max, fers_channel_nbins, fers_saturation_threshold,
-                                             fers_per_channel, std::move(tracker_stations), std::move(http_output_dir),
+                                             std::move(fers_decoder), std::move(maxicc_decoder), n_adc_channels,
+                                             m_noise_update_interval, cfg_nboards, cfg_value_max, fers_channel_nbins,
+                                             fers_saturation_threshold, fers_per_channel, cfg_maxicc_nboards,
+                                             std::move(tracker_stations), std::move(http_output_dir),
                                              trigger_strip_length, trigger_gap_max, std::move(sum_config));
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
@@ -486,6 +518,7 @@ void HidraHttpMonitor::DoConfigure() {
     // does not need publisher.Mutex(); the unique lock already excludes DoReceive, the only reader.
     m_ctx->xdc_decoder = std::move(xdc_decoder);
     m_ctx->fers_decoder = std::move(fers_decoder);
+    m_ctx->maxicc_decoder = std::move(maxicc_decoder);
   }
 
   // Clear the histogram contents left over from a previous run: a (re)configuration means a fresh setup, so the GUI
@@ -597,6 +630,7 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
   m_ctx->meta_decoder.decode(*ev, decoded.meta);
 
   std::vector<std::uint8_t> fers_payload;
+  std::vector<std::uint8_t> maxicc_payload;
   for (size_t index = 0; index < ev->GetNumSubEvent(); ++index) {
     eudaq::EventSPC subevent = ev->GetSubEvent(index); // no copy, just a shared pointer copy of the subevent handle
     if (!subevent) {
@@ -623,6 +657,9 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
     } else if (det_id == 2) {
       // Defer FERS decoding until after the loop (see below).
       fers_payload = std::move(detector_payload);
+    } else if (det_id == 4) {
+      // MAXICC: same FERS payload format, its own sub-event. Decoded after the loop.
+      maxicc_payload = std::move(detector_payload);
     } else if (det_id == 3) {
       ScopedTimer t(m_ctx->duration_tracker_decode);
       m_ctx->tracker_decoder.decode(detector_payload, decoded.tracker, subevent->GetTriggerN());
@@ -635,6 +672,13 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
   {
     ScopedTimer t(m_ctx->duration_fers_decode);
     m_ctx->fers_decoder->decode(fers_payload, decoded.fers);
+  }
+
+  // MAXICC: decoded the same way as FERS (empty payload → all-sentinel vectors, a
+  // no-op for the MAXICC filler; the random decoder ignores the payload).
+  {
+    ScopedTimer t(m_ctx->duration_maxicc_decode);
+    m_ctx->maxicc_decoder->decode(maxicc_payload, decoded.maxicc);
   }
 
   // --- Dispatch — inside the histogram lock --------------------------

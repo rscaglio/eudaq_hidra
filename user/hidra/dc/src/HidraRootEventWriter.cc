@@ -264,7 +264,7 @@ struct HidraRootEventWriter::Impl {
     if(std::chrono::steady_clock::now() - last_missing_tdc_warning_time > 15s && tdc_missing_events != last_warn_tdc_missing_count) {
       last_warn_tdc_missing_count = tdc_missing_events;
       last_missing_tdc_warning_time = std::chrono::steady_clock::now();
-      HIDRA_WARN("Root payload decoder found {} events with missing TDC words on the total of {} decoded events", tdc_missing_events, written_events);
+      HIDRA_WARN("Root payload decoder found {} events with missing TDC words on the total of {} decoded events", tdc_missing_events.load(), written_events.load());
     }
   }
 
@@ -410,7 +410,7 @@ void HidraRootEventWriter::Stop() {
   }
 
   if (m_impl->last_warn_tdc_missing_count != m_impl->tdc_missing_events) {
-    HIDRA_WARN("Root payload decoder found {} events with missing TDC words on the total of {} decoded events", m_impl->tdc_missing_events, m_impl->written_events);
+    HIDRA_WARN("Root payload decoder found {} events with missing TDC words on the total of {} decoded events", m_impl->tdc_missing_events.load(), m_impl->written_events.load());
   }
 
 }

@@ -10,21 +10,19 @@ It is the SiPM/detector pattern (`sipm_detector.py`) with two MAXICC twists:
 
   * the geometry comes from `get_maxicc_channel_info()` — ``{board, channel,
     layer, col, row}`` per channel (local board), grouped here by ``layer``;
-  * the FERS histograms are filled by the **global** channel index
-    ``board * 64 + ch``, and the MAXICC boards sit after the other FERS boards,
-    so the global index is ``(board_offset + board) * 64 + ch``. ``board_offset``
-    defaults to 20 (the three MAXICC boards are global 20/21/22). Until the DAQ
-    reads 23 boards (``FERS_NBOARDS=23``) those channels are not in the
-    histograms yet, so every cell shows grey "no data" — the detector outline is
-    still drawn.
+  * MAXICC is its own monitor sub-event with dedicated ``MAXICC_*`` histograms
+    (3 boards × 64 channels), indexed by the channel ``board * 64 + ch`` with
+    the local board 0/1/2 — so the histogram index is
+    ``(board_offset + board) * 64 + ch`` with ``board_offset = 0``. (The offset
+    is kept configurable only for unusual wirings; it is normally 0.)
 
 Config (in ``config.yaml``)::
 
     - type: maxicc_detector
-      histogram: FERS_HG_mean     # base; mode_toggle appends _physics/_pedestal
+      histogram: MAXICC_HG_mean   # base; mode_toggle appends _physics/_pedestal
       label: "mean HG"
       mode_toggle: true           # physics/pedestal radio
-      board_offset: 20            # optional, default 20
+      board_offset: 0             # optional, default 0
       height: 360px
 
 Each plane is the same three stacked heatmaps as the SiPM map (grey empty
@@ -49,7 +47,7 @@ _MODES = ("physics", "pedestal")
 # Readout planes in display order: (layer index in the mapping, title).
 LAYERS = [(0, "front 15µm"), (1, "rear 15µm"), (2, "rear 50µm")]
 
-DEFAULT_BOARD_OFFSET = 20
+DEFAULT_BOARD_OFFSET = 0
 
 
 class MAXICCDetectorPanel(Panel):
@@ -71,7 +69,7 @@ class MAXICCDetectorPanel(Panel):
     # ---- config helpers --------------------------------------------------
 
     def _base_hist(self) -> str:
-        default = "FERS_HG_mean" if self._mode_toggle else "FERS_HG_mean_physics"
+        default = "MAXICC_HG_mean" if self._mode_toggle else "MAXICC_HG_mean_physics"
         name = self.params.get("histogram", default)
         # With the toggle on we append the active suffix ourselves; tolerate a
         # base that already carries one so we never request `..._physics_physics`.

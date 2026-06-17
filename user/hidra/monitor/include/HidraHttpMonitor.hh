@@ -109,6 +109,8 @@ private:
     hidra::HidraXdcDecoder xdc_decoder;
     /** Real or random FERS decoder, selected at configure time (FERS_DECODER). */
     std::unique_ptr<hidra::IFersDecoder> fers_decoder;
+    /** FERS decoder for the MAXICC sub-event (det_id 4): its own boards, same FERS format. */
+    std::unique_ptr<hidra::IFersDecoder> maxicc_decoder;
 
     /** Stateless tracker decoder (per-station X/Y coordinates from the tracker payload). */
     hidra::HidraTrackerDecoder tracker_decoder;
@@ -118,6 +120,7 @@ private:
 
     DurationAccumulator duration_xdc_decode{"decode_xdc"};
     DurationAccumulator duration_fers_decode{"decode_fers"};
+    DurationAccumulator duration_maxicc_decode{"decode_maxicc"};
     DurationAccumulator duration_tracker_decode{"decode_tracker"};
 
     /**
@@ -128,6 +131,8 @@ private:
      */
     int fers_nboards{20};
     int fers_value_max{4096};
+    /** MAXICC board count this context's MAXICC histograms were sized with (kept like fers_nboards). */
+    int maxicc_nboards{3};
 
     // Trigger-pattern histogram sizing this context was built with, kept so a
     // reconfigure can warn when a changed value is ignored (the histograms are
@@ -147,11 +152,11 @@ private:
 
     /** Build the context, register fillers and start the HTTP server. */
     MonitorContext(int port, int pump_interval_ms, int prescale, hidra::HidraXdcDecoder xdc_dec,
-                   std::unique_ptr<hidra::IFersDecoder> fers_dec, int n_adc_channels, int noise_update_interval,
-                   int fers_nboards, int fers_value_max, int fers_channel_nbins, int fers_saturation_threshold,
-                   bool fers_per_channel_distributions, std::vector<TrackerStationConfig> tracker_stations,
-                   std::string http_output_dir, int trigger_strip_length, int trigger_gap_max,
-                   ChannelSumConfig sum_config);
+                   std::unique_ptr<hidra::IFersDecoder> fers_dec, std::unique_ptr<hidra::IFersDecoder> maxicc_dec,
+                   int n_adc_channels, int noise_update_interval, int fers_nboards, int fers_value_max,
+                   int fers_channel_nbins, int fers_saturation_threshold, bool fers_per_channel_distributions,
+                   int maxicc_nboards, std::vector<TrackerStationConfig> tracker_stations, std::string http_output_dir,
+                   int trigger_strip_length, int trigger_gap_max, ChannelSumConfig sum_config);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();

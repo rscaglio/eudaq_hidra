@@ -14,56 +14,75 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
                        int value_max,
                        int channel_nbins,
                        int saturation_threshold,
-                       bool per_channel_distributions)
-    : IHistogramFiller("FERSFiller"),
+                       bool per_channel_distributions,
+                       std::string name_prefix,
+                       HidraFersEvent HidraEvent::*field)
+    : IHistogramFiller(name_prefix + "Filler"),
+      m_prefix(std::move(name_prefix)),
+      m_field(field),
       m_n_boards(n_boards),
       m_channels_per_board(channels_per_board),
       m_n_channels(0),
       m_saturation_threshold(saturation_threshold),
       m_per_channel(per_channel_distributions) {
   if (m_n_boards == 0) {
-    HIDRA_WARN("FERSFiller n_boards=0 is invalid, forcing 1.");
+    HIDRA_WARN("{} n_boards=0 is invalid, forcing 1.", IHistogramFiller::Name());
     m_n_boards = 1;
   }
   if (m_channels_per_board == 0) {
-    HIDRA_WARN("FERSFiller channels_per_board=0 is invalid, forcing 64.");
+    HIDRA_WARN("{} channels_per_board=0 is invalid, forcing 64.", IHistogramFiller::Name());
     m_channels_per_board = 64;
   }
   if (channel_nbins < 1) {
-    HIDRA_WARN("FERSFiller channel_nbins={} is invalid, forcing 1024.", channel_nbins);
+    HIDRA_WARN("{} channel_nbins={} is invalid, forcing 1024.", IHistogramFiller::Name(), channel_nbins);
     channel_nbins = 1024;
   }
   if (value_max < 1) {
-    HIDRA_WARN("FERSFiller value_max={} is invalid, forcing 4096.", value_max);
+    HIDRA_WARN("{} value_max={} is invalid, forcing 4096.", IHistogramFiller::Name(), value_max);
     value_max = 4096;
   }
   if (saturation_threshold < 0 || saturation_threshold >= value_max) {
-    HIDRA_WARN("FERSFiller saturation_threshold={} outside [0,{}); clamping.", saturation_threshold, value_max);
+    HIDRA_WARN("{} saturation_threshold={} outside [0,{}); clamping.", IHistogramFiller::Name(), saturation_threshold,
+               value_max);
     saturation_threshold = std::clamp(saturation_threshold, 0, value_max - 1);
     m_saturation_threshold = saturation_threshold;
   }
   m_n_channels = m_n_boards * m_channels_per_board;
 
+  // All histogram names and titles carry the detector prefix (`FERS`/`MAXICC`) so
+  // one filler class can serve both detectors without name collisions.
+  const std::string& P = m_prefix;
+  auto hname = [&](const std::string& suffix) { return P + "_" + suffix; };
+
   // Per-channel means. The ";channel;<y>" axis titles mark them as channel-indexed
   // for the frontend (channel-numbered hover, used by the detector heatmap).
   m_hg_mean = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_mean", "Mean FERS high gain;channel;mean HG", m_n_channels, 0, m_n_channels));
+      hname("HG_mean").c_str(), hidra::utils::format("Mean {} high gain;channel;mean HG", P).c_str(), m_n_channels, 0,
+      m_n_channels));
   m_hg_mean_physics = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_mean_physics", "Mean FERS high gain (physics);channel;mean HG", m_n_channels, 0, m_n_channels));
+      hname("HG_mean_physics").c_str(), hidra::utils::format("Mean {} high gain (physics);channel;mean HG", P).c_str(),
+      m_n_channels, 0, m_n_channels));
   m_hg_mean_pedestal = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_mean_pedestal", "Mean FERS high gain (pedestal);channel;mean HG", m_n_channels, 0, m_n_channels));
+      hname("HG_mean_pedestal").c_str(), hidra::utils::format("Mean {} high gain (pedestal);channel;mean HG", P).c_str(),
+      m_n_channels, 0, m_n_channels));
   m_lg_mean = reg.Add(std::make_unique<TProfile>(
-      "FERS_LG_mean", "Mean FERS low gain;channel;mean LG", m_n_channels, 0, m_n_channels));
+      hname("LG_mean").c_str(), hidra::utils::format("Mean {} low gain;channel;mean LG", P).c_str(), m_n_channels, 0,
+      m_n_channels));
   m_lg_mean_physics = reg.Add(std::make_unique<TProfile>(
-      "FERS_LG_mean_physics", "Mean FERS low gain (physics);channel;mean LG", m_n_channels, 0, m_n_channels));
+      hname("LG_mean_physics").c_str(), hidra::utils::format("Mean {} low gain (physics);channel;mean LG", P).c_str(),
+      m_n_channels, 0, m_n_channels));
   m_lg_mean_pedestal = reg.Add(std::make_unique<TProfile>(
-      "FERS_LG_mean_pedestal", "Mean FERS low gain (pedestal);channel;mean LG", m_n_channels, 0, m_n_channels));
+      hname("LG_mean_pedestal").c_str(), hidra::utils::format("Mean {} low gain (pedestal);channel;mean LG", P).c_str(),
+      m_n_channels, 0, m_n_channels));
 
   // Inclusive distributions over all channels (physics only).
   m_hg_inclusive_physics = reg.Add(std::make_unique<TH1I>(
-      "FERS_HG_inclusive_physics", "Inclusive FERS high gain (physics);HG [ADC];entries", channel_nbins, 0, value_max));
+      hname("HG_inclusive_physics").c_str(),
+      hidra::utils::format("Inclusive {} high gain (physics);HG [ADC];entries", P).c_str(), channel_nbins, 0,
+      value_max));
   m_lg_inclusive_physics = reg.Add(std::make_unique<TH1I>(
-      "FERS_LG_inclusive_physics", "Inclusive FERS low gain (physics);LG [ADC];entries", channel_nbins, 0, value_max));
+      hname("LG_inclusive_physics").c_str(),
+      hidra::utils::format("Inclusive {} low gain (physics);LG [ADC];entries", P).c_str(), channel_nbins, 0, value_max));
 
   // Per-channel distributions: one TH2I per gain/trigger (x = channel, y = ADC),
   // physics and pedestal only (no "total" copy, to save memory). One TH2 instead
@@ -72,8 +91,8 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
   // entirely when disabled (the pointers stay null and Fill guards on m_per_channel).
   auto book_dist = [&](const char* gain, const char* trig) {
     return reg.Add(std::make_unique<TH2I>(
-        hidra::utils::format("FERS_{}_dist_{}", gain, trig).c_str(),
-        hidra::utils::format("FERS {} ({});channel;{} [ADC]", gain, trig, gain).c_str(),
+        hidra::utils::format("{}_{}_dist_{}", P, gain, trig).c_str(),
+        hidra::utils::format("{} {} ({});channel;{} [ADC]", P, gain, trig, gain).c_str(),
         m_n_channels, 0, m_n_channels, channel_nbins, 0, value_max));
   };
   if (m_per_channel) {
@@ -89,36 +108,46 @@ FERSFiller::FERSFiller(HistogramRegistry& reg,
   // physics only — pedestal events don't saturate. The ";channel;" x-axis title
   // marks them as channel-indexed for the frontend.
   m_hg_saturation = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_saturation", "Saturation fraction per FERS HG channel;channel;saturation fraction", m_n_channels, 0,
-      m_n_channels));
+      hname("HG_saturation").c_str(),
+      hidra::utils::format("Saturation fraction per {} HG channel;channel;saturation fraction", P).c_str(),
+      m_n_channels, 0, m_n_channels));
   m_hg_saturation_physics = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_saturation_physics", "Saturation fraction per FERS HG channel (physics);channel;saturation fraction",
+      hname("HG_saturation_physics").c_str(),
+      hidra::utils::format("Saturation fraction per {} HG channel (physics);channel;saturation fraction", P).c_str(),
       m_n_channels, 0, m_n_channels));
   m_lg_saturation = reg.Add(std::make_unique<TProfile>(
-      "FERS_LG_saturation", "Saturation fraction per FERS LG channel;channel;saturation fraction", m_n_channels, 0,
-      m_n_channels));
+      hname("LG_saturation").c_str(),
+      hidra::utils::format("Saturation fraction per {} LG channel;channel;saturation fraction", P).c_str(),
+      m_n_channels, 0, m_n_channels));
   m_lg_saturation_physics = reg.Add(std::make_unique<TProfile>(
-      "FERS_LG_saturation_physics", "Saturation fraction per FERS LG channel (physics);channel;saturation fraction",
+      hname("LG_saturation_physics").c_str(),
+      hidra::utils::format("Saturation fraction per {} LG channel (physics);channel;saturation fraction", P).c_str(),
       m_n_channels, 0, m_n_channels));
 
   // Per-board aggregates.
   m_hg_board_mean = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_board_mean", "Mean FERS high gain over board channels;board;mean HG", m_n_boards, 0, m_n_boards));
-  m_lg_board_mean = reg.Add(std::make_unique<TProfile>(
-      "FERS_LG_board_mean", "Mean FERS low gain over board channels;board;mean LG", m_n_boards, 0, m_n_boards));
-  m_hg_board_allzero = reg.Add(std::make_unique<TProfile>(
-      "FERS_HG_board_allzero", "Fraction of events with all HG channels zero;board;all-zero fraction", m_n_boards, 0,
+      hname("HG_board_mean").c_str(),
+      hidra::utils::format("Mean {} high gain over board channels;board;mean HG", P).c_str(), m_n_boards, 0,
       m_n_boards));
+  m_lg_board_mean = reg.Add(std::make_unique<TProfile>(
+      hname("LG_board_mean").c_str(),
+      hidra::utils::format("Mean {} low gain over board channels;board;mean LG", P).c_str(), m_n_boards, 0,
+      m_n_boards));
+  m_hg_board_allzero = reg.Add(std::make_unique<TProfile>(
+      hname("HG_board_allzero").c_str(),
+      "Fraction of events with all HG channels zero;board;all-zero fraction", m_n_boards, 0, m_n_boards));
 
   // Board-time compatibility: per-board offset from the per-event median.
   m_board_time_offset = reg.Add(std::make_unique<TProfile>(
-      "FERS_board_time_offset", "Board time offset vs median;board;rel. time offset [#mus]", m_n_boards, 0, m_n_boards));
+      hname("board_time_offset").c_str(), "Board time offset vs median;board;rel. time offset [#mus]", m_n_boards, 0,
+      m_n_boards));
 
   // Per-event trigger-ID consistency: one count per event into "consistent"
   // (bin 1) or "mismatch" (bin 2). ROOT bin labels for the JSROOT/snapshot view;
   // the Dash frontend labels the bars itself via the panel `bin_labels` key.
   m_trigger_id_consistency = reg.Add(std::make_unique<TH1I>(
-      "FERS_trigger_id_consistency", "FERS trigger ID consistency;;events", 2, 0, 2));
+      hname("trigger_id_consistency").c_str(),
+      hidra::utils::format("{} trigger ID consistency;;events", P).c_str(), 2, 0, 2));
   m_trigger_id_consistency->SetCanExtend(TH1::kNoAxis);
   m_trigger_id_consistency->GetXaxis()->SetBinLabel(1, "consistent");
   m_trigger_id_consistency->GetXaxis()->SetBinLabel(2, "mismatch");
@@ -131,7 +160,7 @@ void FERSFiller::Fill(const HidraEvent& event) {
   // an inclusive (total) copy.
   const bool is_physics = event.meta.isPhysics();
   const bool is_pedestal = event.meta.isPedestal();
-  const HidraFersEvent& fers = event.fers;
+  const HidraFersEvent& fers = event.*m_field;
 
   const std::size_t n_hg = std::min<std::size_t>(fers.FERShg.size(), m_n_channels);
   for (std::size_t i = 0; i < n_hg; ++i) {
