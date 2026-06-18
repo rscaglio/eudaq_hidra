@@ -41,9 +41,9 @@ from dash import Dash, Input, Output, dcc, html
 
 from .. import theme
 from .base import Panel
+from .sipm_detector import ALL_MODES, names_for_mode, values_for_mode
 
 COLORSCALE = "Viridis"
-_MODES = ("physics", "pedestal")
 
 
 class FERSBoardPanel(Panel):
@@ -122,7 +122,7 @@ class FERSBoardPanel(Panel):
     # ---- Panel API -------------------------------------------------------
 
     def histogram_names(self) -> list[str]:
-        return [self._hist_name()]
+        return names_for_mode(self._base_hist(), self._mode, self._mode_toggle)
 
     def figure_names(self) -> list[str]:
         # Reads the raw buffers and lays the values out spatially, so it never
@@ -163,7 +163,7 @@ class FERSBoardPanel(Panel):
                 html.Span("Mode:", style={"color": theme.FG, "fontSize": "13px"}),
                 dcc.RadioItems(
                     id={"type": "fers-board-mode", "panel": self.panel_id},
-                    options=[{"label": m, "value": m} for m in _MODES],
+                    options=[{"label": m, "value": m} for m in ALL_MODES],
                     value=self._mode,
                     inline=True,
                     labelStyle={"marginRight": "12px", "color": theme.FG},
@@ -174,8 +174,9 @@ class FERSBoardPanel(Panel):
         )
 
     def render(self, figs, payloads, client_state):
-        payload = payloads.get(self._hist_name())
-        values, _ = _channel_values(payload)
+        values = values_for_mode(
+            payloads, self._base_hist(), self._mode, self._mode_toggle, lambda p: _channel_values(p)[0]
+        )
         # Common colour scale across all boards so they are comparable.
         present = list(values.values()) if values else []
         cmin, cmax = (min(present), max(present)) if present else (0.0, 1.0)
@@ -193,9 +194,9 @@ class FERSBoardPanel(Panel):
             prevent_initial_call=True,
         )
         def _on_mode(value):
-            # Persist the choice; the next poll fetches only the active variant
+            # Persist the choice; the next poll fetches the active variant(s)
             # via histogram_names(). Returning value satisfies Dash's Output rule.
-            if value in _MODES:
+            if value in ALL_MODES:
                 self._mode = value
             return value
 
