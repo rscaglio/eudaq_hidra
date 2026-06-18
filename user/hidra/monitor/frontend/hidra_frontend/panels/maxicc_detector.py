@@ -41,7 +41,7 @@ from dash import Dash, Input, Output, dcc, html
 from .. import theme
 from ..mapping import get_maxicc_channel_info
 from .base import Panel
-from .sipm_detector import _channel_means
+from .sipm_detector import ALL_MODES, _channel_means, names_for_mode, values_for_mode
 
 COLORSCALE = "Viridis"
 _MODES = ("physics", "pedestal")
@@ -118,8 +118,9 @@ class MAXICCDetectorPanel(Panel):
     # ---- Panel API -------------------------------------------------------
 
     def histogram_names(self) -> list[str]:
-        # One per-channel histogram; the three planes read it at different indices.
-        return [self._hist_name()]
+        # Per-channel histogram(s); the three planes read them at different
+        # indices. The `physics - ped` mode fetches both variants to subtract.
+        return names_for_mode(self._base_hist(), self._mode, self._mode_toggle)
 
     def figure_names(self) -> list[str]:
         # Reads the raw TProfile buffer itself and lays values out spatially.
@@ -161,7 +162,7 @@ class MAXICCDetectorPanel(Panel):
                 html.Span("Mode:", style={"color": theme.FG, "fontSize": "13px"}),
                 dcc.RadioItems(
                     id={"type": "maxicc-detector-mode", "panel": self.panel_id},
-                    options=[{"label": m, "value": m} for m in _MODES],
+                    options=[{"label": m, "value": m} for m in ALL_MODES],
                     value=self._mode,
                     inline=True,
                     labelStyle={"marginRight": "12px", "color": theme.FG},
@@ -172,7 +173,7 @@ class MAXICCDetectorPanel(Panel):
         )
 
     def render(self, figs, payloads, client_state):
-        values = _channel_means(payloads.get(self._hist_name()))
+        values = values_for_mode(payloads, self._base_hist(), self._mode, self._mode_toggle, _channel_means)
         geoms = self._geometries()
         label = self._value_label()
         suffix = self._mode_suffix()
@@ -191,8 +192,8 @@ class MAXICCDetectorPanel(Panel):
             prevent_initial_call=True,
         )
         def _on_mode(value):
-            # Persist the choice; the next poll fetches only the active variant.
-            if value in _MODES:
+            # Persist the choice; the next poll fetches the active variant(s).
+            if value in ALL_MODES:
                 self._mode = value
             return value
 

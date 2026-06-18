@@ -52,6 +52,11 @@ from .base import Panel
 
 COLORSCALE = "Viridis"
 _MODES = ("physics", "pedestal")
+# Third radio option on the physics/pedestal mean maps: the per-channel
+# difference physics - pedestal (pedestal-subtracted mean). Shared by the
+# sipm_detector, fers_board and maxicc_detector panels.
+DIFF_MODE = "physics - ped"
+ALL_MODES = (*_MODES, DIFF_MODE)
 
 # Physical fiber pitch (mm): 16 mm between columns, fiber_diameter*sqrt(3)/2
 # between rows. Used only for the cell aspect ratio so the map keeps the real
@@ -135,7 +140,7 @@ class SiPMDetectorPanel(Panel):
     # ---- Panel API -------------------------------------------------------
 
     def histogram_names(self) -> list[str]:
-        return [self._hist_name()]
+        return names_for_mode(self._base_hist(), self._mode, self._mode_toggle)
 
     def figure_names(self) -> list[str]:
         # Reads the raw TProfile buffers itself and lays the values out
@@ -165,7 +170,7 @@ class SiPMDetectorPanel(Panel):
                 html.Span("Mode:", style={"color": theme.FG, "fontSize": "13px"}),
                 dcc.RadioItems(
                     id={"type": "sipm-detector-mode", "panel": self.panel_id},
-                    options=[{"label": m, "value": m} for m in _MODES],
+                    options=[{"label": m, "value": m} for m in ALL_MODES],
                     value=self._mode,
                     inline=True,
                     labelStyle={"marginRight": "12px", "color": theme.FG},
@@ -176,8 +181,7 @@ class SiPMDetectorPanel(Panel):
         )
 
     def render(self, figs, payloads, client_state):
-        payload = payloads.get(self._hist_name())
-        values = _channel_means(payload)
+        values = values_for_mode(payloads, self._base_hist(), self._mode, self._mode_toggle, _channel_means)
         return [_sipm_figure(values, self._geom(), self._value_label(), self._title())]
 
     def register_callbacks(self, app: Dash) -> None:
@@ -190,9 +194,9 @@ class SiPMDetectorPanel(Panel):
             prevent_initial_call=True,
         )
         def _on_mode(value):
-            # Persist the choice; the next poll fetches only the active variant
+            # Persist the choice; the next poll fetches only the active variant(s)
             # via histogram_names(). Returning value satisfies Dash's Output rule.
-            if value in _MODES:
+            if value in ALL_MODES:
                 self._mode = value
             return value
 
@@ -229,6 +233,46 @@ def _channel_means(payload: Optional[dict]) -> Optional[dict[int, float]]:
             means[channel] = float(sumw[idx])
 
     return means
+
+
+def _diff_means(
+    physics: Optional[dict[int, float]], pedestal: Optional[dict[int, float]]
+) -> Optional[dict[int, float]]:
+    """Per-channel physics - pedestal, for channels present in BOTH maps.
+
+    Returns None if either input is missing, so the panel shows its usual
+    "missing on server" placeholder when one variant hasn't been published yet.
+    A channel present in only one of the two is dropped (the difference is
+    undefined there).
+    """
+    if physics is None or pedestal is None:
+        return None
+    return {ch: physics[ch] - pedestal[ch] for ch in physics.keys() & pedestal.keys()}
+
+
+def names_for_mode(base: str, mode: str, mode_toggle: bool) -> list[str]:
+    """Backend histogram names to fetch for the active mode toggle.
+
+    `physics`/`pedestal` fetch a single `<base>_<mode>`; the `physics - ped`
+    diff fetches both variants so render() can subtract them. Without the
+    toggle the base name is used verbatim. Shared by the three 2D mean maps
+    (sipm_detector, fers_board, maxicc_detector)."""
+    if not mode_toggle:
+        return [base]
+    if mode == DIFF_MODE:
+        return [f"{base}_physics", f"{base}_pedestal"]
+    return [f"{base}_{mode}"]
+
+
+def values_for_mode(payloads, base, mode, mode_toggle, extract):
+    """Per-channel values for the active mode. For `physics - ped` it reads both
+    variants and returns their per-channel difference; otherwise the single
+    active variant. `extract` maps a payload dict -> {channel: value} (e.g.
+    `_channel_means`), so each panel keeps its own buffer reader."""
+    if mode_toggle and mode == DIFF_MODE:
+        return _diff_means(extract(payloads.get(f"{base}_physics")), extract(payloads.get(f"{base}_pedestal")))
+    name = f"{base}_{mode}" if mode_toggle else base
+    return extract(payloads.get(name))
 
 
 def _build_geometry(info: dict[int, dict]) -> Optional[dict]:

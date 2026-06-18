@@ -348,10 +348,12 @@ Append an entry under `tabs:` in `config.yaml`:
   `height:` (**per board**); `columns:` (boards per row); `link_tab:` opens
   that tab's `channel_selector` of the **same gain** (HG/LG, parsed from the
   histogram name) on the clicked channel. With `mode_toggle: true` the panel
-  shows a **physics/pedestal** radio and appends the active suffix to
-  `histogram` (so `histogram: FERS_HG_mean` → `_physics` / `_pedestal`),
-  fetching **only the shown variant** from the backend; without it,
-  `histogram` is used verbatim (e.g. `FERS_HG_saturation_physics`).
+  shows a **physics / pedestal / physics - ped** radio and appends the active
+  suffix to `histogram` (so `histogram: FERS_HG_mean` → `_physics` /
+  `_pedestal`), fetching **only the shown variant** from the backend; the
+  `physics - ped` option fetches both and shows their per-channel difference
+  (pedestal-subtracted mean). Without the toggle, `histogram` is used verbatim
+  (e.g. `FERS_HG_saturation_physics`).
 
 - `maxicc_detector` — geometric ADC maps of the MAXICC crystal calorimeter
   (the 3 new FERS boards). One gain per panel, drawn as **three heatmaps side
@@ -361,8 +363,9 @@ Append an entry under `tabs:` in `config.yaml`:
   map is `mapping/maxicc_channels.json` (board/channel → `[layer, col, row]`).
   The MAXICC boards are read out after the other FERS, so the global histogram
   index is `(board_offset + board) * 64 + ch`. Params: `histogram:`
-  (`FERS_HG_mean` / `FERS_LG_mean`); `label:`; `mode_toggle: true` (physics/
-  pedestal radio, like `fers_board`); `board_offset:` (default 20); `height:`
+  (`FERS_HG_mean` / `FERS_LG_mean`); `label:`; `mode_toggle: true`
+  (physics / pedestal / physics - ped radio, like `fers_board`);
+  `board_offset:` (default 20); `height:`
   (per map). Until the DAQ reads 23 boards (`FERS_NBOARDS=23`) those channels are
   not in the histograms yet, so every cell shows grey "no data" — the detector
   outline is still drawn. Two tabs (`maxicc_hg`, `maxicc_lg`) host the two gains.
