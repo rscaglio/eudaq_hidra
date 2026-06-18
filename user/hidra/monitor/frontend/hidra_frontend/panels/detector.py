@@ -370,14 +370,19 @@ def _detector_figure(
         "tickmode": "array", "tickvals": columns,
         "showgrid": False, "zeroline": False,
     }
-    # autorange reversed -> row 1 at the top (front view). scaleanchor with
-    # scaleratio = height/width makes each 1x1 cell display with the real
-    # 128 x 28.3 module proportions.
+    # Default (non-reversed) y-axis: row increases upward, which is the correct
+    # front view for this detector's row numbering. We deliberately do NOT set
+    # autorange="reversed": only the data figure used to, while the placeholder
+    # and error figures stayed normal, so a react update that switched the axis
+    # direction with uirevision held constant was ignored by Plotly and left the
+    # detector intermittently upside-down. Keeping every variant on the default
+    # axis makes the orientation deterministic. scaleanchor with scaleratio =
+    # height/width makes each 1x1 cell display with the real 128 x 28.3 module
+    # proportions.
     layout["yaxis"] = {
         **layout["yaxis"],
         "title": "row",
         "tickmode": "array", "tickvals": rows,
-        "autorange": "reversed",
         "showgrid": False, "zeroline": False,
         "scaleanchor": "x", "scaleratio": MODULE_HEIGHT_MM / MODULE_WIDTH_MM,
     }
