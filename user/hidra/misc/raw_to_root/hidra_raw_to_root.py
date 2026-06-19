@@ -8,7 +8,8 @@ The output mimics the active tree produced by HidraRootEventWriter:
   tree name: hidra
   scalar metadata branches: run, event, event_time, time_span, spill_number,
     detector_mask, trigger_mask, event_flags, n_detectors
-  vector<double> branches: payload_bytes, ADCs, ADCFlags, TDCs, TDCFlags,
+  vector<double> branches: payload_bytes, ADCs, ADCFlags, ADCevt, TDCs, TDCFlags,
+    TDCevt,
     FERStsamp_us, FERSrel_tsamp_us, FERStrigger_id, FERSboard_id, FERShg,
     FERSlg, FERStoa, FERStot, TrackerX, TrackerY
 
@@ -56,8 +57,10 @@ ROOT_VECTOR_BRANCHES = [
     "payload_bytes",
     "ADCs",
     "ADCFlags",
+    "ADCevt",
     "TDCs",
     "TDCFlags",
+    "TDCevt",
     "FERStsamp_us",
     "FERSrel_tsamp_us",
     "FERStrigger_id",
@@ -392,8 +395,10 @@ class HidraXdcPayloadDecoder(RootPayloadDecoder):
 
         adc_values = [-1.0] * self.n_adc_channels
         adc_flags = [-1.0] * self.n_adc_channels
+        adc_events: List[float] = []
         tdc_values = [-1.0] * self.n_tdc_channels
         tdc_flags = [-1.0] * self.n_tdc_channels
+        tdc_events: List[float] = []
         words = struct.unpack("<" + "I" * (len(payload) // 4), payload)
 
         iword = 0
@@ -471,6 +476,10 @@ class HidraXdcPayloadDecoder(RootPayloadDecoder):
             if trailer_type != 0b100:
                 logging.error("event %s: geo %s unexpected XDC trailer word 0x%08x", detector.trigger_n, geo, trailer_word)
                 return
+            if VMESPEC[module_type]["is_qdc"]:
+                adc_events.append(float(trailer_event))
+            else:
+                tdc_events.append(float(trailer_event))
             if trailer_event != detector.trigger_n:
                 logging.warning(
                     "event %s: geo %s XDC trailer event count %s does not match trigger",
@@ -482,8 +491,10 @@ class HidraXdcPayloadDecoder(RootPayloadDecoder):
 
         self.add(branches, "ADCs", adc_values)
         self.add(branches, "ADCFlags", adc_flags)
+        self.add(branches, "ADCevt", adc_events)
         self.add(branches, "TDCs", tdc_values)
         self.add(branches, "TDCFlags", tdc_flags)
+        self.add(branches, "TDCevt", tdc_events)
 
 
 class HidraFersPayloadDecoder(RootPayloadDecoder):
