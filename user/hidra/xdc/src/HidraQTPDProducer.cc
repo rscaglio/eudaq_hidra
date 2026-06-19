@@ -830,6 +830,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
   void ConfigureTdcBoard(const BoardConfig& board) {
     WriteReg(V775_FULL_SCALE_RANGE_REG, board.tdcFullScale, board.baseAddr);
     WriteReg(V792_CONTROL_1_REG, 0x60, board.baseAddr);
+    WriteReg(V792_BIT_SET_2_REG, 0x0020, board.baseAddr); // disable not valid suppression
     WriteReg(V792_BIT_SET_2_REG, 0x0010, board.baseAddr); // disable zero suppression
     WriteReg(V792_BIT_SET_2_REG, 0x0008, board.baseAddr); // disable overflow suppression
     WriteReg(V792_BIT_SET_2_REG, 0x1000, board.baseAddr); // enable empty events
