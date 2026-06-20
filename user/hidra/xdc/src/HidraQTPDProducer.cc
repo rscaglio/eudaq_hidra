@@ -7,6 +7,7 @@
 #include <CAENVMElib.h>
 #include <CAENVMEtypes.h>
 #include "HidraUtils.hh"
+#include "v560.h"
 
 #include <array>
 #include <atomic>
@@ -40,13 +41,6 @@ enum V977OUT {
   cResetSignal = 15
 };
 
-enum V560CHAN {
-  sFastGate = 0,
-  sIsPhys = 1,
-  sIsPed = 2,
-  sWW = 3,
-  sEndOfSpill = 4
-};
 ////////////////////
 
 constexpr std::size_t MAX_BLT_SIZE = 1024 * 4; // TODO check this
@@ -134,6 +128,8 @@ struct V977Pattern {
   bool spillStart = false;
   bool spillEnd = false;
 };
+
+
 
 std::string hex32(uint32_t value) {
   std::ostringstream oss;
@@ -627,6 +623,23 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     return eos_count;
   }  
 
+  V560Data ReadV560Complete() {
+    if(!m_v560Enabled) {
+      return {};
+    }
+    V560Data data;
+    data.fastGateC = ReadV560Counter(V560CHAN::sFastGate);
+    data.physTrigC = ReadV560Counter(V560CHAN::sIsPhys);
+    data.physTrigC = ReadV560Counter(V560CHAN::sIsPed);
+    data.wwC = ReadV560Counter(V560CHAN::sWW);
+    data.endOfSpillC = ReadV560Counter(V560CHAN::sEndOfSpill);
+    data.v792GateC = ReadV560Counter(V560CHAN::sV792Gate);
+    data.TDCCommStopC = ReadV560Counter(V560CHAN::sTDCCommStop);
+    data.V862GateC = ReadV560Counter(V560CHAN::sV862Gate);
+    data.LeakageGateC = ReadV560Counter(V560CHAN::sLeakageGate);
+    return data;
+  }
+
   void VetoTrigger() {
     uint16_t setBitMask = 0x0000 | (1u << V977OUT::cVeto) | (1u << V977OUT::cPedVeto);
     WriteReg(V977_OUTPUT_SET_REG, setBitMask, m_v977Base);
@@ -1050,6 +1063,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     event->SetTimestamp(m_evtTimeNs, m_evtTimeNs + 100ULL);
     event->SetTag("nativeTimestampBegin", std::to_string(m_tracker_time));
     event->SetTag("detectorDataSize", std::to_string(raw.size()));
+
     SendEvent(std::move(event));
   }
 
