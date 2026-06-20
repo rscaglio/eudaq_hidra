@@ -988,7 +988,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
       m_v560_data = ReadV560Complete();
       HIDRA_DEBUG(
         "Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_v560_data.fastGateC, m_evt & 0xFFFF);
-        if (m_v560_data.fastGateC != (m_evt & 0xFFFF)) {
+        if (m_v560_data.fastGateC != ((m_evt & 0xFFFF)+1)) {
             HIDRA_ERROR("Mismatch between trigger count from V560 ({}) and expected from event pattern ({}). You are "
                         "probably loosing events.",
                         m_v560_data.fastGateC,
