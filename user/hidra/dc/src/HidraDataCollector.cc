@@ -196,9 +196,11 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
 
     uint64_t age_ns = hidra::utils::getTimens() - it->second.first_seen_ns;
 
-    bool is_old_time = age_ns > m_sync_timeout_us*1000;
-    bool is_old_trg = (m_max_trigger_seen - it->second.trigger_number) > 64000; // we have to flush to free the buffer for new "trigger & 0xFFFF" 
+    long long trackerTrigMaxValue = 65535;
 
+    bool is_old_time = age_ns > m_sync_timeout_us*1000;
+    bool is_old_trg = (static_cast<long long>(m_max_trigger_seen) - it->second.trigger_number > trackerTrigMaxValue) && it->second.trigger_number > trackerTrigMaxValue; // we have to flush to free the buffer for new "trigger & 0xFFFF" 
+    
     if (!is_old_time && !is_old_trg) {
       ++it;
       continue;
