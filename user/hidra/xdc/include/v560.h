@@ -1,5 +1,7 @@
 #include <cstdint>
 
+#define v560Checkword 0xB0BFE22A
+
 enum V560CHAN {
   sFastGate = 0,
   sIsPhys = 1,

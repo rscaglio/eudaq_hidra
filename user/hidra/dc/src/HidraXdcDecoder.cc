@@ -1,6 +1,7 @@
 #include "HidraUtils.hh"
 #include "Logger.hh"
 #include "HidraXdcDecoder.hh"
+#include "../xdc/include/v560.h"
 
 #include <chrono>
 #include <cstring>
@@ -85,6 +86,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   std::vector<double> TDCvalues(m_n_tdc_channels, -1);
   std::vector<double> TDCflags(m_n_tdc_channels, -1);
   std::vector<double> XDCTriggers(m_vme_geo_map.size(), -1);
+  std::vector<double> ScalerCounts(sizeof(V560Data)/sizeof(uint32_t) -1, -1);
 
 
   uint8_t expected_word_mask = 0b010; // 0b010 is header, 0b000 is channel, 0b100 is trailer
@@ -95,6 +97,28 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
     auto word = *it;
 
     if ((word & 0xFE000000) == 0xFE000000) { // this is expected at the end of buffer
+      continue;
+    } else if (word == v560Checkword) {
+      constexpr size_t struct_words = sizeof(V560Data) / sizeof(uint32_t);
+      if (std::distance(it, words.end()) < static_cast<ptrdiff_t>(struct_words)) {
+        HIDRA_ERROR("Malformed buffer: Found V560 Checkword, but block is truncated.");
+        return;
+      }
+
+      V560Data v560Data;
+      std::memcpy(&v560Data, &(*it), sizeof(V560Data));
+
+      ScalerCounts[0] = v560Data.fastGateC;
+      ScalerCounts[1] = v560Data.physTrigC;
+      ScalerCounts[2] = v560Data.pedTrigC;
+      ScalerCounts[3] = v560Data.wwC;
+      ScalerCounts[4] = v560Data.endOfSpillC;
+      ScalerCounts[5] = v560Data.v792GateC;
+      ScalerCounts[6] = v560Data.TDCCommStopC;
+      ScalerCounts[7] = v560Data.V862GateC;
+      ScalerCounts[8] = v560Data.LeakageGateC;
+
+      std::advance(it, struct_words - 1);
       continue;
     }
 
@@ -220,6 +244,7 @@ void HidraXdcDecoder::decode(const std::vector<uint8_t>& payload, HidraXdcEvent&
   event.TDCvalues = std::move(TDCvalues);
   event.TDCflags = std::move(TDCflags);
   //event.XDCTriggers = std::move(XDCTriggers);
+  event.ScalerCounts = std::move(ScalerCounts);
 }
 
 } // namespace hidra

@@ -112,6 +112,7 @@ std::vector<std::string> HidraXdcPayloadDecoder::BranchNames() const {
   names.push_back("ADCFlags");
   names.push_back("TDCs");
   names.push_back("TDCFlags");
+  names.push_back("Scaler");
   //names.push_back("XDCTriggers");
   return names;
 }
@@ -132,6 +133,9 @@ void HidraXdcPayloadDecoder::Decode(const RootDetectorPayload& detector,
   AddBranchValues(branches, "ADCFlags", xdc_event.ADCflags);
   AddBranchValues(branches, "TDCs", xdc_event.TDCvalues);
   AddBranchValues(branches, "TDCFlags", xdc_event.TDCflags);
+  if (!xdc_event.ScalerCounts.empty()) {
+    AddBranchValues(branches, "Scaler", xdc_event.ScalerCounts);
+  }
   //AddBranchValues(branches, "XDCTriggers", xdc_event.XDCTriggers);
 }
 
