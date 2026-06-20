@@ -307,11 +307,7 @@ private:
     m_running = false;
     StopAcquisitionThread();
     if (m_v560Enabled) {
-      m_fastGateCount_560 = ReadV560FastGate();
-      m_physicsCount_560 = ReadV560Physics();
-      m_pedestalCount_560 = ReadV560Pedestal();
-      m_wwCount_560 = ReadV560WW();
-      m_endOfSpillCount_560 = ReadV560EndOfSpill();
+      m_v560_data = ReadV560Complete();
     }
     SendEORE();
     HIDRA_INFO("Stopping run {}", m_runNumber);
@@ -734,16 +730,6 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
           HIDRA_WARN("Both ped and phy signals were latched for this evt {}. This will be reported in the trigger mask", m_evt);
         }
 
-	      if (m_v560Enabled){
-          m_triggerCount_560 = ReadV560FastGate();
-	      }
-
-        HIDRA_DEBUG("Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_triggerCount_560, m_evt & 0xFFFF);
-
-        if (m_v560Enabled && m_triggerCount_560 != (m_evt & 0xFFFF)) {
-          HIDRA_ERROR("Mismatch between trigger count from V560 ({}) and expected from event pattern ({}). You are probably loosing events.", m_triggerCount_560, m_evt & 0xFFFF);
-        }
-
         bool eventHandlingOk = ReadOneBlockAndSendEvent();
         m_evt++;
         if (m_TriggerMask == 0b01) m_evt_phy++;
@@ -998,6 +984,18 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
 
     m_tracker_time = ReadEventSyncTstamp24();
 
+    if (m_v560Enabled) {
+      m_v560_data = ReadV560Complete();
+      HIDRA_DEBUG(
+        "Trigger count 16 lsb. Read from V560: {}. Read from event pattern: {}", m_v560_data.fastGateC, m_evt & 0xFFFF);
+        if (m_v560_data.fastGateC != (m_evt & 0xFFFF)) {
+            HIDRA_ERROR("Mismatch between trigger count from V560 ({}) and expected from event pattern ({}). You are "
+                        "probably loosing events.",
+                        m_v560_data.fastGateC,
+                        m_evt & 0xFFFF);
+        }
+    }
+
     DumpDebugRawWords(byteCount);
 
     SendDataEvent(byteCount);
@@ -1056,13 +1054,20 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
       HIDRA_ERROR("Event supposed to have {} bytes. Block with {} bytes", byteCount, raw.size());
     }
     event->AddBlock(0, raw);
+    auto size = raw.size();
 
+    if(m_v560Enabled) {
+        auto ptr = reinterpret_cast<std::byte*>(&m_v560_data);
+        auto buf = std::vector<std::byte>(ptr, ptr + sizeof(m_v560_data));
+      event->AddBlock(999, buf);
+      size += buf.size();
+    }
     event->SetTag("spillNumber", std::to_string(m_spillCount));
     event->SetTag("triggerMask", std::to_string(m_TriggerMask));
     event->SetTag("endianness", "BE32");
     event->SetTimestamp(m_evtTimeNs, m_evtTimeNs + 100ULL);
     event->SetTag("nativeTimestampBegin", std::to_string(m_tracker_time));
-    event->SetTag("detectorDataSize", std::to_string(raw.size()));
+    event->SetTag("detectorDataSize", std::to_string(size));
 
     SendEvent(std::move(event));
   }
@@ -1098,11 +1103,15 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     eore->SetRunN(static_cast<uint32_t>(m_runNumber));
     eore->SetTag("EventsSent", std::to_string(m_evt));
     if (m_v560Enabled) {
-      eore->SetTag("V560FastGate", std::to_string(m_fastGateCount_560));
-      eore->SetTag("V560Physics", std::to_string(m_physicsCount_560));
-      eore->SetTag("V560Pedestal", std::to_string(m_pedestalCount_560));
-      eore->SetTag("V560WW", std::to_string(m_wwCount_560));
-      eore->SetTag("V560EndOfSpill", std::to_string(m_endOfSpillCount_560));
+      eore->SetTag("V560FastGate", std::to_string(m_v560_data.fastGateC));
+      eore->SetTag("V560Physics", std::to_string(m_v560_data.physTrigC));
+      eore->SetTag("V560Pedestal", std::to_string(m_v560_data.pedTrigC));
+      eore->SetTag("V560WW", std::to_string(m_v560_data.wwC));
+      eore->SetTag("V560EndOfSpill", std::to_string(m_v560_data.endOfSpillC));
+      eore->SetTag("V560V792Gate", std::to_string(m_v560_data.v792GateC));
+      eore->SetTag("V560TDCCommStop", std::to_string(m_v560_data.TDCCommStopC));
+      eore->SetTag("V560V862Gate", std::to_string(m_v560_data.V862GateC));
+      eore->SetTag("V560Leakage", std::to_string(m_v560_data.LeakageGateC));
     }
 
     const auto runStop = std::chrono::steady_clock::now();
@@ -1215,13 +1224,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
     m_evt = m_evt_ped = m_evt_phy = 0;
     m_spillCount = 0;
     m_evtTimeNs = 0;
-    m_triggerCount_560 = 0;
-    m_spillCount_560 = 0;
-    m_fastGateCount_560 = 0;
-    m_physicsCount_560 = 0;
-    m_pedestalCount_560 = 0;
-    m_wwCount_560 = 0;
-    m_endOfSpillCount_560 = 0;
+    m_v560_data = {};
   }
 
   void ResetReadoutBuffers() {
@@ -1262,13 +1265,7 @@ private:
   uint32_t m_tracker_time = std::numeric_limits<uint32_t>::max();
 
   //V560 scaler
-  uint32_t m_triggerCount_560 = 0;
-  uint32_t m_spillCount_560 = 0;
-  uint32_t m_fastGateCount_560 = 0;
-  uint32_t m_physicsCount_560 = 0;
-  uint32_t m_pedestalCount_560 = 0;
-  uint32_t m_wwCount_560 = 0;
-  uint32_t m_endOfSpillCount_560 = 0;
+  V560Data m_v560_data;
 
   std::chrono::steady_clock::time_point m_runStart;
   std::chrono::steady_clock::time_point m_last_status_log = std::chrono::steady_clock::time_point::min();
