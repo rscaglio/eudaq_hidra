@@ -54,7 +54,7 @@ private:
   bool IsComplete(PendingTrigger& pending);
 
   eudaq::EventSP BuildFullEvent(PendingTrigger& pending);
-  bool EnqueueMergedEvent(const eudaq::EventSP& event);
+  bool EnqueueMergedEvent(const eudaq::EventSP& event, bool wBin = true, bool wRoot = true);
   std::string MakeOutputFile(const std::string& extension, const std::string& directory) const;
   void FlushOldIncompleteEvents();
   void CheckMaxEvents();

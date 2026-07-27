@@ -65,7 +65,7 @@ std::string HidraDataCollector::MakeOutputFile(const std::string& extension, con
   return (dir / name).string();
 }
 
-bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event) {
+bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event, bool wBin, bool wRoot) {
   if (!event) {
     return false;
   }
@@ -82,11 +82,11 @@ bool HidraDataCollector::EnqueueMergedEvent(const eudaq::EventSP& event) {
 
   bool accepted = false;
 
-  if (m_write_binary_output && m_binary_writer) {
+  if (m_write_binary_output && m_binary_writer && wBin) {
     accepted = m_binary_writer->EnqueueEvent(event) || accepted;
   }
 
-  if (m_write_root_output && m_root_writer) {
+  if (m_write_root_output && m_root_writer && wRoot) {
     accepted = m_root_writer->EnqueueEvent(event) || accepted;
   }
 
@@ -227,7 +227,7 @@ void HidraDataCollector::FlushOldIncompleteEvents() {
     m_n_incomplete_events++;
     ++m_event_count;
     UpdateStatusTags();
-    EnqueueMergedEvent(mergedEvt);
+    EnqueueMergedEvent(mergedEvt, true, true);
     WriteEvent(mergedEvt);
 
     it = m_pending_events.erase(it);
@@ -609,12 +609,28 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
   // ... check if source duplicates ...
   if (pending.events_by_source.count(detectorID) != 0) {
     HIDRA_ERROR("Duplicate event from source/detID {}/{} for trigger {}. "
-                "REPLACING PREVIOUS ONE",
+                "BUILDING PREVIOUS ONE FOR BINARY OUTPUT ONLY",
                 source,
                 detectorID,
                 trigger_number);
     pending.flags |= hidra::utils::HidraEventFlags::DuplicatedTrigger;
-    // TODO : this is severe.. handle it!
+
+    PendingTrigger duplicatePending;
+    duplicatePending.trigger_number = trigger_number;
+    duplicatePending.first_seen_ns = pending.first_seen_ns;
+    duplicatePending.flags = hidra::utils::HidraEventFlags::DuplicatedTriggerPrevious;
+    duplicatePending.events_by_source[detectorID] = std::move(pending.events_by_source.at(detectorID));
+
+    auto duplicateEvt = BuildFullEvent(duplicatePending);
+    if (duplicateEvt) {
+      duplicateEvt->SetTag("SYNC_STATUS", "DUPLICATE_SOURCE_PREVIOUS");
+      EnqueueMergedEvent(duplicateEvt, true, false);
+    } else {
+      HIDRA_WARN("Failed to build previous duplicate event from source/detID {}/{} for trigger {}",
+                 source,
+                 detectorID,
+                 trigger_number);
+    }
   }
 
   // .. if not, assign also the SourceEvent
@@ -736,7 +752,7 @@ void HidraDataCollector::DoReceive(eudaq::ConnectionSPC id, eudaq::EventSP ev) {
 
   ++m_event_count;
   UpdateStatusTags();
-  EnqueueMergedEvent(mergedEvt);
+  EnqueueMergedEvent(mergedEvt, true, true);
   WriteEvent(mergedEvt);
 
   m_pending_events.erase(trigger_number & 0xFFFF);
