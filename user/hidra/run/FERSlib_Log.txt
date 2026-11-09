@@ -1,0 +1,98 @@
+FERSlib Log created on Mon Jun 22 06:17:04 2026 UTC
+[00h:00m:00s:000ms][INFO] Opening Device with path eth:192.168.50.125:tdl:0:0
+[00h:00m:00s:000ms][INFO][CNC 00] Opening CNC with IP-ADDR = 192.168.50.125
+[00h:00m:00s:501ms][INFO][CNC 00] Data receiver thread is started
+[00h:00m:00s:502ms][INFO][CNC 00] Connected CNC with index 0
+[00h:00m:00s:653ms][INFO][BRD 00] Connected board with index 0: Type=A5202, Code=5202, PID=59146, Ch=64, FW_Rev=A1230708
+[00h:00m:00s:663ms][INFO][BRD 00] Init Readout. Tot Alloc. size = 34.20 MB
+[00h:00m:00s:663ms][INFO] Opening Device with path eth:192.168.50.125:tdl:0:1
+[00h:00m:00s:832ms][INFO][BRD 01] Connected board with index 1: Type=A5202, Code=5202, PID=12757, Ch=64, FW_Rev=A1230708
+[00h:00m:00s:843ms][INFO][BRD 01] Init Readout. Tot Alloc. size = 34.34 MB
+[00h:00m:00s:843ms][INFO] Opening Device with path eth:192.168.50.125:tdl:0:2
+[00h:00m:01s:004ms][INFO][BRD 02] Connected board with index 2: Type=A5202, Code=5202, PID=25534, Ch=64, FW_Rev=A1230708
+[00h:00m:01s:014ms][INFO][BRD 02] Init Readout. Tot Alloc. size = 34.49 MB
+[00h:00m:01s:014ms][INFO] Opening Device with path eth:192.168.50.125:tdl:0:3
+[00h:00m:01s:175ms][INFO][BRD 03] Connected board with index 3: Type=A5202, Code=5202, PID=49177, Ch=64, FW_Rev=A1230708
+[00h:00m:01s:185ms][INFO][BRD 03] Init Readout. Tot Alloc. size = 34.63 MB
+[00h:00m:01s:185ms][INFO] Opening Device with path eth:192.168.50.125:tdl:1:0
+[00h:00m:01s:347ms][INFO][BRD 04] Connected board with index 4: Type=A5202, Code=5202, PID=59145, Ch=64, FW_Rev=A1230708
+[00h:00m:01s:357ms][INFO][BRD 04] Init Readout. Tot Alloc. size = 34.77 MB
+[00h:00m:01s:357ms][INFO] Opening Device with path eth:192.168.50.125:tdl:1:1
+[00h:00m:01s:523ms][INFO][BRD 05] Connected board with index 5: Type=A5202, Code=5202, PID=59144, Ch=64, FW_Rev=A1230708
+[00h:00m:01s:534ms][INFO][BRD 05] Init Readout. Tot Alloc. size = 34.91 MB
+[00h:00m:01s:534ms][INFO] Opening Device with path eth:192.168.50.125:tdl:1:2
+[00h:00m:01s:699ms][INFO][BRD 06] Connected board with index 6: Type=A5202, Code=5202, PID=22676, Ch=64, FW_Rev=A1230708
+[00h:00m:01s:709ms][INFO][BRD 06] Init Readout. Tot Alloc. size = 35.05 MB
+[00h:00m:01s:709ms][INFO] Opening Device with path eth:192.168.50.125:tdl:1:3
+[00h:00m:01s:738ms][WARNING] Inconsistent NumCh read from board 7(PID=25742): NumCh Read=12849, library forces NumCh to 64
+[00h:00m:01s:871ms][INFO][BRD 07] Connected board with index 7: Type=DT5202, Code=5202, PID=25742, Ch=64, FW_Rev=A1230708
+[00h:00m:01s:882ms][INFO][BRD 07] Init Readout. Tot Alloc. size = 35.19 MB
+[00h:00m:01s:882ms][INFO] Opening Device with path eth:192.168.50.125:tdl:2:0
+[00h:00m:02s:050ms][INFO][BRD 08] Connected board with index 8: Type=A5202, Code=5202, PID=59150, Ch=64, FW_Rev=A1230708
+[00h:00m:02s:061ms][INFO][BRD 08] Init Readout. Tot Alloc. size = 35.33 MB
+[00h:00m:02s:061ms][INFO] Opening Device with path eth:192.168.50.125:tdl:2:1
+[00h:00m:02s:229ms][INFO][BRD 09] Connected board with index 9: Type=A5202, Code=5202, PID=59143, Ch=64, FW_Rev=A1230708
+[00h:00m:02s:239ms][INFO][BRD 09] Init Readout. Tot Alloc. size = 35.47 MB
+[00h:00m:02s:240ms][INFO] Opening Device with path eth:192.168.50.125:tdl:2:2
+[00h:00m:02s:407ms][INFO][BRD 10] Connected board with index 10: Type=A5202, Code=5202, PID=62793, Ch=64, FW_Rev=A1230708
+[00h:00m:02s:417ms][INFO][BRD 10] Init Readout. Tot Alloc. size = 35.61 MB
+[00h:00m:02s:418ms][INFO] Opening Device with path eth:192.168.50.125:tdl:2:3
+[00h:00m:02s:588ms][INFO][BRD 11] Connected board with index 11: Type=A5202, Code=5202, PID=12759, Ch=64, FW_Rev=A1230708
+[00h:00m:02s:598ms][INFO][BRD 11] Init Readout. Tot Alloc. size = 35.76 MB
+[00h:00m:02s:598ms][INFO] Opening Device with path eth:192.168.50.125:tdl:3:0
+[00h:00m:02s:761ms][INFO][BRD 12] Connected board with index 12: Type=A5202, Code=5202, PID=25532, Ch=64, FW_Rev=A1230708
+[00h:00m:02s:771ms][INFO][BRD 12] Init Readout. Tot Alloc. size = 35.90 MB
+[00h:00m:02s:772ms][INFO] Opening Device with path eth:192.168.50.125:tdl:3:1
+[00h:00m:02s:945ms][INFO][BRD 13] Connected board with index 13: Type=A5202, Code=5202, PID=59147, Ch=64, FW_Rev=A1230708
+[00h:00m:02s:956ms][INFO][BRD 13] Init Readout. Tot Alloc. size = 36.04 MB
+[00h:00m:02s:956ms][INFO] Opening Device with path eth:192.168.50.125:tdl:3:2
+[00h:00m:03s:126ms][INFO][BRD 14] Connected board with index 14: Type=A5202, Code=5202, PID=51716, Ch=64, FW_Rev=A1230708
+[00h:00m:03s:137ms][INFO][BRD 14] Init Readout. Tot Alloc. size = 36.18 MB
+[00h:00m:03s:137ms][INFO] Opening Device with path eth:192.168.50.125:tdl:3:3
+[00h:00m:03s:309ms][INFO][BRD 15] Connected board with index 15: Type=A5202, Code=5202, PID=59149, Ch=64, FW_Rev=A1230708
+[00h:00m:03s:319ms][INFO][BRD 15] Init Readout. Tot Alloc. size = 36.32 MB
+[00h:00m:03s:319ms][INFO] Opening Device with path eth:192.168.50.125:tdl:4:0
+[00h:00m:03s:490ms][INFO][BRD 16] Connected board with index 16: Type=A5202, Code=5202, PID=25533, Ch=64, FW_Rev=A1230708
+[00h:00m:03s:501ms][INFO][BRD 16] Init Readout. Tot Alloc. size = 36.46 MB
+[00h:00m:03s:501ms][INFO] Opening Device with path eth:192.168.50.125:tdl:4:1
+[00h:00m:03s:679ms][INFO][BRD 17] Connected board with index 17: Type=A5202, Code=5202, PID=49178, Ch=64, FW_Rev=A1230708
+[00h:00m:03s:690ms][INFO][BRD 17] Init Readout. Tot Alloc. size = 36.60 MB
+[00h:00m:03s:690ms][INFO] Opening Device with path eth:192.168.50.125:tdl:4:2
+[00h:00m:03s:865ms][INFO][BRD 18] Connected board with index 18: Type=A5202, Code=5202, PID=22678, Ch=64, FW_Rev=A1230708
+[00h:00m:03s:875ms][INFO][BRD 18] Init Readout. Tot Alloc. size = 36.74 MB
+[00h:00m:03s:875ms][INFO] Opening Device with path eth:192.168.50.125:tdl:4:3
+[00h:00m:04s:043ms][INFO][BRD 19] Connected board with index 19: Type=DT5202, Code=5202, PID=16246, Ch=64, FW_Rev=A1230708
+[00h:00m:04s:053ms][INFO][BRD 19] Init Readout. Tot Alloc. size = 36.88 MB
+[00h:00m:17s:948ms][INFO] Starting Run #1317 in TDL mode
+[00h:00m:17s:948ms][INFO] Sending Sync commands on TDL
+[00h:01m:11s:159ms][INFO][CNC 00] Stop Command issued (RunTIme=53.221 s)
+[00h:01m:11s:159ms][INFO][CNC 00] RX Thread is now IDLE. (RunTime=53.221 s)
+[00h:01m:11s:169ms][INFO] Run #1317 stopped
+[00h:01m:25s:923ms][INFO] Starting Run #1318 in TDL mode
+[00h:01m:25s:923ms][INFO] Sending Sync commands on TDL
+[00h:02m:50s:303ms][INFO][CNC 00] Stop Command issued (RunTIme=84.380 s)
+[00h:02m:50s:303ms][INFO][CNC 00] RX Thread is now IDLE. (RunTime=84.380 s)
+[00h:02m:50s:313ms][INFO] Run #1318 stopped
+[00h:03m:19s:239ms][INFO] Run #1318 stopped
+[00h:03m:19s:239ms][INFO][BRD 00] Device closed
+[00h:03m:19s:239ms][INFO][BRD 01] Device closed
+[00h:03m:19s:239ms][INFO][BRD 02] Device closed
+[00h:03m:19s:239ms][INFO][BRD 03] Device closed
+[00h:03m:19s:239ms][INFO][BRD 04] Device closed
+[00h:03m:19s:239ms][INFO][BRD 05] Device closed
+[00h:03m:19s:239ms][INFO][BRD 06] Device closed
+[00h:03m:19s:239ms][INFO][BRD 07] Device closed
+[00h:03m:19s:239ms][INFO][BRD 08] Device closed
+[00h:03m:19s:239ms][INFO][BRD 09] Device closed
+[00h:03m:19s:239ms][INFO][BRD 10] Device closed
+[00h:03m:19s:239ms][INFO][BRD 11] Device closed
+[00h:03m:19s:239ms][INFO][BRD 12] Device closed
+[00h:03m:19s:239ms][INFO][BRD 13] Device closed
+[00h:03m:19s:239ms][INFO][BRD 14] Device closed
+[00h:03m:19s:239ms][INFO][BRD 15] Device closed
+[00h:03m:19s:239ms][INFO][BRD 16] Device closed
+[00h:03m:19s:239ms][INFO][BRD 17] Device closed
+[00h:03m:19s:239ms][INFO][BRD 18] Device closed
+[00h:03m:19s:239ms][INFO][CNC 00] Data receiver thread is quitting
+[00h:03m:19s:241ms][INFO][CNC 00] Device closed
+[00h:03m:19s:241ms][INFO][BRD 19] Device closed

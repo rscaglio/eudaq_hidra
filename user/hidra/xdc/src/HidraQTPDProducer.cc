@@ -731,7 +731,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         }
 
         bool eventHandlingOk = ReadOneBlockAndSendEvent();
-        m_evt++;
+        if (eventHandlingOk) m_evt++;
         if (m_TriggerMask == 0b01) m_evt_phy++;
         if (m_TriggerMask == 0b10) m_evt_ped++;
 
@@ -1025,6 +1025,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         if (geo != board.geoAddr) {
           continue;
         }
+	
 
         if (matchedWords > 0) {
           words << " ";
@@ -1033,7 +1034,7 @@ void WriteEventSyncTrigger16(uint64_t triggerNumber) {
         ++matchedWords;
       }
 
-      HIDRA_INFO("Raw XDC words for Board{} geo {} type {} evt {}: {}",
+      HIDRA_INFO("Raw XDC words for Board{} geo {} type {} evt {} : {}",
                  board.configIndex,
                  board.geoAddr,
                  board.type,
