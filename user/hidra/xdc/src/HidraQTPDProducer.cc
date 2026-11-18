@@ -297,8 +297,12 @@ private:
     ClearV560();
     
     m_thread = std::thread(&HidraQTPDProducer::MainLoop, this);
-    EUDAQ_INFO("Starting run " + std::to_string(m_runNumber));
+    HIDRA_INFO("Starting run " + std::to_string(m_runNumber));
 
+    int sor_wait_sec = 5;
+    HIDRA_WARN("Alignment patch in place: waiting {} seconds before enabling trigger", sor_wait_sec);
+    std::this_thread::sleep_for(std::chrono::milliseconds(sor_wait_sec*1000));
+    
     ReleaseTriggerVeto(m_pedestal_run);
     SendStatus();
   }
