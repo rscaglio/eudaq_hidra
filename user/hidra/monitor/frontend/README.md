@@ -263,6 +263,21 @@ Append an entry under `tabs:` in `config.yaml`:
 
 ### Built-in panel types
 
+- `event_display` — a selected-event ADC + FERS front face, split into S/C
+  views with the central SiPM fibre grid positioned inside its calorimeter
+  modules. Uses the existing ADC and SiPM mapping JSON files. The searchable
+  event dropdown and **Previous / Next / Latest** controls browse the backend's
+  recent-event buffer. Selection stays fixed while new events arrive, and a
+  captured snapshot stays visible after eviction. Each browser keeps its own
+  selection. HG/LG switches FERS gain; full/event colour scales show raw counts,
+  without pedestal subtraction. Tracker/MAXICC are excluded. Params: `height:`
+  (per face, default `680px`). Rebuild/restart `HidraHttpMonitor` to enable the
+  single-event feed; `EVENT_DISPLAY_BUFFER_SIZE` in the monitor `.ini` controls
+  retention (default 100, `0` disables). Sampling/prescaling applies, so the
+  dropdown contains monitored events rather than every acquired event. Historical
+  raw-file events are not read by this panel. It uses its own callbacks and
+  browser-side Stores, without sending channel arrays through histogram polling.
+
 - `histograms` — fixed list of histograms in an N-column grid.
   Params: `histograms: [name1, name2, ...]`, `cols: 2` (default).
 - `metric` — show each histogram's content as a single big number
@@ -570,7 +585,5 @@ Python is **not** wired into CMake. The setup.sh helpers
   endpoint instead of mirroring it in `config.yaml`.
 - `TODO(reset)` — wire a "Reset histograms" button when the backend
   exposes a reset endpoint.
-- `TODO(event_display)` — single-event panel type; needs a
-  non-cumulative backend feed.
 - `TODO(remote_overlay)` — fetch reference files over HTTP instead
   of through the shared filesystem.

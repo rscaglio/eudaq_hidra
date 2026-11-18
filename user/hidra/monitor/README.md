@@ -88,6 +88,43 @@ euCliMonitor -n HidraHttpMonitor
 - `MetaFiller.*` - per-event metadata histograms (see "Event metadata").
 - `ChannelSumFiller.*` - per-event SUM distributions over channel groups (see
   "Channel sums").
+- `EventDisplayBuffer.*` - a bounded buffer of single-event ADC and FERS HG/LG
+  readings for the frontend's **Event display** tab. It copies the same decoded
+  event passed to the histogram fillers, retaining metadata and raw channel
+  values without averaging. Tracker and MAXICC payloads are excluded.
+
+## Single-event display
+
+The **Event display** frontend tab combines the ADC PMT modules and the central
+FERS SiPM fibres into front-face S/C views, using the existing frontend channel
+maps. Select an event by its run/event number in the searchable dropdown, or use
+**Previous**, **Next**, and **Latest**. The selected event stays fixed as new
+events arrive. HG/LG switches the FERS gain for that same event; full-scale
+colouring is fixed to 0–4095, while event-scale colouring adapts to its signals.
+Values are raw ADC counts, with no pedestal subtraction. Grey means a mapped
+channel has no reading; a real zero remains a reading.
+
+The monitor retains the latest `EVENT_DISPLAY_BUFFER_SIZE` **processed** events
+(default 100). Both the data collector's monitor sampling and `EVENT_PRESCALE`
+apply, so event numbers need not be consecutive. The buffer is cleared on
+configure, start-run and reset, and remains available after stop-run. A snapshot
+already selected in a browser remains visible after buffer eviction or reset;
+its original run/event metadata stays attached. Other viewers keep their own
+selections. This buffer is live monitoring data, not a reader for historical raw
+files, and is not written into the end-of-run histogram ROOT file.
+
+Read-only HTTP resources on the existing monitor port:
+
+- `GET /EventDisplay/events.json`: buffer capacity, monitor prescale and event
+  metadata ordered oldest to newest. Each entry carries an opaque `id`.
+- `GET /EventDisplay/<id>.json`: metadata plus `adc`, `fers_hg`, `fers_lg`
+  arrays indexed by the same global channels as the histograms (FERS:
+  `board * 64 + channel`). Missing/sentinel readings are JSON `null`; timestamps
+  are strings to preserve nanosecond precision. Evicted/reset IDs return 404.
+
+Only the metadata catalogue is polled. Channel arrays are serialized and fetched
+when an event is selected. HTTP reads and event insertion use the histogram
+publisher's existing mutex. No interpreted ROOT method calls are needed.
 
 ## Channel sums
 
@@ -218,6 +255,7 @@ Init configuration (`[Monitor.HidraHttpMonitor]` in the `.ini`), read in
 | `HTTP_PORT` | `9090` | TCP port of the HTTP server. |
 | `PUMP_INTERVAL_MS` | `20` | Period of the pump thread draining the HTTP queue (clamped to >= 5 ms). |
 | `EVENT_PRESCALE` | `1` | Process 1 event every N (>= 1) to reduce load. |
+| `EVENT_DISPLAY_BUFFER_SIZE` | `100` | Retain the latest N processed ADC/FERS events for the event display. `0` disables capture; negative values are clamped to `0`. Read at initialise; restart the monitor to change it. |
 | `PEDESTAL_NOISE_UPDATE_EVENTS` | `200` | Recompute the per-channel pedestal noise (`ADC_noise_pedestal` / `ADC_noise_std_pedestal`) every N (>= 1) pedestal events. Lower = more responsive, higher = cheaper. |
 | `HISTO_OUTPUT_PATTERN` | `out_data/monitor_run$6R_$12D$X` | `FileNamer` pattern for the end-of-run ROOT file. `$R` run number, `$D` timestamp, `$X` extension (`.root`). Empty disables saving. |
 

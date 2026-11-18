@@ -40,6 +40,7 @@
 #include "HistogramRegistry.hh"
 #include "TrackerFiller.hh"
 #include "ChannelSumFiller.hh"
+#include "EventDisplayBuffer.hh"
 
 #include <HidraXdcDecoder.hh>
 #include <IFersDecoder.hh>
@@ -104,6 +105,7 @@ private:
     HistogramRegistry registry;
     HistogramPublisher publisher;
     FillerChain chain;
+    EventDisplayBuffer* event_display{nullptr}; // Owned by chain, also read by publisher.
 
     /** Decoders carrying run/config-dependent state. Swapped by DoConfigure() under m_state_mutex. */
     hidra::HidraXdcDecoder xdc_decoder;
@@ -156,7 +158,8 @@ private:
                    int n_adc_channels, int noise_update_interval, int fers_nboards, int fers_value_max,
                    int fers_channel_nbins, int fers_saturation_threshold, bool fers_per_channel_distributions,
                    int maxicc_nboards, std::vector<TrackerStationConfig> tracker_stations, std::string http_output_dir,
-                   int trigger_strip_length, int trigger_gap_max, ChannelSumConfig sum_config);
+                   int trigger_strip_length, int trigger_gap_max, ChannelSumConfig sum_config,
+                   int event_display_capacity);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();
@@ -168,6 +171,7 @@ private:
   int m_event_prescale{1}; /**< Process 1 event every N events (N>=1). */
   /** Recompute the per-channel pedestal noise every N pedestal events (N>=1). */
   int m_noise_update_interval{200};
+  int m_event_display_capacity{100}; /**< Recent processed events retained; 0 disables capture. */
   /** FileNamer pattern for the histograms saved at end-of-run. Empty disables saving. */
   std::string m_histo_output_pattern{"out_data/monitor_run$6R_$12D$X"};
 

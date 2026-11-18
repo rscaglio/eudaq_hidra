@@ -63,7 +63,8 @@ def build_app(config_path: str | None = None) -> dash.Dash:
 
     panels_by_tab = build_panels(config, available, client)
 
-    app = dash.Dash(__name__, title="HiDRA Monitor", update_title='')
+    # Tabs mount their panel controls dynamically, including event-display IDs.
+    app = dash.Dash(__name__, title="HiDRA Monitor", update_title='', suppress_callback_exceptions=True)
     app.layout = build(config, panels_by_tab)
     register_all(app, config, panels_by_tab, client, overlay_store, decoder)
     return app

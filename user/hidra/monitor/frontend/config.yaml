@@ -126,6 +126,12 @@ tabs:
       - type: histograms
         histograms: [events_between_pedestals]
 
+  - id: event_display
+    label: Event display
+    panels:
+      - type: event_display
+        height: 680px
+
   # Per-event SUM over a channel group (filled by ChannelSumFiller on the backend,
   # raw values, no pedestal subtraction). Each overlay plot superimposes the three
   # trigger flavours total / physics / pedestal (toggle each via the legend): the

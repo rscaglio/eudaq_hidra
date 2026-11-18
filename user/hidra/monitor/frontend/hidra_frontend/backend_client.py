@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 
@@ -70,6 +71,27 @@ class BackendClient:
             logger.debug("histo_output_dir not available: %s", exc)
             return None
         return title or None
+
+    def event_index(self) -> Optional[dict]:
+        """Metadata for the bounded single-event buffer (oldest first)."""
+        return self._event_resource("events")
+
+    def event_snapshot(self, event_id: str) -> Optional[dict]:
+        """One immutable ADC/FERS snapshot; None if unavailable or evicted."""
+        return self._event_resource(event_id)
+
+    def _event_resource(self, resource: str) -> Optional[dict]:
+        try:
+            response = requests.get(
+                f"{self.url}/EventDisplay/{quote(resource, safe='')}.json",
+                timeout=self.timeout_s,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, dict) else None
+        except (requests.RequestException, ValueError) as exc:
+            logger.debug("event display resource %s unavailable: %s", resource, exc)
+            return None
 
     def nbins_x(self, name: str) -> Optional[int]:
         """Number of x-axis bins of a registered histogram, via the exe.json

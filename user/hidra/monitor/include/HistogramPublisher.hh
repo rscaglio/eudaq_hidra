@@ -30,6 +30,8 @@
 #include <string>
 #include <thread>
 
+class EventDisplayBuffer;
+
 class HistogramPublisher {
 public:
   explicit HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms = 20,
@@ -47,6 +49,9 @@ public:
    * histograms is visible from the beginning.
    */
   void Start();
+
+  /** Set before Start(); the filler chain owns this buffer and its lifetime. */
+  void SetEventDisplay(EventDisplayBuffer& buffer) { m_event_display = &buffer; }
 
   /** Stop the pump thread and close THttpServer. Safe to call multiple times. */
   void Stop();
@@ -66,6 +71,7 @@ private:
   void PumpLoop();
 
   HistogramRegistry& m_registry;
+  EventDisplayBuffer* m_event_display{nullptr};
   int m_port;
   int m_pump_interval_ms;
   // Absolute directory where the monitor saves its histogram snapshots

@@ -20,6 +20,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <ctime>
 #include <filesystem>
@@ -144,7 +145,8 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     std::string http_output_dir,
     int trigger_strip_length,
     int trigger_gap_max,
-    ChannelSumConfig sum_config)
+    ChannelSumConfig sum_config,
+    int event_display_capacity)
     : publisher(registry, port, pump_interval_ms, std::move(http_output_dir)),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
@@ -170,6 +172,10 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
   chain.Add(std::make_unique<TrackerFiller>(registry, tracker_stations));
   chain.Add(std::make_unique<MetaFiller>(registry, trigger_strip_length, trigger_gap_max));
   chain.Add(std::make_unique<ChannelSumFiller>(registry, sum_config));
+  auto events = std::make_unique<EventDisplayBuffer>(static_cast<std::size_t>(event_display_capacity), prescale);
+  event_display = events.get();
+  publisher.SetEventDisplay(*event_display);
+  chain.Add(std::move(events));
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -225,6 +231,7 @@ void HidraHttpMonitor::DoInitialise() {
     m_port = ini->Get("HTTP_PORT", 9090);
     m_pump_interval_ms = ini->Get("PUMP_INTERVAL_MS", 20);
     m_event_prescale = ini->Get("EVENT_PRESCALE", 1);
+    m_event_display_capacity = std::max(0, ini->Get("EVENT_DISPLAY_BUFFER_SIZE", 100));
     if (m_event_prescale == 0) {
       HIDRA_WARN("EVENT_PRESCALE=0 is invalid, forcing EVENT_PRESCALE=1");
       m_event_prescale = 1;
@@ -511,7 +518,8 @@ void HidraHttpMonitor::DoConfigure() {
                                              m_noise_update_interval, cfg_nboards, cfg_value_max, fers_channel_nbins,
                                              fers_saturation_threshold, fers_per_channel, cfg_maxicc_nboards,
                                              std::move(tracker_stations), std::move(http_output_dir),
-                                             trigger_strip_length, trigger_gap_max, std::move(sum_config));
+                                             trigger_strip_length, trigger_gap_max, std::move(sum_config),
+                                             m_event_display_capacity);
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap
@@ -527,6 +535,7 @@ void HidraHttpMonitor::DoConfigure() {
   // run actually starts. On the first configure the histograms are already empty, so this is a no-op.
   std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
   m_ctx->registry.Reset();
+  m_ctx->event_display->Reset();
 }
 
 void HidraHttpMonitor::DoStartRun() {

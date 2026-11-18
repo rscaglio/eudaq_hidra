@@ -5,9 +5,6 @@ Add a new panel type:
   2. Import it here and add it to PANEL_TYPES.
   3. Reference its type name in config.yaml.
 
-TODO(event_display): add an "event_display" panel type once the backend
-publishes single-event objects (non-cumulative). The panel will need
-its own dispatcher for fetching the latest event payload — design TBD.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ from __future__ import annotations
 from .base import Panel
 from .channel_selector import ChannelSelectorPanel
 from .detector import DetectorPanel
+from .event_display import EventDisplayPanel
 from .fers_board import FERSBoardPanel
 from .histogram_grid import HistogramGridPanel
 from .mask_strip import MaskStripPanel
@@ -31,6 +29,7 @@ PANEL_TYPES: dict[str, type[Panel]] = {
     "metric": MetricPanel,
     "channel_selector": ChannelSelectorPanel,
     "detector": DetectorPanel,
+    "event_display": EventDisplayPanel,
     "fers_board": FERSBoardPanel,
     "sipm_detector": SiPMDetectorPanel,
     "maxicc_detector": MAXICCDetectorPanel,

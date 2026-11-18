@@ -49,7 +49,7 @@ def build_panels(
             # FERS board size is a detector property (the `fers:` config
             # section), not a per-panel value: inject it where panels need it
             # instead of repeating the number in each panel's config.
-            needs_board_size = panel_cfg.type == "fers_board" or (
+            needs_board_size = panel_cfg.type in ("fers_board", "event_display") or (
                 panel_cfg.type == "channel_selector" and params.get("board_labels")
             )
             if needs_board_size and "channels_per_board" not in params:
@@ -60,6 +60,8 @@ def build_panels(
             # first use and retried while unknown, so it survives the backend not
             # being up yet at frontend startup.
             if panel_cfg.type == "channel_selector" and params.get("projection_templates"):
+                params = {**params, "_client": client}
+            if panel_cfg.type == "event_display":
                 params = {**params, "_client": client}
             panels.append(build_panel(panel_id, panel_cfg.type, params))
         by_tab[tab.id] = panels

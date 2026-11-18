@@ -1,8 +1,51 @@
 #include "ScopedTimer.hh"
 #include "HistogramPublisher.hh"
+#include "EventDisplayBuffer.hh"
 
 #include <algorithm>
 
+namespace {
+// Use ordinary read-only HTTP resources rather than interpreted ROOT method
+// calls. ProcessRequest is dispatched by ProcessRequests under the publisher
+// mutex, so each response sees a complete snapshot and buffer eviction is safe.
+class MonitorHttpServer : public THttpServer {
+public:
+  MonitorHttpServer(const char* spec, EventDisplayBuffer* events) : THttpServer(spec), m_events(events) {}
+
+protected:
+  void ProcessRequest(std::shared_ptr<THttpCallArg> arg) override {
+    std::string path = arg->GetPathName();
+    if (!path.empty() && path.front() == '/') {
+      path.erase(0, 1);
+    }
+    if (!path.empty() && path.back() == '/') {
+      path.pop_back();
+    }
+    if (path != "EventDisplay" || !m_events) {
+      THttpServer::ProcessRequest(std::move(arg));
+      return;
+    }
+
+    const std::string file = arg->GetFileName();
+    std::string json;
+    if (file == "events.json") {
+      json = m_events->IndexJson();
+    } else if (file.size() > 5 && file.compare(file.size() - 5, 5, ".json") == 0) {
+      json = m_events->EventJson(file.substr(0, file.size() - 5));
+    }
+    if (json.empty()) {
+      arg->Set404();
+    } else {
+      arg->SetContentType("application/json");
+      arg->SetContent(std::move(json));
+    }
+    arg->AddNoCacheHeader();
+  }
+
+private:
+  EventDisplayBuffer* m_events;
+};
+} // namespace
 
 HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms,
                                        std::string http_output_dir)
@@ -20,7 +63,7 @@ void HistogramPublisher::Start() {
   // thread is separate and only responsible for draining the request queue.
 
   const std::string spec = "http:" + std::to_string(m_port);
-  m_server = std::make_unique<THttpServer>(spec.c_str());
+  m_server = std::make_unique<MonitorHttpServer>(spec.c_str(), m_event_display);
 
   m_server->SetItemField("/", "_monitoring", "500"); // auto-refresh for JSROOT 500ms. API clients not affected.
 

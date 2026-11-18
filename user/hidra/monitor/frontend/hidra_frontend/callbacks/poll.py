@@ -209,7 +209,10 @@ def register(
         n_total = len(wanted)
         overlay_text = f"  ·  overlay: {overlay_file}" if overlay_file else ""
         if not wanted:
-            dot, text = theme.WARN, f"no histograms requested  ·  server pump ~{pump_hint} ms"
+            if data.get(HEADER_COUNT_HIST) is not None:
+                dot, text = theme.OK, f"backend connected  ·  server pump ~{pump_hint} ms"
+            else:
+                dot, text = theme.ERR, f"cannot reach backend at {config.backend.url}"
         elif not reachable:
             dot, text = theme.ERR, f"cannot reach backend at {config.backend.url}{overlay_text}"
         else:
