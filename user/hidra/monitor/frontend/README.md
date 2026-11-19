@@ -266,17 +266,25 @@ Append an entry under `tabs:` in `config.yaml`:
 - `event_display` — a selected-event ADC + FERS front face, split into S/C
   views with the central SiPM fibre grid positioned inside its calorimeter
   modules. Uses the existing ADC and SiPM mapping JSON files. The searchable
-  event dropdown and **Previous / Next / Latest** controls browse the backend's
-  recent-event buffer. Selection stays fixed while new events arrive, and a
-  captured snapshot stays visible after eviction. Each browser keeps its own
-  selection. HG/LG switches FERS gain; full/event colour scales show raw counts,
+  event dropdown and **Previous / Next** browse a frozen group of complete events
+  loaded into that browser. Browsing makes no backend requests, so DAQ rate,
+  eviction, reset or an offline monitor cannot invalidate a listed event.
+  **Refresh events** loads a fresh group while preserving the selection;
+  **Latest** loads a fresh group and selects its newest event. The tab does not
+  periodically reload groups. Reopening it loads a new group while preserving
+  the selected snapshot. HG/LG switches FERS gain; full/event colour scales show raw counts,
   without pedestal subtraction. Tracker/MAXICC are excluded. Params: `height:`
   (per face, default `680px`). Rebuild/restart `HidraHttpMonitor` to enable the
-  single-event feed; `EVENT_DISPLAY_BUFFER_SIZE` in the monitor `.ini` controls
-  retention (default 100, `0` disables). Sampling/prescaling applies, so the
-  dropdown contains monitored events rather than every acquired event. Historical
-  raw-file events are not read by this panel. It uses its own callbacks and
-  browser-side Stores, without sending channel arrays through histogram polling.
+  single-event feed. `EVENT_DISPLAY_MAX_HZ` in the monitor `.ini` defaults to 20
+  captures/s without changing histogram statistics. `EVENT_DISPLAY_BUFFER_SIZE`
+  controls retention (default 100, about five seconds at high rates; `0` disables).
+  A single `/EventDisplay/batch.json` request returns up to 100 full events,
+  removing the race between the old metadata request and subsequent event fetch.
+  Each browser holds at most 100 group events plus its earlier selected snapshot.
+  Collector sampling and monitor prescaling still apply. Historical raw-file
+  events are not read. Selection runs client-side in `assets/event_display.js`;
+  plotting sends only one selected event to Python. Histogram polling continues
+  independently and does not transfer channel arrays or redraw event maps.
 
 - `histograms` — fixed list of histograms in an N-column grid.
   Params: `histograms: [name1, name2, ...]`, `cols: 2` (default).

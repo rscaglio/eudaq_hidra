@@ -30,7 +30,7 @@ class EventDisplayTests(unittest.TestCase):
         self.panel.register_callbacks(self.app)
         self.callbacks = {
             value["callback"].__wrapped__.__name__: value["callback"].__wrapped__
-            for value in self.app.callback_map.values()
+            for value in self.app.callback_map.values() if "callback" in value
         }
 
     def test_every_fibre_is_inside_its_mapped_module_and_keeps_orientation(self):
@@ -69,15 +69,19 @@ class EventDisplayTests(unittest.TestCase):
         self.assertTrue(all(value is None for row in empty.data[4].z for value in row))
         self.assertEqual(len(empty.layout.shapes), 10)
 
-    def test_catalogue_pins_a_captured_event_after_eviction(self):
-        self.client.event_index.return_value = dict(capacity=2, event_prescale=3, events=[event("two", 101)])
-        catalog, options, status = self.callbacks["refresh_catalog"](0, {"tab": "event_display"}, 0, event())
-        self.assertEqual([entry["value"] for entry in options], ["two", "one"])
-        self.assertIn("captured", options[-1]["label"])
-        self.assertIn("prescale 3", status)
+    def test_complete_batch_is_loaded_atomically_without_followup_event_fetches(self):
+        events = [event("one", 100), event("two", 101)]
+        self.client.event_batch.return_value = dict(capacity=100, event_prescale=3, capture_max_hz=20,
+                                                   available=100, events=events)
         with patch("hidra_frontend.panels.event_display.ctx", SimpleNamespace(triggered_id=None)):
-            result = self.callbacks["navigate"](catalog, 0, 0, 0, "one", event())
-        self.assertIs(result, no_update)
+            batch, status = self.callbacks["load_batch"]({"tab": "event_display"}, 0, 0)
+        self.assertEqual(batch["events"], events)
+        self.assertEqual(batch["action"], "refresh")
+        self.assertIn("prescale 3", status)
+        self.assertIn("20 events/s", status)
+        self.client.event_batch.assert_called_once_with()
+        self.client.event_snapshot.assert_not_called()
+        self.client.event_index.assert_not_called()
 
     def test_event_scale_ignores_unmapped_adc_channels(self):
         mapped = get_pmt_channel_info()
@@ -90,40 +94,69 @@ class EventDisplayTests(unittest.TestCase):
             fig = front_face_figure(typ, snapshot, "HG", "event", self.panel._pmt_geom, self.panel._sipm_geom)
             self.assertEqual(fig.data[1].zmax, 17)
 
-    def test_previous_next_latest_use_buffer_order(self):
-        catalog = [event("one", 100), event("two", 110), event("three", 200)]
-        for action, selected, expected in (("previous", "two", "one"), ("next", "one", "two"),
-                                           ("latest", "one", "three"), ("previous", "one", "one")):
-            with patch("hidra_frontend.panels.event_display.ctx",
-                       SimpleNamespace(triggered_id=self.panel._id(action))):
-                self.assertEqual(self.callbacks["navigate"](catalog, 1, 1, 1, selected, None), expected)
+    def test_latest_requests_a_complete_new_batch_and_no_periodic_poll_is_registered(self):
+        self.client.event_batch.return_value = dict(capacity=100, events=[event()])
+        with patch("hidra_frontend.panels.event_display.ctx",
+                   SimpleNamespace(triggered_id=self.panel._id("latest"))):
+            batch, _ = self.callbacks["load_batch"]({"tab": "event_display"}, 0, 1)
+        self.assertEqual(batch["action"], "latest")
+        # Inserting the dynamic button with n_clicks=0 is not a user click.
+        with patch("hidra_frontend.panels.event_display.ctx",
+                   SimpleNamespace(triggered_id=self.panel._id("latest"))):
+            mounted_batch, _ = self.callbacks["load_batch"]({"tab": "event_display"}, 0, 0)
+        self.assertEqual(mounted_batch["action"], "refresh")
+        for callback in self.app._callback_list:
+            self.assertFalse(any(item["id"] == "interval" for item in callback["inputs"]))
+        local = next(callback for callback in self.app._callback_list if callback["clientside_function"])
+        self.assertEqual(local["clientside_function"]["function_name"], "select_event")
+        # Entire groups stay local; the plotting callback receives only the selection.
+        plot = next(value for key, value in self.app.callback_map.items() if "face-S" in key)
+        self.assertFalse(any(item["id"] == self.panel._id("collection") for item in plot["state"]))
 
-    def test_capture_is_per_viewer_and_does_not_refetch_a_pinned_event(self):
-        capture = self.callbacks["capture"]
-        first = event()
-        self.client.event_snapshot.return_value = first
-        captured, metadata = capture("one", None)
-        self.assertEqual(captured, first)
-        self.assertIn("event 100", metadata)
-        self.client.event_snapshot.reset_mock()
-        self.assertIs(capture("one", first)[0], no_update)
+    def test_unavailable_or_invalid_feed_preserves_the_loaded_group(self):
+        for response in (None, {"events": [dict(id="bad")]}, {"events": "invalid"}):
+            self.client.event_batch.return_value = response
+            batch, message = self.callbacks["load_batch"]({"tab": "event_display"}, 0, 0)
+            self.assertIs(batch, no_update)
+            self.assertTrue("unavailable" in message or "Invalid" in message)
+
+    def test_dash_transport_loads_a_batch_and_plots_only_the_selected_snapshot(self):
+        self.client.event_batch.return_value = dict(capacity=100, capture_max_hz=20, events=[event()])
+        flask = self.app.server.test_client()
+
+        def invoke(target, inputs, changed):
+            key, spec = next((key, spec) for key, spec in self.app.callback_map.items() if target in key)
+            response = flask.post("/_dash-update-component", json={
+                "output": key,
+                "outputs": [{"id": output.component_id, "property": output.component_property}
+                            for output in spec["output"]],
+                "inputs": [{"id": component_id, "property": prop, "value": value}
+                           for component_id, prop, value in inputs],
+                "state": [], "changedPropIds": [changed],
+            })
+            self.assertEqual(response.status_code, 200, response.data[:1000])
+            return response.json["response"]
+
+        batch = invoke(self.panel._id("batch"), [
+            ("tab-mount-state", "data", {"tab": "event_display"}),
+            (self.panel._id("refresh"), "n_clicks", 0),
+            (self.panel._id("latest"), "n_clicks", 1),
+        ], self.panel._id("latest") + ".n_clicks")[self.panel._id("batch")]["data"]
+        self.assertEqual(batch["action"], "latest")
+        selected = batch["events"][0]
+        self.assertEqual(selected["timestamp_begin_ns"], "1795000000123456789")
+        for gain in ("HG", "LG"):
+            plotted = invoke(self.panel._id("face-S"), [
+                (self.panel._id("snapshot"), "data", selected),
+                (self.panel._id("gain"), "value", gain),
+                (self.panel._id("scale"), "value", "full"),
+            ], self.panel._id("snapshot") + ".data")
+            for typ in "SC":
+                figure = plotted[self.panel._id("face-" + typ)]["figure"]
+                self.assertEqual(len(figure["data"]), 6)
+                self.assertIn(gain, figure["layout"]["title"]["text"])
+        self.client.event_batch.assert_called_once_with()
         self.client.event_snapshot.assert_not_called()
-        second = event("two", 101)
-        self.client.event_snapshot.return_value = second
-        self.assertEqual(capture("two", None)[0], second)
-        self.assertEqual(first["id"], "one")
-        # An expired selection clears the picture rather than mislabelling old data.
-        self.client.event_snapshot.return_value = None
-        cleared, message = capture("evicted", first)
-        self.assertEqual(cleared, {})
-        self.assertIn("no longer available", message)
-
-    def test_unavailable_feed_preserves_the_last_catalogue(self):
-        self.client.event_index.return_value = None
-        catalog, options, message = self.callbacks["refresh_catalog"](0, {"tab": "event_display"}, 0, event())
-        self.assertIs(catalog, no_update)
-        self.assertIs(options, no_update)
-        self.assertIn("unavailable", message)
 
     def test_backend_client_handles_old_backend_and_expired_events(self):
         backend = BackendClient("http://example.invalid")
@@ -133,6 +166,8 @@ class EventDisplayTests(unittest.TestCase):
             get.return_value.json.return_value = event()
             self.assertEqual(backend.event_snapshot("one")["id"], "one")
             self.assertEqual(get.call_args.args[0], "http://example.invalid/EventDisplay/one.json")
+            backend.event_batch()
+            self.assertEqual(get.call_args.args[0], "http://example.invalid/EventDisplay/batch.json")
 
     def test_histogram_poll_keeps_the_header_live_without_touching_event_figures(self):
         config = load_config(Path(__file__).parents[1] / "config.yaml")
@@ -141,7 +176,7 @@ class EventDisplayTests(unittest.TestCase):
         }
         poll.register(self.app, config, {"event_display": [self.panel]}, self.client, Mock(), Mock())
         callback = next(value["callback"].__wrapped__ for value in self.app.callback_map.values()
-                        if value["callback"].__wrapped__.__name__ == "poll")
+                        if "callback" in value and value["callback"].__wrapped__.__name__ == "poll")
         with patch("hidra_frontend.callbacks.poll.ctx", SimpleNamespace(outputs_list=[[], None, None])):
             figures, status, count = callback(1, {"tab": "event_display"}, {}, [], {})
         self.assertEqual(figures, [])

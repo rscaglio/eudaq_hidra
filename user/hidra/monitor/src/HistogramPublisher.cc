@@ -1,51 +1,8 @@
 #include "ScopedTimer.hh"
 #include "HistogramPublisher.hh"
-#include "EventDisplayBuffer.hh"
+#include "MonitorHttpServer.hh"
 
 #include <algorithm>
-
-namespace {
-// Use ordinary read-only HTTP resources rather than interpreted ROOT method
-// calls. ProcessRequest is dispatched by ProcessRequests under the publisher
-// mutex, so each response sees a complete snapshot and buffer eviction is safe.
-class MonitorHttpServer : public THttpServer {
-public:
-  MonitorHttpServer(const char* spec, EventDisplayBuffer* events) : THttpServer(spec), m_events(events) {}
-
-protected:
-  void ProcessRequest(std::shared_ptr<THttpCallArg> arg) override {
-    std::string path = arg->GetPathName();
-    if (!path.empty() && path.front() == '/') {
-      path.erase(0, 1);
-    }
-    if (!path.empty() && path.back() == '/') {
-      path.pop_back();
-    }
-    if (path != "EventDisplay" || !m_events) {
-      THttpServer::ProcessRequest(std::move(arg));
-      return;
-    }
-
-    const std::string file = arg->GetFileName();
-    std::string json;
-    if (file == "events.json") {
-      json = m_events->IndexJson();
-    } else if (file.size() > 5 && file.compare(file.size() - 5, 5, ".json") == 0) {
-      json = m_events->EventJson(file.substr(0, file.size() - 5));
-    }
-    if (json.empty()) {
-      arg->Set404();
-    } else {
-      arg->SetContentType("application/json");
-      arg->SetContent(std::move(json));
-    }
-    arg->AddNoCacheHeader();
-  }
-
-private:
-  EventDisplayBuffer* m_events;
-};
-} // namespace
 
 HistogramPublisher::HistogramPublisher(HistogramRegistry& registry, int port, int pump_interval_ms,
                                        std::string http_output_dir)
@@ -115,9 +72,9 @@ void HistogramPublisher::PumpLoop() {
       // Same mutex acquired by FillerChain around Fill().
       // Prevents TBufferJSON (inside ProcessRequests) from reading
       // a histogram while a filler is writing to it.
-      std::lock_guard<std::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
       ScopedTimer t(m_process_requests);
-      m_server->ProcessRequests();
+      static_cast<MonitorHttpServer*>(m_server.get())->ProcessRequestsWithLock(lock);
     }
     // Release the lock between iterations to avoid starving fillers.
     std::this_thread::sleep_for(std::chrono::milliseconds(m_pump_interval_ms));

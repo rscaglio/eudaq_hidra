@@ -76,6 +76,10 @@ class BackendClient:
         """Metadata for the bounded single-event buffer (oldest first)."""
         return self._event_resource("events")
 
+    def event_batch(self) -> Optional[dict]:
+        """Atomically fetch up to 100 complete events; no index/fetch eviction race."""
+        return self._event_resource("batch")
+
     def event_snapshot(self, event_id: str) -> Optional[dict]:
         """One immutable ADC/FERS snapshot; None if unavailable or evicted."""
         return self._event_resource(event_id)

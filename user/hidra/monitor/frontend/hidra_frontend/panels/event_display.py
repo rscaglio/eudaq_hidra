@@ -1,17 +1,18 @@
 """Selected-event ADC + FERS front face, using the existing channel maps.
 
-Event selection and the captured payload live in browser Stores, so separate
-viewers never change one another's event. Only the small catalogue is polled;
-the selected payload is fetched once and stays visible after backend eviction.
+Complete batches and event selection live in browser Stores. Browsing is local:
+the backend is contacted only on tab open, Refresh events or Latest. A changing
+DAQ buffer cannot invalidate an event already listed in the browser.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
 import math
+import uuid
 
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash import ClientsideFunction, Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
 from .. import theme
@@ -26,21 +27,6 @@ def _channel_values(values) -> dict[int, float]:
         ch: float(value) for ch, value in enumerate(values or [])
         if isinstance(value, (float, int)) and math.isfinite(value) and value >= 0
     }
-
-
-def _event_label(event: dict) -> str:
-    mask = event.get("trigger_mask", -1)
-    trigger = {0: "gate", 1: "physics", 2: "pedestal", 3: "physics + pedestal"}.get(mask, "unknown trigger")
-    return f"run {event['run_number']} · event {event['event_number']} · {trigger}"
-
-
-def _metadata_text(event: dict) -> str:
-    spill = event.get("spill_number")
-    return (
-        f"{_event_label(event)} · trigger {event.get('trigger_number', '—')} · "
-        f"spill {spill if spill is not None else '—'} · "
-        f"timestamp {event.get('timestamp_begin_ns', '—')} ns"
-    )
 
 
 def _sipm_geometry(info: dict[int, dict]) -> dict:
@@ -162,7 +148,7 @@ class EventDisplayPanel(Panel):
                              style={"minWidth": "340px", "flex": "1"}),
                 html.Button("Next →", id=self._id("next"), n_clicks=0, className="btn"),
                 html.Button("Latest", id=self._id("latest"), n_clicks=0, className="btn"),
-                html.Button("Refresh list", id=self._id("refresh"), n_clicks=0, className="btn"),
+                html.Button("Refresh events", id=self._id("refresh"), n_clicks=0, className="btn"),
                 html.Span("FERS gain:"),
                 dcc.RadioItems(id=self._id("gain"), options=["HG", "LG"], value="HG", inline=True,
                                persistence=True, persistence_type="session", labelStyle={"marginRight": "10px"}),
@@ -172,7 +158,8 @@ class EventDisplayPanel(Panel):
             ], style={"display": "flex", "alignItems": "center", "gap": "10px", "flexWrap": "wrap"}),
             html.Div(id=self._id("feed-status"), style={"marginTop": "10px", "fontSize": "12px"}),
             html.Div(id=self._id("metadata"), style={"marginTop": "8px", "color": theme.PRIMARY}),
-            html.P("Raw values for one event. Selection stays fixed while new events arrive. Grey cells have no data.",
+            html.P("Loaded events stay available until you refresh. Latest loads newer events. "
+                   "Raw ADC counts; grey cells have no data.",
                    style={"fontSize": "12px", "color": theme.FG}),
             html.Div([
                 dcc.Graph(id=self._id(f"face-{typ}"), figure=theme.placeholder_figure(f"Front face · {typ}"),
@@ -180,75 +167,53 @@ class EventDisplayPanel(Panel):
                           config={"displayModeBar": True, "displaylogo": False})
                 for typ in ("S", "C")
             ], style={"display": "flex", "flexWrap": "wrap", "gap": "12px"}),
-            dcc.Store(id=self._id("catalog")),
+            dcc.Store(id=self._id("batch")),
+            dcc.Store(id=self._id("collection")),
             dcc.Store(id=self._id("snapshot"), storage_type="session"),
         ])
 
     def register_callbacks(self, app: Dash):
         @app.callback(
-            Output(self._id("catalog"), "data"),
-            Output(self._id("select"), "options"),
+            Output(self._id("batch"), "data"),
             Output(self._id("feed-status"), "children"),
-            Input("interval", "n_intervals"), Input("tab-mount-state", "data"),
-            Input(self._id("refresh"), "n_clicks"),
-            State(self._id("snapshot"), "data"),
+            Input("tab-mount-state", "data"), Input(self._id("refresh"), "n_clicks"),
+            Input(self._id("latest"), "n_clicks"),
         )
-        def refresh_catalog(_tick, mount, _clicks, captured):
+        def load_batch(mount, _refresh_clicks, _latest_clicks):
             if not isinstance(mount, dict) or mount.get("tab") != self.panel_id.rsplit("__p", 1)[0]:
                 raise PreventUpdate
-            index = self._client.event_index() if self._client else None
-            if index is None or not isinstance(index.get("events"), list):
-                return no_update, no_update, "Event feed unavailable. Rebuild/restart the monitor with event-display support."
-            events = index["events"]
-            options = [{"label": _event_label(ev), "value": ev["id"]} for ev in reversed(events)]
-            # A captured event remains selectable after it leaves the live buffer.
-            if captured and captured.get("id") and not any(ev["id"] == captured["id"] for ev in events):
-                options.append({"label": _event_label(captured) + " · captured", "value": captured["id"]})
-            capacity = index.get("capacity", 0)
-            status = f"{len(events)}/{capacity} recent events · monitor prescale {index.get('event_prescale', 1)}"
+            batch = self._client.event_batch() if self._client else None
+            if not isinstance(batch, dict) or not isinstance(batch.get("events"), list):
+                return no_update, "Event feed unavailable; loaded events remain browsable. Rebuild/restart the monitor if needed."
+            events = batch["events"]
+            if any(not isinstance(ev, dict) or not isinstance(ev.get("id"), str) or not ev["id"] or
+                   any(not isinstance(ev.get(key), list) for key in ("adc", "fers_hg", "fers_lg")) or
+                   "run_number" not in ev or "event_number" not in ev for ev in events):
+                return no_update, "Invalid event batch; keeping the loaded events."
+            capacity = batch.get("capacity", 0)
+            status = (f"Loaded {len(events)} events · buffer {batch.get('available', len(events))}/{capacity} · "
+                      f"display ≤ {batch.get('capture_max_hz', '—')} events/s · "
+                      f"monitor prescale {batch.get('event_prescale', 1)}")
             if not capacity:
                 status += " · capture disabled (EVENT_DISPLAY_BUFFER_SIZE=0)"
             elif not events:
-                status += " · waiting for events"
-            return events, options, status
+                status += " · no events yet; press Refresh events after acquisition starts"
+            latest = bool(_latest_clicks) and ctx.triggered_id == self._id("latest")
+            return {"events": events, "action": "latest" if latest else "refresh",
+                    "revision": uuid.uuid4().hex}, status
 
-        @app.callback(
+        # No backend lookup and no full batch round-trip on navigation. Only the
+        # selected snapshot is sent to Python for plotting, independent of DAQ rate.
+        app.clientside_callback(
+            ClientsideFunction(namespace="hidra_event_display", function_name="select_event"),
+            Output(self._id("collection"), "data"),
+            Output(self._id("select"), "options"),
             Output(self._id("select"), "value"),
-            Input(self._id("catalog"), "data"), Input(self._id("previous"), "n_clicks"),
-            Input(self._id("next"), "n_clicks"), Input(self._id("latest"), "n_clicks"),
-            State(self._id("select"), "value"), State(self._id("snapshot"), "data"),
-        )
-        def navigate(events, _previous, _next, _latest, selected, captured):
-            events = events or []
-            ids = [ev["id"] for ev in events]
-            if not ids:
-                return no_update
-            triggered = ctx.triggered_id
-            if triggered == self._id("latest"):
-                return ids[-1]
-            if triggered in (self._id("previous"), self._id("next")):
-                if selected not in ids:
-                    return ids[0] if triggered == self._id("next") else no_update
-                step = -1 if triggered == self._id("previous") else 1
-                return ids[max(0, min(len(ids) - 1, ids.index(selected) + step))]
-            if selected:
-                # Do not silently replace a selected event when it is evicted.
-                return no_update
-            return captured["id"] if captured and captured.get("id") else ids[-1]
-
-        @app.callback(
             Output(self._id("snapshot"), "data"), Output(self._id("metadata"), "children"),
-            Input(self._id("select"), "value"), State(self._id("snapshot"), "data"),
+            Input(self._id("batch"), "data"), Input(self._id("previous"), "n_clicks"),
+            Input(self._id("next"), "n_clicks"), Input(self._id("select"), "value"),
+            State(self._id("collection"), "data"), State(self._id("snapshot"), "data"),
         )
-        def capture(event_id, captured):
-            if not event_id:
-                return no_update, "Select an event from the recent buffer."
-            if captured and captured.get("id") == event_id:
-                return no_update, _metadata_text(captured)
-            snapshot = self._client.event_snapshot(event_id) if self._client else None
-            if not snapshot or snapshot.get("id") != event_id:
-                return {}, "Event no longer available (evicted, reset, or backend offline). Select another event or Latest."
-            return snapshot, _metadata_text(snapshot)
 
         @app.callback(
             Output(self._id("face-S"), "figure"), Output(self._id("face-C"), "figure"),

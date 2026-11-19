@@ -50,7 +50,7 @@ public:
    */
   void Start();
 
-  /** Set before Start(); the filler chain owns this buffer and its lifetime. */
+  /** Set before Start(); the monitoring context keeps this buffer alive. */
   void SetEventDisplay(EventDisplayBuffer& buffer) { m_event_display = &buffer; }
 
   /** Stop the pump thread and close THttpServer. Safe to call multiple times. */

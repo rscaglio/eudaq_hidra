@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -146,8 +147,10 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
     int trigger_strip_length,
     int trigger_gap_max,
     ChannelSumConfig sum_config,
-    int event_display_capacity)
-    : publisher(registry, port, pump_interval_ms, std::move(http_output_dir)),
+    int event_display_capacity,
+    double event_display_max_hz)
+    : event_display(static_cast<std::size_t>(event_display_capacity), prescale, event_display_max_hz),
+      publisher(registry, port, pump_interval_ms, std::move(http_output_dir)),
       chain(publisher.Mutex()),
       xdc_decoder(std::move(xdc_dec)),
       fers_decoder(std::move(fers_dec)),
@@ -172,10 +175,7 @@ HidraHttpMonitor::MonitorContext::MonitorContext(
   chain.Add(std::make_unique<TrackerFiller>(registry, tracker_stations));
   chain.Add(std::make_unique<MetaFiller>(registry, trigger_strip_length, trigger_gap_max));
   chain.Add(std::make_unique<ChannelSumFiller>(registry, sum_config));
-  auto events = std::make_unique<EventDisplayBuffer>(static_cast<std::size_t>(event_display_capacity), prescale);
-  event_display = events.get();
-  publisher.SetEventDisplay(*event_display);
-  chain.Add(std::move(events));
+  publisher.SetEventDisplay(event_display);
 
   // Start the HTTP server only after all fillers are constructed, so THttpServer sees the complete set of histograms
   // from the start.
@@ -232,6 +232,11 @@ void HidraHttpMonitor::DoInitialise() {
     m_pump_interval_ms = ini->Get("PUMP_INTERVAL_MS", 20);
     m_event_prescale = ini->Get("EVENT_PRESCALE", 1);
     m_event_display_capacity = std::max(0, ini->Get("EVENT_DISPLAY_BUFFER_SIZE", 100));
+    m_event_display_max_hz = ini->Get("EVENT_DISPLAY_MAX_HZ", 20.0);
+    if (!std::isfinite(m_event_display_max_hz) || m_event_display_max_hz <= 0) {
+      HIDRA_WARN("EVENT_DISPLAY_MAX_HZ={} is invalid, forcing 20", m_event_display_max_hz);
+      m_event_display_max_hz = 20.0;
+    }
     if (m_event_prescale == 0) {
       HIDRA_WARN("EVENT_PRESCALE=0 is invalid, forcing EVENT_PRESCALE=1");
       m_event_prescale = 1;
@@ -519,7 +524,7 @@ void HidraHttpMonitor::DoConfigure() {
                                              fers_saturation_threshold, fers_per_channel, cfg_maxicc_nboards,
                                              std::move(tracker_stations), std::move(http_output_dir),
                                              trigger_strip_length, trigger_gap_max, std::move(sum_config),
-                                             m_event_display_capacity);
+                                             m_event_display_capacity, m_event_display_max_hz);
   } else {
     // Reconfigure: keep the server alive, only swap the decoders to the new configuration. Decoder identity and state
     // are protected solely by m_state_mutex (held unique here) and are never touched by the pump thread, so the swap
@@ -535,7 +540,7 @@ void HidraHttpMonitor::DoConfigure() {
   // run actually starts. On the first configure the histograms are already empty, so this is a no-op.
   std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
   m_ctx->registry.Reset();
-  m_ctx->event_display->Reset();
+  m_ctx->event_display.Reset();
 }
 
 void HidraHttpMonitor::DoStartRun() {
@@ -552,6 +557,7 @@ void HidraHttpMonitor::DoStartRun() {
   std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
   m_ctx->chain.Reset();
   m_ctx->registry.Reset();
+  m_ctx->event_display.Reset();
   m_ctx->ResetTelemetry();
   m_ctx->run_active = true; // re-arm finalization for the new run
 }
@@ -602,6 +608,7 @@ void HidraHttpMonitor::DoReset() {
   std::lock_guard<std::mutex> fill_lock(m_ctx->publisher.Mutex());
   m_ctx->chain.Reset();
   m_ctx->registry.Reset();
+  m_ctx->event_display.Reset();
 }
 
 void HidraHttpMonitor::DoTerminate() {
@@ -689,6 +696,10 @@ void HidraHttpMonitor::DoReceive(eudaq::EventSP ev) {
     ScopedTimer t(m_ctx->duration_maxicc_decode);
     m_ctx->maxicc_decoder->decode(maxicc_payload, decoded.maxicc);
   }
+
+  // Display capture is throttled independently, outside the histogram lock.
+  // It skips instead of waiting on a reader; histogram statistics are unaffected.
+  m_ctx->event_display.Fill(decoded);
 
   // --- Dispatch — inside the histogram lock --------------------------
   // FillerChain acquires publisher.Mutex() before calling the fillers.

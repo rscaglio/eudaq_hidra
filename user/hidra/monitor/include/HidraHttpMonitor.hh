@@ -9,7 +9,8 @@
  * Event processing flow in DoReceive():
  * 1. Unpack the DataCollector sub-event envelope.
  * 2. Decode payload into HidraEvent outside the histogram-content lock.
- * 3. Call chain.Fill(HidraEvent) while holding the histogram-content lock.
+ * 3. Sample ADC/FERS for the display at a capped rate, outside the histogram lock.
+ * 4. Call chain.Fill(HidraEvent) while holding the histogram-content lock.
  *
  * Threads:
  * - T_ctrl: RunControl thread executing lifecycle hooks.
@@ -21,6 +22,10 @@
  * - m_state_mutex (std::shared_mutex) protects MonitorContext lifetime and the
  *   decoders that DoConfigure() may swap.
  * - publisher.Mutex() (std::mutex) protects histogram content.
+ * - event_display owns a separate mutex for its immutable snapshot pointers.
+ *   Capture and JSON serialization never acquire the histogram mutex. HTTP
+ *   temporarily releases the histogram mutex while encoding standalone display
+ *   responses; ROOT histogram serialization remains protected.
  *
  * Lock order is always:
  * m_state_mutex (shared/unique) -> publisher.Mutex().
@@ -103,9 +108,9 @@ private:
    */
   struct MonitorContext {
     HistogramRegistry registry;
+    EventDisplayBuffer event_display;
     HistogramPublisher publisher;
     FillerChain chain;
-    EventDisplayBuffer* event_display{nullptr}; // Owned by chain, also read by publisher.
 
     /** Decoders carrying run/config-dependent state. Swapped by DoConfigure() under m_state_mutex. */
     hidra::HidraXdcDecoder xdc_decoder;
@@ -159,7 +164,7 @@ private:
                    int fers_channel_nbins, int fers_saturation_threshold, bool fers_per_channel_distributions,
                    int maxicc_nboards, std::vector<TrackerStationConfig> tracker_stations, std::string http_output_dir,
                    int trigger_strip_length, int trigger_gap_max, ChannelSumConfig sum_config,
-                   int event_display_capacity);
+                   int event_display_capacity, double event_display_max_hz);
     ~MonitorContext() noexcept;
     /** Reset the per-run telemetry accumulators. Caller must hold publisher.Mutex(). */
     void ResetTelemetry();
@@ -172,6 +177,7 @@ private:
   /** Recompute the per-channel pedestal noise every N pedestal events (N>=1). */
   int m_noise_update_interval{200};
   int m_event_display_capacity{100}; /**< Recent processed events retained; 0 disables capture. */
+  double m_event_display_max_hz{20.0}; /**< Independent cap on display copies, without prescaling histograms. */
   /** FileNamer pattern for the histograms saved at end-of-run. Empty disables saving. */
   std::string m_histo_output_pattern{"out_data/monitor_run$6R_$12D$X"};
 

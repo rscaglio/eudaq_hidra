@@ -33,10 +33,18 @@ install(TARGETS
   ARCHIVE DESTINATION lib)
 
 if(BUILD_TESTING)
+  find_package(Threads REQUIRED)
   add_executable(hidra_event_display_buffer_test
     tests/event_display_buffer_test.cc src/EventDisplayBuffer.cc)
   target_compile_features(hidra_event_display_buffer_test PRIVATE cxx_std_17)
   target_include_directories(hidra_event_display_buffer_test PRIVATE
     include ../dc/include ../common/include ${ROOT_INCLUDE_DIRS})
   add_test(NAME hidra_event_display_buffer COMMAND hidra_event_display_buffer_test)
+  add_executable(hidra_event_display_http_test tests/event_display_http_test.cc
+    src/EventDisplayBuffer.cc src/MonitorHttpServer.cc)
+  target_compile_features(hidra_event_display_http_test PRIVATE cxx_std_17)
+  target_include_directories(hidra_event_display_http_test PRIVATE
+    include ../dc/include ${ROOT_INCLUDE_DIRS})
+  target_link_libraries(hidra_event_display_http_test PRIVATE ${ROOT_LIBRARIES} Threads::Threads)
+  add_test(NAME hidra_event_display_http COMMAND hidra_event_display_http_test)
 endif()

@@ -89,42 +89,73 @@ euCliMonitor -n HidraHttpMonitor
 - `ChannelSumFiller.*` - per-event SUM distributions over channel groups (see
   "Channel sums").
 - `EventDisplayBuffer.*` - a bounded buffer of single-event ADC and FERS HG/LG
-  readings for the frontend's **Event display** tab. It copies the same decoded
-  event passed to the histogram fillers, retaining metadata and raw channel
-  values without averaging. Tracker and MAXICC payloads are excluded.
+  readings for the frontend's **Event display** tab, sampled independently at a
+  configurable maximum rate. It retains metadata and raw channel values without
+  averaging, outside the histogram lock. Tracker and MAXICC payloads are excluded.
+- `MonitorHttpServer.*` - ROOT request dispatch with an atomic event-batch endpoint.
+  ROOT operations keep the publisher lock; standalone event JSON encoding
+  releases that lock, allowing histogram filling to continue.
 
 ## Single-event display
 
 The **Event display** frontend tab combines the ADC PMT modules and the central
 FERS SiPM fibres into front-face S/C views, using the existing frontend channel
 maps. Select an event by its run/event number in the searchable dropdown, or use
-**Previous**, **Next**, and **Latest**. The selected event stays fixed as new
-events arrive. HG/LG switches the FERS gain for that same event; full-scale
+**Previous** and **Next**. Opening the tab loads a complete group of up to 100
+events into that browser. The entire group stays browsable while the DAQ buffer
+changes, after eviction, and even while the backend is offline. **Refresh events**
+loads a new group and retains the current selected event; **Latest** loads a new
+group and selects its newest event. Reopening the tab loads a fresh group while
+retaining the selected event. HG/LG switches FERS gain for that same event; full-scale
 colouring is fixed to 0–4095, while event-scale colouring adapts to its signals.
 Values are raw ADC counts, with no pedestal subtraction. Grey means a mapped
 channel has no reading; a real zero remains a reading.
 
-The monitor retains the latest `EVENT_DISPLAY_BUFFER_SIZE` **processed** events
-(default 100). Both the data collector's monitor sampling and `EVENT_PRESCALE`
-apply, so event numbers need not be consecutive. The buffer is cleared on
-configure, start-run and reset, and remains available after stop-run. A snapshot
-already selected in a browser remains visible after buffer eviction or reset;
-its original run/event metadata stays attached. Other viewers keep their own
-selections. This buffer is live monitoring data, not a reader for historical raw
-files, and is not written into the end-of-run histogram ROOT file.
+The monitor retains the latest `EVENT_DISPLAY_BUFFER_SIZE` **sampled** events
+(default 100), capturing at most `EVENT_DISPLAY_MAX_HZ` events/s (default 20).
+At an effective input rate of 10 kHz, at most 20 channel-array copies per second
+are made for the display; the other events still fill histograms normally.
+The default buffer therefore covers about five seconds at high input rates.
+The display cap uses a monotonic clock and skips rather than waiting on a
+buffer reader. It does not change `EVENT_PRESCALE` or histogram statistics.
+The data collector's sampling and `EVENT_PRESCALE` still determine which decoded
+events are available to sample, so event numbers need not be consecutive.
+
+The backend buffer is cleared on configure, start-run and reset, and remains
+available after stop-run. Already loaded browser groups retain their original
+run/event metadata across those changes. Each browser has its own group and
+selection. This is live monitoring data, not a reader for historical raw files,
+and is not written into the end-of-run histogram ROOT file.
 
 Read-only HTTP resources on the existing monitor port:
 
-- `GET /EventDisplay/events.json`: buffer capacity, monitor prescale and event
-  metadata ordered oldest to newest. Each entry carries an opaque `id`.
+- `GET /EventDisplay/batch.json`: up to the 100 most recent **complete** snapshots
+  ordered oldest to newest, including channel arrays and metadata, plus buffer
+  capacity, available count, monitor prescale and `capture_max_hz`. Shared immutable
+  snapshots are retained atomically before encoding; eviction cannot invalidate
+  an event between listing it and retrieving its data. The frontend uses this endpoint.
+- `GET /EventDisplay/events.json`: metadata only, retained for existing clients.
+  Each entry carries an opaque `id`.
 - `GET /EventDisplay/<id>.json`: metadata plus `adc`, `fers_hg`, `fers_lg`
   arrays indexed by the same global channels as the histograms (FERS:
   `board * 64 + channel`). Missing/sentinel readings are JSON `null`; timestamps
   are strings to preserve nanosecond precision. Evicted/reset IDs return 404.
 
-Only the metadata catalogue is polled. Channel arrays are serialized and fetched
-when an event is selected. HTTP reads and event insertion use the histogram
-publisher's existing mutex. No interpreted ROOT method calls are needed.
+The frontend requests batches only on tab open, **Refresh events** or **Latest**;
+histogram polling does not refresh or redraw this group. Selection and navigation
+run entirely in the browser; only the selected snapshot goes to the frontend's
+plotting callback. The browser holds at most 100 group events plus one earlier
+selection. Backend insertion and snapshot retention use a separate, short buffer
+lock. Standalone batch/metadata/event JSON serialization holds neither this lock
+nor the histogram lock. ROOT histogram requests keep their original locking.
+No interpreted ROOT method calls are needed for the event display.
+
+Tests: `ctest --test-dir build -R hidra_event_display --output-on-failure`;
+from `frontend/`, `python -m unittest discover -s tests -v` and
+`node tests/event_display_selection_test.js`. The C++ tests cover 100,000 virtual
+10 kHz candidates and a concurrent six-second 10 kHz producer with ROOT HTTP
+batch reads and histogram filling. This isolates the display path; it is not a
+throughput benchmark of the full decoder/DAQ chain.
 
 ## Channel sums
 
@@ -255,7 +286,8 @@ Init configuration (`[Monitor.HidraHttpMonitor]` in the `.ini`), read in
 | `HTTP_PORT` | `9090` | TCP port of the HTTP server. |
 | `PUMP_INTERVAL_MS` | `20` | Period of the pump thread draining the HTTP queue (clamped to >= 5 ms). |
 | `EVENT_PRESCALE` | `1` | Process 1 event every N (>= 1) to reduce load. |
-| `EVENT_DISPLAY_BUFFER_SIZE` | `100` | Retain the latest N processed ADC/FERS events for the event display. `0` disables capture; negative values are clamped to `0`. Read at initialise; restart the monitor to change it. |
+| `EVENT_DISPLAY_BUFFER_SIZE` | `100` | Retain the latest N sampled ADC/FERS events for the event display. Each browser batch contains at most 100. `0` disables capture; negative values are clamped to `0`. Read at initialise; restart to change it. |
+| `EVENT_DISPLAY_MAX_HZ` | `20` | Maximum display captures per second, using a monotonic clock. Does not prescale histograms. Must be finite and positive; invalid values fall back to `20`. Read at initialise; restart to change it. |
 | `PEDESTAL_NOISE_UPDATE_EVENTS` | `200` | Recompute the per-channel pedestal noise (`ADC_noise_pedestal` / `ADC_noise_std_pedestal`) every N (>= 1) pedestal events. Lower = more responsive, higher = cheaper. |
 | `HISTO_OUTPUT_PATTERN` | `out_data/monitor_run$6R_$12D$X` | `FileNamer` pattern for the end-of-run ROOT file. `$R` run number, `$D` timestamp, `$X` extension (`.root`). Empty disables saving. |
 
